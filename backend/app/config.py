@@ -29,6 +29,13 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 
     @property
+    def database_url_async(self) -> str:
+        url = self.DATABASE_URL
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return url
+
+    @property
     def jwt_secret_key(self) -> str:
         return self.JWT_SECRET or f"oncoschool-{self.BOT_TOKEN[:16]}"
 

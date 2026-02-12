@@ -61,11 +61,15 @@ class ApiClient {
     });
 
     if (res.status === 401) {
-      this.setToken(null);
-      if (typeof window !== "undefined") {
-        window.location.href = "/login";
+      const body = await res.json().catch(() => ({}));
+      // Only clear token and redirect if we had a token (not during login)
+      if (this.getToken()) {
+        this.setToken(null);
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
       }
-      throw new Error("Unauthorized");
+      throw new Error(body.detail || "Unauthorized");
     }
 
     if (!res.ok) {
@@ -103,7 +107,7 @@ class ApiClient {
     const data = await this.request<Task[] | PaginatedResponse<Task>>(`/api/tasks${query}`);
     // Backend returns plain array, wrap into PaginatedResponse
     if (Array.isArray(data)) {
-      return { items: data, total: data.length, page: 1, per_page: data.length };
+      return { items: data, total: data.length, page: 1, per_page: data.length, pages: 1 };
     }
     return data;
   }

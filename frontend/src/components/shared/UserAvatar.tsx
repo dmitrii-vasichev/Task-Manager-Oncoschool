@@ -10,23 +10,17 @@ function getInitials(name: string): string {
     .toUpperCase();
 }
 
-const COLORS = [
-  "bg-blue-500",
-  "bg-green-500",
-  "bg-purple-500",
-  "bg-orange-500",
-  "bg-pink-500",
-  "bg-teal-500",
-  "bg-indigo-500",
-  "bg-rose-500",
-];
+// HSL-based colors generated from name hash — warm, saturated palette
+// tuned for white text readability
+const AVATAR_HUES = [174, 16, 262, 200, 340, 38, 152, 290, 120, 60];
 
-function getColor(name: string): string {
+function getAvatarColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return COLORS[Math.abs(hash) % COLORS.length];
+  const hue = AVATAR_HUES[Math.abs(hash) % AVATAR_HUES.length];
+  return `hsl(${hue}, 55%, 42%)`;
 }
 
 export function UserAvatar({
@@ -37,14 +31,21 @@ export function UserAvatar({
   size?: "sm" | "default" | "lg";
 }) {
   const sizeClass = {
-    sm: "h-6 w-6 text-xs",
-    default: "h-8 w-8 text-sm",
-    lg: "h-10 w-10 text-base",
+    sm: "h-6 w-6 text-2xs",
+    default: "h-8 w-8 text-xs",
+    lg: "h-10 w-10 text-sm",
   }[size];
 
+  const bgColor = getAvatarColor(name);
+
   return (
-    <Avatar className={sizeClass}>
-      <AvatarFallback className={`${getColor(name)} text-white`}>
+    <Avatar
+      className={`${sizeClass} hover:scale-110 hover:shadow-md cursor-default`}
+    >
+      <AvatarFallback
+        className="text-white font-heading font-semibold"
+        style={{ backgroundColor: bgColor }}
+      >
         {getInitials(name)}
       </AvatarFallback>
     </Avatar>

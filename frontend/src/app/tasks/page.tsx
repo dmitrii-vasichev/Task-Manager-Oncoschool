@@ -1,11 +1,9 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
-import { Plus } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Plus, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { TaskCard } from "@/components/tasks/TaskCard";
 import {
   TaskFilters,
@@ -17,14 +15,22 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { api } from "@/lib/api";
 import type { Task, TaskStatus, TeamMember } from "@/lib/types";
 import { TASK_STATUS_LABELS } from "@/lib/types";
+import { EmptyState } from "@/components/shared/EmptyState";
 
 const COLUMNS: TaskStatus[] = ["new", "in_progress", "review", "done"];
 
-const COLUMN_COLORS: Record<string, string> = {
-  new: "border-t-blue-400",
-  in_progress: "border-t-yellow-400",
-  review: "border-t-purple-400",
-  done: "border-t-green-400",
+const COLUMN_DOT_COLORS: Record<string, string> = {
+  new: "bg-status-new-fg",
+  in_progress: "bg-status-progress-fg",
+  review: "bg-status-review-fg",
+  done: "bg-status-done-fg",
+};
+
+const COLUMN_BG: Record<string, string> = {
+  new: "bg-status-new-bg/50",
+  in_progress: "bg-status-progress-bg/50",
+  review: "bg-status-review-bg/50",
+  done: "bg-status-done-bg/50",
 };
 
 export default function TasksPage() {
@@ -34,6 +40,7 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<TaskFilterValues>(EMPTY_FILTERS);
   const [createOpen, setCreateOpen] = useState(false);
+  const [mobileTab, setMobileTab] = useState<TaskStatus>("new");
 
   async function fetchData() {
     try {
@@ -89,11 +96,19 @@ export default function TasksPage() {
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <Skeleton className="h-10 w-full" />
+      <div className="space-y-6 animate-in fade-in duration-300">
+        <div className="flex items-center justify-between gap-4">
+          <Skeleton className="h-10 w-56 rounded-lg" />
+          <Skeleton className="h-10 w-36 rounded-lg" />
+        </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {COLUMNS.map((col) => (
-            <Skeleton key={col} className="h-96" />
+            <div key={col} className="space-y-3">
+              <Skeleton className="h-8 w-full rounded-lg" />
+              <Skeleton className="h-32 rounded-xl" />
+              <Skeleton className="h-28 rounded-xl" />
+              <Skeleton className="h-24 rounded-xl" />
+            </div>
           ))}
         </div>
       </div>
@@ -101,50 +116,80 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+    <div className="space-y-5 animate-in fade-in duration-300">
+      {/* Header: filters + create button */}
+      <div className="flex items-start justify-between gap-4">
         <TaskFilters
           filters={filters}
           onFiltersChange={setFilters}
           members={members}
         />
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-1 h-4 w-4" />
+        <Button
+          onClick={() => setCreateOpen(true)}
+          className="shrink-0 h-10 gap-2 bg-accent hover:bg-accent/90 text-accent-foreground shadow-sm"
+        >
+          <Plus className="h-4 w-4" />
           Новая задача
         </Button>
       </div>
 
-      <p className="text-xs text-muted-foreground">
-        Показано: {filteredTasks.length} из {tasks.length}
-      </p>
+      {/* Counter */}
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <LayoutGrid className="h-4 w-4" />
+          <span>
+            {filteredTasks.length} из {tasks.length} задач
+          </span>
+        </div>
+      </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      {/* Mobile tabs */}
+      <div className="flex gap-1 overflow-x-auto pb-1 lg:hidden" data-no-transition>
         {COLUMNS.map((status) => (
-          <Card key={status} className={`border-t-4 ${COLUMN_COLORS[status]}`}>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm flex items-center justify-between">
-                {TASK_STATUS_LABELS[status]}
-                <span className="text-muted-foreground font-normal text-xs bg-muted rounded-full px-2 py-0.5">
-                  {tasksByStatus[status].length}
-                </span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="max-h-[calc(100vh-280px)]">
-                <div className="space-y-2 pr-2">
-                  {tasksByStatus[status].length === 0 ? (
-                    <p className="text-xs text-muted-foreground text-center py-8">
-                      Нет задач
-                    </p>
-                  ) : (
-                    tasksByStatus[status].map((task) => (
-                      <TaskCard key={task.id} task={task} />
-                    ))
-                  )}
-                </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
+          <button
+            key={status}
+            onClick={() => setMobileTab(status)}
+            className={`
+              flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap
+              ${
+                mobileTab === status
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "bg-muted text-muted-foreground hover:bg-muted/80"
+              }
+            `}
+          >
+            <span className={`h-2 w-2 rounded-full ${COLUMN_DOT_COLORS[status]}`} />
+            {TASK_STATUS_LABELS[status]}
+            <span className={`
+              text-xs rounded-full px-1.5 min-w-[20px] text-center
+              ${mobileTab === status ? "bg-primary-foreground/20" : "bg-foreground/10"}
+            `}>
+              {tasksByStatus[status].length}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      {/* Mobile: single column */}
+      <div className="lg:hidden">
+        <KanbanColumn
+          status={mobileTab}
+          tasks={tasksByStatus[mobileTab]}
+        />
+      </div>
+
+      {/* Desktop: 4 columns */}
+      <div className="hidden lg:grid lg:grid-cols-4 gap-4" data-no-transition>
+        {COLUMNS.map((status, i) => (
+          <div
+            key={status}
+            className={`animate-fade-in-up stagger-${i + 1}`}
+          >
+            <KanbanColumn
+              status={status}
+              tasks={tasksByStatus[status]}
+            />
+          </div>
         ))}
       </div>
 
@@ -157,6 +202,51 @@ export default function TasksPage() {
           onCreated={fetchData}
         />
       )}
+    </div>
+  );
+}
+
+function KanbanColumn({
+  status,
+  tasks,
+}: {
+  status: TaskStatus;
+  tasks: Task[];
+}) {
+  return (
+    <div className="flex flex-col h-full">
+      {/* Column header */}
+      <div className={`flex items-center justify-between rounded-xl px-4 py-3 mb-3 ${COLUMN_BG[status]}`}>
+        <div className="flex items-center gap-2.5">
+          <span className={`h-2.5 w-2.5 rounded-full ${COLUMN_DOT_COLORS[status]}`} />
+          <h3 className="text-sm font-semibold text-foreground">
+            {TASK_STATUS_LABELS[status]}
+          </h3>
+        </div>
+        <span className="text-xs font-medium text-muted-foreground bg-background/60 rounded-full px-2.5 py-0.5 min-w-[24px] text-center shadow-sm">
+          {tasks.length}
+        </span>
+      </div>
+
+      {/* Cards area — independent scroll */}
+      <div className="flex-1 overflow-y-auto max-h-[calc(100vh-340px)] space-y-2.5 pr-1">
+        {tasks.length === 0 ? (
+          <EmptyState
+            variant="tasks"
+            title="Нет задач"
+            description="В этой колонке пока пусто"
+            className="py-10"
+          />
+        ) : (
+          tasks.map((task, i) => (
+            <TaskCard
+              key={task.id}
+              task={task}
+              style={{ animationDelay: `${i * 40}ms` }}
+            />
+          ))
+        )}
+      </div>
     </div>
   );
 }

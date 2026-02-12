@@ -10,16 +10,23 @@ import {
   Users,
   Settings,
   Info,
+  Sparkles,
+  Zap,
+  BrainCircuit,
+  CheckCircle2,
+  AlertTriangle,
+  CalendarPlus,
+  MessageSquarePlus,
+  ClipboardCheck,
+  ListChecks,
 } from "lucide-react";
 import { ModeratorGuard } from "@/components/shared/ModeratorGuard";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -34,14 +41,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { UserAvatar } from "@/components/shared/UserAvatar";
+import { useToast } from "@/components/shared/Toast";
 import { api } from "@/lib/api";
 import { useTeam } from "@/hooks/useTeam";
-import type { AISettingsResponse, ReminderSettings, TeamMember } from "@/lib/types";
+import type {
+  AISettingsResponse,
+  ReminderSettings,
+  TeamMember,
+} from "@/lib/types";
 
 export default function SettingsPage() {
   return (
     <ModeratorGuard>
-      <div className="max-w-3xl space-y-6">
+      <div className="max-w-3xl space-y-8 animate-in fade-in duration-300">
         <AIModelSection />
         <NotificationsSection />
         <RemindersSection />
@@ -54,20 +66,38 @@ export default function SettingsPage() {
 // AI Model Section
 // ============================================
 
-const PROVIDER_LABELS: Record<string, string> = {
-  anthropic: "Anthropic",
-  openai: "OpenAI",
-  gemini: "Gemini",
+const PROVIDER_CONFIG: Record<
+  string,
+  { label: string; icon: typeof Sparkles; color: string; gradient: string }
+> = {
+  anthropic: {
+    label: "Anthropic",
+    icon: BrainCircuit,
+    color: "hsl(24, 70%, 50%)",
+    gradient: "from-amber-500/10 to-orange-500/10",
+  },
+  openai: {
+    label: "OpenAI",
+    icon: Sparkles,
+    color: "hsl(152, 55%, 38%)",
+    gradient: "from-emerald-500/10 to-teal-500/10",
+  },
+  gemini: {
+    label: "Gemini",
+    icon: Zap,
+    color: "hsl(220, 65%, 55%)",
+    gradient: "from-blue-500/10 to-indigo-500/10",
+  },
 };
 
 function AIModelSection() {
+  const { toastSuccess, toastError } = useToast();
   const [settings, setSettings] = useState<AISettingsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState("");
   const [selectedModel, setSelectedModel] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   useEffect(() => {
     api
@@ -92,22 +122,22 @@ function AIModelSection() {
       const config = settings.providers_config[provider];
       setSelectedModel(config?.default || config?.models?.[0] || "");
     }
-    setSuccess(false);
   };
 
   const handleSave = async () => {
     setSaving(true);
     setError(null);
-    setSuccess(false);
     try {
       const result = await api.updateAiSettings({
         provider: selectedProvider,
         model: selectedModel,
       });
       setSettings(result);
-      setSuccess(true);
+      toastSuccess("AI-модель сохранена");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка сохранения");
+      const msg = e instanceof Error ? e.message : "Ошибка сохранения";
+      setError(msg);
+      toastError(msg);
     } finally {
       setSaving(false);
     }
@@ -120,61 +150,106 @@ function AIModelSection() {
 
   if (loading) {
     return (
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-6 w-48" />
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-32" />
-        </CardContent>
-      </Card>
+      <div className="rounded-2xl border border-border/60 bg-card p-6 space-y-4">
+        <Skeleton className="h-6 w-48" />
+        <div className="grid grid-cols-3 gap-3">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-10 w-full rounded-xl" />
+      </div>
     );
   }
 
   const allProviders = ["anthropic", "openai", "gemini"];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Bot className="h-5 w-5" />
-          AI-модель для парсинга
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Provider selection */}
+    <div className="animate-fade-in-up stagger-1 rounded-2xl border border-border/60 bg-card overflow-hidden">
+      {/* Section header */}
+      <div className="flex items-center gap-3 p-6 pb-0">
+        <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
+          <Bot className="h-5 w-5 text-primary" />
+        </div>
         <div>
-          <Label>Провайдер</Label>
-          <div className="flex gap-2 mt-2">
-            {allProviders.map((provider) => {
-              const isAvailable = settings?.available_providers?.[provider];
-              const isSelected = selectedProvider === provider;
-              return (
-                <Button
-                  key={provider}
-                  variant={isSelected ? "default" : "outline"}
-                  size="sm"
-                  disabled={!isAvailable}
-                  onClick={() => handleProviderChange(provider)}
-                  className="flex-1"
-                >
-                  {PROVIDER_LABELS[provider] || provider}
+          <h2 className="font-heading font-semibold text-base">
+            AI-модель для парсинга
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Выберите провайдера и модель для обработки summary
+          </p>
+        </div>
+      </div>
+
+      <div className="p-6 space-y-5">
+        {/* Provider cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {allProviders.map((provider) => {
+            const config = PROVIDER_CONFIG[provider];
+            const isAvailable = settings?.available_providers?.[provider];
+            const isSelected = selectedProvider === provider;
+            const Icon = config.icon;
+
+            return (
+              <button
+                key={provider}
+                disabled={!isAvailable}
+                onClick={() => handleProviderChange(provider)}
+                className={`
+                  relative overflow-hidden rounded-xl border-2 p-4 text-left
+                  transition-all duration-200
+                  ${
+                    isSelected
+                      ? "border-primary bg-primary/5 shadow-sm"
+                      : isAvailable
+                        ? "border-border/60 bg-card hover:border-border hover:shadow-sm"
+                        : "border-border/30 bg-muted/30 opacity-50 cursor-not-allowed"
+                  }
+                `}
+              >
+                {/* Decorative gradient */}
+                <div
+                  className={`absolute inset-0 bg-gradient-to-br ${config.gradient} opacity-0 ${isSelected ? "opacity-100" : ""}`}
+                />
+
+                <div className="relative">
+                  <div
+                    className="h-8 w-8 rounded-lg flex items-center justify-center mb-2"
+                    style={{ backgroundColor: `${config.color}18` }}
+                  >
+                    <Icon
+                      className="h-4 w-4"
+                      style={{ color: config.color }}
+                    />
+                  </div>
+                  <p className="font-heading font-semibold text-sm">
+                    {config.label}
+                  </p>
                   {!isAvailable && (
-                    <span className="ml-1 text-xs opacity-60">
-                      (нет ключа)
-                    </span>
+                    <p className="text-2xs text-muted-foreground mt-1">
+                      Нет API-ключа
+                    </p>
                   )}
-                </Button>
-              );
-            })}
-          </div>
+                  {isSelected && isAvailable && (
+                    <div className="absolute top-0 right-0">
+                      <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center">
+                        <CheckCircle2 className="h-3 w-3 text-primary-foreground" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </button>
+            );
+          })}
         </div>
 
         {/* Model selection */}
         <div>
-          <Label>Модель</Label>
+          <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Модель
+          </Label>
           <Select value={selectedModel} onValueChange={setSelectedModel}>
-            <SelectTrigger className="mt-1">
+            <SelectTrigger className="mt-1.5 rounded-xl">
               <SelectValue placeholder="Выберите модель" />
             </SelectTrigger>
             <SelectContent>
@@ -187,24 +262,25 @@ function AIModelSection() {
           </Select>
         </div>
 
-        {/* Info note */}
-        <div className="flex items-start gap-2 text-xs text-muted-foreground bg-muted/50 p-3 rounded-md">
-          <Info className="h-4 w-4 mt-0.5 shrink-0" />
+        {/* Whisper note */}
+        <div className="flex items-start gap-2.5 text-xs text-muted-foreground bg-muted/40 p-3.5 rounded-xl border border-border/40">
+          <Info className="h-4 w-4 mt-0.5 shrink-0 text-primary/60" />
           <span>
-            Whisper (распознавание голоса) всегда использует OpenAI независимо
-            от выбранного провайдера.
+            Whisper (распознавание голоса) всегда использует OpenAI независимо от
+            выбранного провайдера.
           </span>
         </div>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
-        {success && (
-          <p className="text-sm text-green-600">Настройки сохранены</p>
+        {error && (
+          <div className="rounded-xl bg-destructive/10 border border-destructive/20 p-3">
+            <p className="text-sm text-destructive">{error}</p>
+          </div>
         )}
 
         <Button
           onClick={handleSave}
           disabled={saving || !hasChanges}
-          className="w-full"
+          className="w-full rounded-xl"
         >
           {saving ? (
             <>
@@ -218,8 +294,8 @@ function AIModelSection() {
             </>
           )}
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -227,16 +303,54 @@ function AIModelSection() {
 // Notifications Section
 // ============================================
 
-const EVENT_TYPE_LABELS: Record<string, string> = {
-  task_created: "Создание задачи",
-  task_status_changed: "Изменение статуса задачи",
-  task_completed: "Завершение задачи",
-  task_overdue: "Просроченная задача",
-  task_update_added: "Новое обновление задачи",
-  meeting_created: "Создание встречи",
+interface EventConfig {
+  label: string;
+  description: string;
+  icon: typeof Bell;
+  group: "tasks" | "meetings";
+}
+
+const EVENT_TYPES: Record<string, EventConfig> = {
+  task_created: {
+    label: "Создание задачи",
+    description: "Когда создаётся новая задача",
+    icon: CalendarPlus,
+    group: "tasks",
+  },
+  task_status_changed: {
+    label: "Изменение статуса",
+    description: "Когда задача меняет статус",
+    icon: ClipboardCheck,
+    group: "tasks",
+  },
+  task_completed: {
+    label: "Завершение задачи",
+    description: "Когда задача отмечена как выполненная",
+    icon: CheckCircle2,
+    group: "tasks",
+  },
+  task_overdue: {
+    label: "Просроченная задача",
+    description: "Когда задача выходит за дедлайн",
+    icon: AlertTriangle,
+    group: "tasks",
+  },
+  task_update_added: {
+    label: "Новое обновление",
+    description: "Когда участник добавляет апдейт к задаче",
+    icon: MessageSquarePlus,
+    group: "tasks",
+  },
+  meeting_created: {
+    label: "Создание встречи",
+    description: "Когда создаётся встреча из summary",
+    icon: ListChecks,
+    group: "meetings",
+  },
 };
 
 function NotificationsSection() {
+  const { toastSuccess, toastError } = useToast();
   const [subscriptions, setSubscriptions] = useState<Record<string, boolean>>(
     {}
   );
@@ -265,8 +379,11 @@ function NotificationsSection() {
     try {
       const result = await api.updateNotificationSubscriptions(subscriptions);
       setSubscriptions(result.subscriptions);
+      toastSuccess("Подписки сохранены");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка сохранения");
+      const msg = e instanceof Error ? e.message : "Ошибка сохранения";
+      setError(msg);
+      toastError(msg);
     } finally {
       setSaving(false);
     }
@@ -274,57 +391,127 @@ function NotificationsSection() {
 
   if (loading) {
     return (
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-6 w-48" />
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-32" />
-        </CardContent>
-      </Card>
+      <div className="rounded-2xl border border-border/60 bg-card p-6 space-y-4">
+        <Skeleton className="h-6 w-48" />
+        <div className="space-y-3">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-14 rounded-xl" />
+          ))}
+        </div>
+      </div>
     );
   }
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Bell className="h-5 w-5" />
-          Подписки на уведомления
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">
-          Получайте уведомления в Telegram при наступлении событий
-        </p>
+  const taskEvents = Object.entries(EVENT_TYPES).filter(
+    ([, c]) => c.group === "tasks"
+  );
+  const meetingEvents = Object.entries(EVENT_TYPES).filter(
+    ([, c]) => c.group === "meetings"
+  );
 
-        <div className="space-y-3">
-          {Object.entries(EVENT_TYPE_LABELS).map(([eventType, label]) => (
-            <div
-              key={eventType}
-              className="flex items-center justify-between"
-            >
-              <Label
-                htmlFor={`notify-${eventType}`}
-                className="cursor-pointer"
-              >
-                {label}
-              </Label>
-              <Switch
-                id={`notify-${eventType}`}
-                checked={subscriptions[eventType] || false}
-                onCheckedChange={() => handleToggle(eventType)}
-              />
-            </div>
-          ))}
+  return (
+    <div className="animate-fade-in-up stagger-2 rounded-2xl border border-border/60 bg-card overflow-hidden">
+      {/* Section header */}
+      <div className="flex items-center gap-3 p-6 pb-0">
+        <div className="h-9 w-9 rounded-xl bg-accent/10 flex items-center justify-center">
+          <Bell className="h-5 w-5 text-accent" />
+        </div>
+        <div>
+          <h2 className="font-heading font-semibold text-base">
+            Подписки на уведомления
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            Получайте уведомления в Telegram при наступлении событий
+          </p>
+        </div>
+      </div>
+
+      <div className="p-6 space-y-5">
+        {/* Task events */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70 mb-3">
+            Задачи
+          </p>
+          <div className="space-y-1">
+            {taskEvents.map(([eventType, config]) => {
+              const Icon = config.icon;
+              return (
+                <div
+                  key={eventType}
+                  className="flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-muted/40"
+                >
+                  <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <Label
+                      htmlFor={`notify-${eventType}`}
+                      className="cursor-pointer text-sm font-medium"
+                    >
+                      {config.label}
+                    </Label>
+                    <p className="text-2xs text-muted-foreground">
+                      {config.description}
+                    </p>
+                  </div>
+                  <Switch
+                    id={`notify-${eventType}`}
+                    checked={subscriptions[eventType] || false}
+                    onCheckedChange={() => handleToggle(eventType)}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
 
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {/* Divider */}
+        <div className="h-px bg-border/60" />
+
+        {/* Meeting events */}
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70 mb-3">
+            Встречи
+          </p>
+          <div className="space-y-1">
+            {meetingEvents.map(([eventType, config]) => {
+              const Icon = config.icon;
+              return (
+                <div
+                  key={eventType}
+                  className="flex items-center gap-3 rounded-xl px-3 py-3 hover:bg-muted/40"
+                >
+                  <Icon className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <Label
+                      htmlFor={`notify-${eventType}`}
+                      className="cursor-pointer text-sm font-medium"
+                    >
+                      {config.label}
+                    </Label>
+                    <p className="text-2xs text-muted-foreground">
+                      {config.description}
+                    </p>
+                  </div>
+                  <Switch
+                    id={`notify-${eventType}`}
+                    checked={subscriptions[eventType] || false}
+                    onCheckedChange={() => handleToggle(eventType)}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {error && (
+          <div className="rounded-xl bg-destructive/10 border border-destructive/20 p-3">
+            <p className="text-sm text-destructive">{error}</p>
+          </div>
+        )}
 
         <Button
           onClick={handleSave}
           disabled={saving}
-          className="w-full"
+          className="w-full rounded-xl"
         >
           {saving ? (
             <>
@@ -338,8 +525,8 @@ function NotificationsSection() {
             </>
           )}
         </Button>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -358,8 +545,11 @@ const DAY_LABELS: Record<number, string> = {
 };
 
 function RemindersSection() {
+  const { toastSuccess, toastError } = useToast();
   const { members, loading: membersLoading } = useTeam();
-  const [reminders, setReminders] = useState<Record<string, ReminderSettings | null>>({});
+  const [reminders, setReminders] = useState<
+    Record<string, ReminderSettings | null>
+  >({});
   const [loadingReminders, setLoadingReminders] = useState(false);
   const [editMemberId, setEditMemberId] = useState<string | null>(null);
   const [bulkSaving, setBulkSaving] = useState(false);
@@ -400,8 +590,11 @@ function RemindersSection() {
         days_of_week: [1, 2, 3, 4, 5],
       });
       await fetchReminders();
+      toastSuccess("Напоминания включены для всех");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка");
+      const msg = e instanceof Error ? e.message : "Ошибка";
+      setError(msg);
+      toastError(msg);
     } finally {
       setBulkSaving(false);
     }
@@ -413,8 +606,11 @@ function RemindersSection() {
     try {
       await api.bulkUpdateReminders({ is_enabled: false });
       await fetchReminders();
+      toastSuccess("Напоминания отключены");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка");
+      const msg = e instanceof Error ? e.message : "Ошибка";
+      setError(msg);
+      toastError(msg);
     } finally {
       setBulkSaving(false);
     }
@@ -424,63 +620,95 @@ function RemindersSection() {
 
   if (loading) {
     return (
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-6 w-48" />
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-32" />
-        </CardContent>
-      </Card>
+      <div className="rounded-2xl border border-border/60 bg-card p-6 space-y-4">
+        <Skeleton className="h-6 w-48" />
+        <Skeleton className="h-12 rounded-xl" />
+        <div className="space-y-2">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-16 rounded-xl" />
+          ))}
+        </div>
+      </div>
     );
   }
 
   const editMember = members.find((m) => m.id === editMemberId);
+  const enabledCount = Object.values(reminders).filter(
+    (r) => r?.is_enabled
+  ).length;
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5" />
-            Напоминания команды
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Bulk actions */}
-          <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-md">
-            <Users className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm flex-1">Массовые действия:</span>
-            <Input
-              type="time"
-              value={bulkTime}
-              onChange={(e) => setBulkTime(e.target.value)}
-              className="w-28"
+      <div className="animate-fade-in-up stagger-3 rounded-2xl border border-border/60 bg-card overflow-hidden">
+        {/* Section header */}
+        <div className="flex items-center gap-3 p-6 pb-0">
+          <div
+            className="h-9 w-9 rounded-xl flex items-center justify-center"
+            style={{ backgroundColor: "hsl(262, 52%, 55%, 0.1)" }}
+          >
+            <Clock
+              className="h-5 w-5"
+              style={{ color: "hsl(262, 52%, 55%)" }}
             />
-            <Button
-              size="sm"
-              onClick={handleBulkEnable}
-              disabled={bulkSaving}
-            >
-              {bulkSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                "Включить всем"
-              )}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleBulkDisable}
-              disabled={bulkSaving}
-            >
-              Выключить
-            </Button>
+          </div>
+          <div className="flex-1">
+            <h2 className="font-heading font-semibold text-base">
+              Напоминания команды
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Ежедневные дайджесты задач для участников
+            </p>
+          </div>
+          <Badge variant="secondary" className="rounded-lg text-2xs">
+            {enabledCount} / {members.length} вкл.
+          </Badge>
+        </div>
+
+        <div className="p-6 space-y-4">
+          {/* Bulk actions */}
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 p-4 bg-muted/40 rounded-xl border border-border/40">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <Users className="h-4 w-4 text-muted-foreground shrink-0" />
+              <span className="text-sm text-muted-foreground">
+                Массово:
+              </span>
+            </div>
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <Input
+                type="time"
+                value={bulkTime}
+                onChange={(e) => setBulkTime(e.target.value)}
+                className="w-28 rounded-lg h-8 text-sm shrink-0"
+              />
+              <Button
+                size="sm"
+                className="rounded-lg shrink-0"
+                onClick={handleBulkEnable}
+                disabled={bulkSaving}
+              >
+                {bulkSaving ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  "Включить всем"
+                )}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="rounded-lg shrink-0"
+                onClick={handleBulkDisable}
+                disabled={bulkSaving}
+              >
+                Выключить
+              </Button>
+            </div>
           </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
-
-          <Separator />
+          {error && (
+            <div className="rounded-xl bg-destructive/10 border border-destructive/20 p-3">
+              <p className="text-sm text-destructive">{error}</p>
+            </div>
+          )}
 
           {/* Members list */}
           <div className="space-y-2">
@@ -489,7 +717,7 @@ function RemindersSection() {
               return (
                 <div
                   key={member.id}
-                  className="flex items-center gap-3 p-3 border rounded-md"
+                  className="group flex items-center gap-3 p-3.5 rounded-xl border border-border/60 hover:shadow-sm hover:border-border"
                 >
                   <UserAvatar name={member.full_name} size="sm" />
                   <div className="flex-1 min-w-0">
@@ -497,32 +725,44 @@ function RemindersSection() {
                       {member.full_name}
                     </p>
                     {reminder?.is_enabled ? (
-                      <p className="text-xs text-muted-foreground">
-                        {reminder.reminder_time?.slice(0, 5)} |{" "}
+                      <p className="text-2xs text-muted-foreground">
+                        {reminder.reminder_time?.slice(0, 5)}{" "}
+                        <span className="text-border mx-0.5">|</span>{" "}
                         {reminder.days_of_week
                           ?.map((d) => DAY_LABELS[d])
                           .join(", ")}
                       </p>
                     ) : (
-                      <p className="text-xs text-muted-foreground">Выключено</p>
+                      <p className="text-2xs text-muted-foreground/60">
+                        Не настроено
+                      </p>
                     )}
                   </div>
-                  <Badge variant={reminder?.is_enabled ? "default" : "secondary"}>
-                    {reminder?.is_enabled ? "Вкл" : "Выкл"}
-                  </Badge>
+
+                  {/* Status indicator */}
+                  <div
+                    className={`h-2 w-2 rounded-full shrink-0 ${
+                      reminder?.is_enabled
+                        ? "bg-status-done-fg"
+                        : "bg-border"
+                    }`}
+                  />
+
                   <Button
                     variant="ghost"
-                    size="icon"
+                    size="sm"
+                    className="shrink-0 rounded-lg text-xs text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100"
                     onClick={() => setEditMemberId(member.id)}
                   >
-                    <Settings className="h-4 w-4" />
+                    <Settings className="h-3.5 w-3.5 mr-1" />
+                    Настроить
                   </Button>
                 </div>
               );
             })}
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       {/* Edit reminder dialog */}
       {editMember && (
@@ -553,8 +793,12 @@ function ReminderEditDialog({
   onSaved: () => void;
 }) {
   const [isEnabled, setIsEnabled] = useState(reminder?.is_enabled ?? false);
-  const [time, setTime] = useState(reminder?.reminder_time?.slice(0, 5) ?? "09:00");
-  const [days, setDays] = useState<number[]>(reminder?.days_of_week ?? [1, 2, 3, 4, 5]);
+  const [time, setTime] = useState(
+    reminder?.reminder_time?.slice(0, 5) ?? "09:00"
+  );
+  const [days, setDays] = useState<number[]>(
+    reminder?.days_of_week ?? [1, 2, 3, 4, 5]
+  );
   const [includeOverdue, setIncludeOverdue] = useState(
     reminder?.include_overdue ?? true
   );
@@ -569,7 +813,9 @@ function ReminderEditDialog({
 
   const toggleDay = (day: number) => {
     setDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()
+      prev.includes(day)
+        ? prev.filter((d) => d !== day)
+        : [...prev, day].sort()
     );
   };
 
@@ -596,83 +842,134 @@ function ReminderEditDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <UserAvatar name={member.full_name} size="sm" />
-            Напоминания — {member.full_name}
+          <DialogTitle className="flex items-center gap-3 font-heading">
+            <UserAvatar name={member.full_name} size="default" />
+            <div>
+              <span>Напоминания</span>
+              <p className="text-xs text-muted-foreground font-normal mt-0.5">
+                {member.full_name}
+              </p>
+            </div>
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <Label>Включено</Label>
+        <div className="space-y-5 pt-2">
+          {/* Enable toggle */}
+          <div className="flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border/40">
+            <div className="flex items-center gap-2">
+              <div
+                className={`h-2 w-2 rounded-full ${isEnabled ? "bg-status-done-fg" : "bg-border"}`}
+              />
+              <Label className="cursor-pointer font-medium">
+                {isEnabled ? "Включено" : "Выключено"}
+              </Label>
+            </div>
             <Switch checked={isEnabled} onCheckedChange={setIsEnabled} />
           </div>
 
-          <Separator />
-
+          {/* Time */}
           <div>
-            <Label>Время отправки</Label>
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Время отправки
+            </Label>
             <Input
               type="time"
               value={time}
               onChange={(e) => setTime(e.target.value)}
-              className="mt-1 w-32"
+              className="mt-1.5 w-32 rounded-xl"
             />
           </div>
 
+          {/* Days */}
           <div>
-            <Label>Дни недели</Label>
-            <div className="flex gap-1 mt-2">
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Дни недели
+            </Label>
+            <div className="flex gap-1.5 mt-2">
               {[1, 2, 3, 4, 5, 6, 7].map((day) => (
-                <Button
+                <button
                   key={day}
-                  variant={days.includes(day) ? "default" : "outline"}
-                  size="sm"
-                  className="w-10 px-0"
+                  className={`
+                    h-9 w-9 rounded-lg text-xs font-medium
+                    transition-all duration-150
+                    ${
+                      days.includes(day)
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "bg-muted text-muted-foreground hover:bg-muted/80"
+                    }
+                  `}
                   onClick={() => toggleDay(day)}
                 >
                   {DAY_LABELS[day]}
-                </Button>
+                </button>
               ))}
             </div>
           </div>
 
-          <Separator />
+          {/* Divider */}
+          <div className="h-px bg-border/60" />
 
+          {/* Content toggles */}
           <div className="space-y-3">
-            <Label>Что включить в дайджест</Label>
-            <div className="flex items-center justify-between">
-              <span className="text-sm">Просроченные задачи</span>
-              <Switch
-                checked={includeOverdue}
-                onCheckedChange={setIncludeOverdue}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm">Ближайшие задачи (3 дня)</span>
-              <Switch
-                checked={includeUpcoming}
-                onCheckedChange={setIncludeUpcoming}
-              />
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm">Задачи в работе</span>
-              <Switch
-                checked={includeInProgress}
-                onCheckedChange={setIncludeInProgress}
-              />
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Что включить в дайджест
+            </Label>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-muted/40">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
+                  <span className="text-sm">Просроченные задачи</span>
+                </div>
+                <Switch
+                  checked={includeOverdue}
+                  onCheckedChange={setIncludeOverdue}
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-muted/40">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-sm">Ближайшие задачи (3 дня)</span>
+                </div>
+                <Switch
+                  checked={includeUpcoming}
+                  onCheckedChange={setIncludeUpcoming}
+                />
+              </div>
+              <div className="flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-muted/40">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-3.5 w-3.5 text-primary" />
+                  <span className="text-sm">Задачи в работе</span>
+                </div>
+                <Switch
+                  checked={includeInProgress}
+                  onCheckedChange={setIncludeInProgress}
+                />
+              </div>
             </div>
           </div>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+          {error && (
+            <div className="rounded-xl bg-destructive/10 border border-destructive/20 p-3">
+              <p className="text-sm text-destructive">{error}</p>
+            </div>
+          )}
 
-          <div className="flex gap-2 justify-end">
-            <Button variant="outline" onClick={onClose} disabled={saving}>
+          <div className="flex gap-2 justify-end pt-2">
+            <Button
+              variant="outline"
+              className="rounded-xl"
+              onClick={onClose}
+              disabled={saving}
+            >
               Отмена
             </Button>
-            <Button onClick={handleSave} disabled={saving}>
+            <Button
+              className="rounded-xl"
+              onClick={handleSave}
+              disabled={saving}
+            >
               {saving ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

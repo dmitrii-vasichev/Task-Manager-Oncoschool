@@ -1,24 +1,46 @@
-import { Badge } from "@/components/ui/badge";
 import { type TaskPriority, TASK_PRIORITY_LABELS } from "@/lib/types";
+import {
+  AlertTriangle,
+  ArrowUp,
+  Minus,
+  ArrowDown,
+} from "lucide-react";
 
-const PRIORITY_STYLES: Record<TaskPriority, string> = {
-  urgent: "bg-red-100 text-red-800 hover:bg-red-100",
-  high: "bg-orange-100 text-orange-800 hover:bg-orange-100",
-  medium: "bg-sky-100 text-sky-800 hover:bg-sky-100",
-  low: "bg-gray-100 text-gray-600 hover:bg-gray-100",
-};
-
-const PRIORITY_ICONS: Record<TaskPriority, string> = {
-  urgent: "🔴",
-  high: "🟠",
-  medium: "🔵",
-  low: "⚪",
+const PRIORITY_CONFIG: Record<
+  TaskPriority,
+  { icon: typeof ArrowUp; className: string; dotClass: string }
+> = {
+  urgent: {
+    icon: AlertTriangle,
+    className: "bg-priority-urgent-bg text-priority-urgent-fg",
+    dotClass: "bg-priority-urgent-dot",
+  },
+  high: {
+    icon: ArrowUp,
+    className: "bg-priority-high-bg text-priority-high-fg",
+    dotClass: "bg-priority-high-dot",
+  },
+  medium: {
+    icon: Minus,
+    className: "bg-priority-medium-bg text-priority-medium-fg",
+    dotClass: "bg-priority-medium-dot",
+  },
+  low: {
+    icon: ArrowDown,
+    className: "bg-priority-low-bg text-priority-low-fg",
+    dotClass: "bg-priority-low-dot",
+  },
 };
 
 export function PriorityBadge({ priority }: { priority: TaskPriority }) {
+  const { icon: Icon, className } = PRIORITY_CONFIG[priority];
+
   return (
-    <Badge variant="secondary" className={PRIORITY_STYLES[priority]}>
-      {PRIORITY_ICONS[priority]} {TASK_PRIORITY_LABELS[priority]}
-    </Badge>
+    <span
+      className={`badge-animated inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${className}`}
+    >
+      <Icon className="h-3 w-3 shrink-0" />
+      {TASK_PRIORITY_LABELS[priority]}
+    </span>
   );
 }

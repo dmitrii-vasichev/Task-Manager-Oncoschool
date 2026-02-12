@@ -1,10 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Mic, CalendarDays, AlertTriangle } from "lucide-react";
+import {
+  Mic,
+  CalendarDays,
+  FileText,
+  MessageSquare,
+} from "lucide-react";
 import { PriorityBadge } from "@/components/shared/PriorityBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
-import type { Task } from "@/lib/types";
+import { Progress } from "@/components/ui/progress";
+import type { Task, TaskPriority } from "@/lib/types";
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("ru-RU", {
@@ -19,52 +25,115 @@ function isOverdue(task: Task): boolean {
   return new Date(task.deadline) < new Date(new Date().toDateString());
 }
 
-export function TaskCard({ task }: { task: Task }) {
+const PRIORITY_STRIP_COLORS: Record<TaskPriority, string> = {
+  urgent: "bg-priority-urgent-dot",
+  high: "bg-priority-high-dot",
+  medium: "bg-priority-medium-dot",
+  low: "bg-priority-low-dot",
+};
+
+export function TaskCard({
+  task,
+  style,
+}: {
+  task: Task;
+  style?: React.CSSProperties;
+}) {
   const overdue = isOverdue(task);
+  const updatesCount = (task as unknown as Record<string, unknown>).updates_count as number | undefined;
 
   return (
     <Link
       href={`/tasks/${task.short_id}`}
-      className={`block rounded-lg border p-3 transition-colors hover:bg-accent ${
-        overdue ? "border-red-400 bg-red-50/50" : ""
-      }`}
+      className={`
+        group block rounded-xl bg-card border shadow-sm
+        hover:shadow-md hover:-translate-y-0.5 hover:border-primary/20
+        focus-visible:ring-2 focus-visible:ring-primary/30
+        overflow-hidden
+        ${overdue ? "border-destructive/40 animate-pulse-glow" : "border-border/50"}
+      `}
+      style={style}
     >
-      <div className="flex items-center gap-1 mb-1">
-        <span className="text-xs text-muted-foreground font-mono">
-          #{task.short_id}
-        </span>
-        {task.source === "voice" && (
-          <Mic className="h-3 w-3 text-muted-foreground" />
-        )}
-        {overdue && (
-          <AlertTriangle className="h-3 w-3 text-red-500" />
-        )}
-      </div>
+      {/* Priority color strip */}
+      <div
+        className={`h-[3px] w-full ${PRIORITY_STRIP_COLORS[task.priority]}`}
+      />
 
-      <p className="text-sm font-medium truncate mb-2">{task.title}</p>
-
-      <div className="flex items-center gap-1 flex-wrap">
-        <PriorityBadge priority={task.priority} />
-        {task.deadline && (
-          <span
-            className={`text-xs flex items-center gap-0.5 ${
-              overdue ? "text-red-600 font-medium" : "text-muted-foreground"
-            }`}
-          >
-            <CalendarDays className="h-3 w-3" />
-            {formatDate(task.deadline)}
+      <div className="p-3.5 space-y-2.5">
+        {/* Header: ID + source icons */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-muted-foreground font-mono">
+            #{task.short_id}
           </span>
-        )}
-      </div>
-
-      {task.assignee && (
-        <div className="mt-2 flex items-center gap-1">
-          <UserAvatar name={task.assignee.full_name} size="sm" />
-          <span className="text-xs text-muted-foreground truncate">
-            {task.assignee.full_name}
-          </span>
+          {task.source === "voice" && (
+            <span className="inline-flex items-center justify-center h-4 w-4 rounded bg-purple-100 dark:bg-purple-900/30" title="Голосовая задача">
+              <Mic className="h-2.5 w-2.5 text-purple-600 dark:text-purple-400" />
+            </span>
+          )}
+          {task.source === "summary" && (
+            <span className="inline-flex items-center justify-center h-4 w-4 rounded bg-blue-100 dark:bg-blue-900/30" title="Из встречи">
+              <FileText className="h-2.5 w-2.5 text-blue-600 dark:text-blue-400" />
+            </span>
+          )}
+          {overdue && (
+            <span className="ml-auto text-2xs font-medium text-destructive bg-destructive/10 rounded-full px-1.5 py-0.5">
+              Просрочено
+            </span>
+          )}
         </div>
-      )}
+
+        {/* Title */}
+        <p className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-primary">
+          {task.title}
+        </p>
+
+        {/* Meta row */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <PriorityBadge priority={task.priority} />
+          {task.deadline && (
+            <span
+              className={`inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 ${
+                overdue
+                  ? "text-destructive bg-destructive/10 font-medium"
+                  : "text-muted-foreground bg-muted"
+              }`}
+            >
+              <CalendarDays className="h-3 w-3" />
+              {formatDate(task.deadline)}
+            </span>
+          )}
+        </div>
+
+        {/* Progress bar (if there's a last progress_percent) */}
+        {typeof updatesCount === "number" && updatesCount > 0 && (
+          <div className="space-y-1">
+            <Progress value={50} className="h-1.5" />
+          </div>
+        )}
+
+        {/* Footer: assignee + updates count */}
+        <div className="flex items-center justify-between pt-0.5">
+          {task.assignee ? (
+            <div className="flex items-center gap-1.5 min-w-0">
+              <UserAvatar name={task.assignee.full_name} size="sm" />
+              <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+                {task.assignee.full_name}
+              </span>
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground/50 italic">
+              Не назначен
+            </span>
+          )}
+
+          {typeof updatesCount === "number" && updatesCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <MessageSquare className="h-3 w-3" />
+              {updatesCount}
+            </span>
+          )}
+        </div>
+      </div>
     </Link>
   );
 }

@@ -3,29 +3,48 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  CheckSquare,
-  Clock,
+  Zap,
+  CheckCircle2,
   AlertTriangle,
-  Users,
   CalendarDays,
-  Mic,
   ArrowRight,
+  Mic,
+  FileText,
+  Clock,
+  UserX,
+  AlertOctagon,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PriorityBadge } from "@/components/shared/PriorityBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
+import { EmptyState } from "@/components/shared/EmptyState";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { PermissionService } from "@/lib/permissions";
 import { api } from "@/lib/api";
-import type { OverviewAnalytics, Task } from "@/lib/types";
+import type {
+  OverviewAnalytics,
+  MeetingAnalytics,
+  Task,
+  Meeting,
+} from "@/lib/types";
+
+// ────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
+  });
+}
+
+function formatFullDate(date: Date): string {
+  return date.toLocaleDateString("ru-RU", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
   });
 }
 
@@ -35,53 +54,422 @@ function isOverdue(task: Task): boolean {
   return new Date(task.deadline) < new Date();
 }
 
+function isStale(task: Task): boolean {
+  const threeDaysAgo = new Date();
+  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+  return new Date(task.updated_at) < threeDaysAgo;
+}
+
+function firstName(fullName: string): string {
+  return fullName.split(" ")[0] || fullName;
+}
+
+function getGreetingMessage(activeTasks: number, overdue: number): string {
+  if (overdue > 0) {
+    return `${overdue} ${overdue === 1 ? "просроченная задача" : overdue < 5 ? "просроченные задачи" : "просроченных задач"} — пора разобраться`;
+  }
+  if (activeTasks === 0) {
+    return "Все задачи выполнены. Отличная работа!";
+  }
+  const messages = [
+    `У тебя ${activeTasks} ${activeTasks === 1 ? "задача" : activeTasks < 5 ? "задачи" : "задач"} в работе`,
+    `${activeTasks} ${activeTasks === 1 ? "активная задача" : activeTasks < 5 ? "активные задачи" : "активных задач"} — отличный день для прогресса`,
+    `Впереди ${activeTasks} ${activeTasks === 1 ? "задача" : activeTasks < 5 ? "задачи" : "задач"}. Ты справишься!`,
+  ];
+  return messages[new Date().getDate() % messages.length];
+}
+
+// ────────────────────────────────────────────
+// Metric Card
+// ────────────────────────────────────────────
+
+interface MetricCardProps {
+  label: string;
+  value: number;
+  subtitle: string;
+  icon: React.ElementType;
+  accentColor: string;
+  isPulsing?: boolean;
+  staggerClass: string;
+}
+
+function MetricCard({
+  label,
+  value,
+  subtitle,
+  icon: Icon,
+  accentColor,
+  isPulsing,
+  staggerClass,
+}: MetricCardProps) {
+  return (
+    <div
+      className={`animate-fade-in-up ${staggerClass} group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-5 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/5`}
+    >
+      {/* Top accent bar */}
+      <div
+        className="absolute inset-x-0 top-0 h-1 opacity-80 group-hover:opacity-100"
+        style={{ backgroundColor: accentColor }}
+      />
+
+      <div className="flex items-start justify-between">
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-muted-foreground">{label}</p>
+          <div className="flex items-baseline gap-2">
+            <span className="animate-count-up text-3xl font-bold font-heading tracking-tight">
+              {value}
+            </span>
+            {isPulsing && value > 0 && (
+              <span className="animate-pulse-glow inline-flex h-2.5 w-2.5 rounded-full bg-destructive" />
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">{subtitle}</p>
+        </div>
+
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl opacity-70 group-hover:opacity-100"
+          style={{ backgroundColor: `${accentColor}18` }}
+        >
+          <Icon className="h-5 w-5" style={{ color: accentColor }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────
+// Skeleton loading
+// ────────────────────────────────────────────
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-8">
+      {/* Greeting skeleton */}
+      <div className="space-y-2">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-4 w-72" />
+      </div>
+
+      {/* Metric cards skeleton */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="rounded-2xl border border-border/60 bg-card p-5 space-y-3">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-9 w-16" />
+            <Skeleton className="h-3 w-32" />
+          </div>
+        ))}
+      </div>
+
+      {/* Two-column skeleton */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="rounded-2xl border border-border/60 bg-card p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-5 w-28" />
+            <Skeleton className="h-8 w-24" />
+          </div>
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-16 rounded-lg" />
+          ))}
+        </div>
+        <div className="rounded-2xl border border-border/60 bg-card p-6 space-y-4">
+          <Skeleton className="h-5 w-36" />
+          <Skeleton className="h-24 rounded-lg" />
+        </div>
+      </div>
+
+      {/* Meetings skeleton */}
+      <div className="space-y-4">
+        <Skeleton className="h-5 w-40" />
+        <div className="grid gap-4 md:grid-cols-3">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-28 rounded-xl" />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────
+// Task list item (compact)
+// ────────────────────────────────────────────
+
+function TaskListItem({
+  task,
+  variant = "default",
+}: {
+  task: Task;
+  variant?: "default" | "overdue" | "unassigned" | "stale";
+}) {
+  const borderClass = {
+    default: "border hover:bg-secondary/50",
+    overdue:
+      "border-destructive/25 bg-destructive/[0.03] hover:bg-destructive/[0.07]",
+    unassigned:
+      "border-dashed border-muted-foreground/20 hover:bg-secondary/50",
+    stale:
+      "border-amber-500/25 bg-amber-500/[0.03] hover:bg-amber-500/[0.07]",
+  }[variant];
+
+  const sourceIcon =
+    task.source === "voice" ? (
+      <Mic className="h-3 w-3 text-muted-foreground" />
+    ) : task.source === "summary" ? (
+      <FileText className="h-3 w-3 text-muted-foreground" />
+    ) : null;
+
+  return (
+    <Link
+      href={`/tasks/${task.short_id}`}
+      className={`flex items-center gap-3 rounded-lg p-3 transition-all duration-150 ${borderClass}`}
+    >
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground font-mono shrink-0">
+            #{task.short_id}
+          </span>
+          {sourceIcon}
+          <span
+            className={`text-sm font-medium truncate ${
+              variant === "overdue" ? "text-destructive" : ""
+            }`}
+          >
+            {task.title}
+          </span>
+        </div>
+        <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+          <StatusBadge status={task.status} />
+          <PriorityBadge priority={task.priority} />
+          {task.deadline && (
+            <span
+              className={`text-xs flex items-center gap-1 ${
+                isOverdue(task)
+                  ? "text-destructive font-medium"
+                  : "text-muted-foreground"
+              }`}
+            >
+              <CalendarDays className="h-3 w-3" />
+              {formatDate(task.deadline)}
+            </span>
+          )}
+          {variant === "unassigned" && task.created_by && (
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <UserAvatar name={task.created_by.full_name} size="sm" />
+              {task.created_by.full_name}
+            </span>
+          )}
+          {variant === "stale" && (
+            <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              Обновлено: {formatDate(task.updated_at)}
+            </span>
+          )}
+        </div>
+      </div>
+      <ArrowRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+    </Link>
+  );
+}
+
+// ────────────────────────────────────────────
+// Section header
+// ────────────────────────────────────────────
+
+function SectionHeader({
+  title,
+  icon: Icon,
+  iconColor,
+  linkHref,
+  linkLabel,
+  count,
+}: {
+  title: string;
+  icon?: React.ElementType;
+  iconColor?: string;
+  linkHref?: string;
+  linkLabel?: string;
+  count?: number;
+}) {
+  return (
+    <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center gap-2">
+        {Icon && (
+          <Icon
+            className="h-[18px] w-[18px]"
+            style={iconColor ? { color: iconColor } : undefined}
+          />
+        )}
+        <h2 className="text-base font-semibold font-heading">{title}</h2>
+        {count !== undefined && count > 0 && (
+          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground">
+            {count}
+          </span>
+        )}
+      </div>
+      {linkHref && (
+        <Link
+          href={linkHref}
+          className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
+        >
+          {linkLabel || "Смотреть все"}
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────
+// Meeting card
+// ────────────────────────────────────────────
+
+function MeetingCard({
+  meeting,
+  staggerClass,
+}: {
+  meeting: Meeting;
+  staggerClass: string;
+}) {
+  const meetingDate = meeting.meeting_date
+    ? new Date(meeting.meeting_date).toLocaleDateString("ru-RU", {
+        day: "numeric",
+        month: "short",
+      })
+    : new Date(meeting.created_at).toLocaleDateString("ru-RU", {
+        day: "numeric",
+        month: "short",
+      });
+
+  return (
+    <Link
+      href={`/meetings/${meeting.id}`}
+      className={`animate-fade-in-up ${staggerClass} group block rounded-2xl border border-border/60 bg-card p-5 hover:-translate-y-0.5 hover:shadow-md hover:shadow-primary/5`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold truncate group-hover:text-primary transition-colors">
+            {meeting.title || "Встреча без названия"}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
+            <CalendarDays className="h-3 w-3 shrink-0" />
+            {meetingDate}
+          </p>
+          {meeting.decisions && meeting.decisions.length > 0 && (
+            <p className="mt-2 text-xs text-muted-foreground line-clamp-2">
+              {meeting.decisions[0]}
+            </p>
+          )}
+        </div>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <FileText className="h-4 w-4" />
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+// ────────────────────────────────────────────
+// Main Dashboard
+// ────────────────────────────────────────────
+
 export default function DashboardPage() {
   const { user } = useCurrentUser();
+  const [loading, setLoading] = useState(true);
+
+  // Data
   const [overview, setOverview] = useState<OverviewAnalytics | null>(null);
+  const [meetingAnalytics, setMeetingAnalytics] =
+    useState<MeetingAnalytics | null>(null);
   const [myTasks, setMyTasks] = useState<Task[]>([]);
   const [overdueTasks, setOverdueTasks] = useState<Task[]>([]);
+  const [completedThisWeek, setCompletedThisWeek] = useState(0);
+  const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [unassignedTasks, setUnassignedTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [staleTasks, setStaleTasks] = useState<Task[]>([]);
 
   useEffect(() => {
     if (!user) return;
 
     async function fetchData() {
       try {
-        const [overviewData, myTasksData] = await Promise.all([
+        // Parallel fetch — shared data
+        const promises: Promise<unknown>[] = [
           api.getOverview(),
+          api.getMeetingsAnalytics(),
           api.getTasks({
             assignee: user!.id,
             status: "new,in_progress,review",
-            per_page: "5",
+            per_page: "50",
             sort: "-updated_at",
           }),
-        ]);
+          api.getTasks({
+            status: "done",
+            per_page: "50",
+            sort: "-updated_at",
+          }),
+          api.getMeetings(),
+        ];
 
-        setOverview(overviewData);
-        setMyTasks(myTasksData.items);
-
-        // Filter overdue from my tasks
-        const allMyTasks = await api.getTasks({
-          assignee: user!.id,
-          status: "new,in_progress,review",
-          per_page: "50",
-        });
-        setOverdueTasks(allMyTasks.items.filter(isOverdue));
-
-        // Unassigned tasks (moderator only)
-        if (PermissionService.isModerator(user!)) {
-          const unassigned = await api.getTasks({
-            status: "new",
-            per_page: "5",
-            sort: "-created_at",
-          });
-          setUnassignedTasks(
-            unassigned.items.filter((t) => !t.assignee_id)
+        // Moderator-only data
+        const isMod = PermissionService.isModerator(user!);
+        if (isMod) {
+          promises.push(
+            api.getTasks({
+              status: "new",
+              per_page: "20",
+              sort: "-created_at",
+            })
+          );
+          promises.push(
+            api.getTasks({
+              status: "in_progress,review",
+              per_page: "50",
+              sort: "updated_at",
+            })
           );
         }
+
+        const results = await Promise.all(promises);
+
+        const overviewData = results[0] as OverviewAnalytics;
+        const meetingData = results[1] as MeetingAnalytics;
+        const myTasksData = results[2] as { items: Task[] };
+        const doneTasksData = results[3] as { items: Task[] };
+        const meetingsData = results[4] as Meeting[];
+
+        setOverview(overviewData);
+        setMeetingAnalytics(meetingData);
+
+        // My tasks — first 5 for display
+        setMyTasks(myTasksData.items.slice(0, 5));
+
+        // Overdue from my tasks
+        setOverdueTasks(myTasksData.items.filter(isOverdue));
+
+        // Completed this week
+        const weekAgo = new Date();
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        const thisWeekCount = doneTasksData.items.filter(
+          (t) => t.completed_at && new Date(t.completed_at) > weekAgo
+        ).length;
+        setCompletedThisWeek(thisWeekCount);
+
+        // Recent meetings (last 3)
+        setMeetings(meetingsData.slice(0, 3));
+
+        // Moderator data
+        if (isMod) {
+          const unassignedData = results[5] as { items: Task[] };
+          const staleData = results[6] as { items: Task[] };
+
+          setUnassignedTasks(
+            unassignedData.items.filter((t) => !t.assignee_id).slice(0, 5)
+          );
+          setStaleTasks(staleData.items.filter(isStale).slice(0, 5));
+        }
       } catch {
-        // Silently fail — data will just be empty
+        // Data will be empty on failure
       } finally {
         setLoading(false);
       }
@@ -92,254 +480,208 @@ export default function DashboardPage() {
 
   if (!user) return null;
 
-  const isModerator = PermissionService.isModerator(user);
-
   if (loading) {
-    return (
-      <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-32" />
-          ))}
-        </div>
-        <Skeleton className="h-64" />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
+  const isModerator = PermissionService.isModerator(user);
+  const activeTasks =
+    (overview?.tasks_new ?? 0) +
+    (overview?.tasks_in_progress ?? 0) +
+    (overview?.tasks_review ?? 0);
+
+  const todayStr = formatFullDate(new Date());
+  const greeting = getGreetingMessage(myTasks.length, overdueTasks.length);
+
+  // Accent colors mapped to design system
+  const ACCENT_PRIMARY = "hsl(174, 62%, 26%)";
+  const ACCENT_DONE = "hsl(152, 55%, 28%)";
+  const ACCENT_DESTRUCTIVE = "hsl(0, 72%, 51%)";
+  const ACCENT_BLUE = "hsl(200, 65%, 48%)";
+
   return (
-    <div className="space-y-6">
-      {/* Overview Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Всего задач
-            </CardTitle>
-            <CheckSquare className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {overview?.total_tasks ?? 0}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Выполнено: {overview?.tasks_done ?? 0}
-            </p>
-          </CardContent>
-        </Card>
+    <div className="space-y-8">
+      {/* ═══════════ Greeting ═══════════ */}
+      <section className="animate-fade-in-up stagger-1">
+        <h1 className="text-2xl font-bold font-heading tracking-tight md:text-3xl">
+          Привет, {firstName(user.full_name)}!
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          <span className="capitalize">{todayStr}</span>
+          <span className="mx-2 text-border">|</span>
+          {greeting}
+        </p>
+      </section>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              В работе
-            </CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {overview?.tasks_in_progress ?? 0}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              На ревью: {overview?.tasks_review ?? 0}
-            </p>
-          </CardContent>
-        </Card>
+      {/* ═══════════ Metric Cards ═══════════ */}
+      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <MetricCard
+          label="Активных задач"
+          value={activeTasks}
+          subtitle={`Новых: ${overview?.tasks_new ?? 0} · В работе: ${overview?.tasks_in_progress ?? 0}`}
+          icon={Zap}
+          accentColor={ACCENT_PRIMARY}
+          staggerClass="stagger-2"
+        />
+        <MetricCard
+          label="Выполнено за неделю"
+          value={completedThisWeek}
+          subtitle={`Всего выполнено: ${overview?.tasks_done ?? 0}`}
+          icon={CheckCircle2}
+          accentColor={ACCENT_DONE}
+          staggerClass="stagger-3"
+        />
+        <MetricCard
+          label="Просроченных"
+          value={overview?.tasks_overdue ?? 0}
+          subtitle="Требуют внимания"
+          icon={AlertTriangle}
+          accentColor={ACCENT_DESTRUCTIVE}
+          isPulsing
+          staggerClass="stagger-4"
+        />
+        <MetricCard
+          label="Встреч за месяц"
+          value={meetingAnalytics?.meetings_this_month ?? 0}
+          subtitle={`Всего встреч: ${meetingAnalytics?.total_meetings ?? 0}`}
+          icon={CalendarDays}
+          accentColor={ACCENT_BLUE}
+          staggerClass="stagger-5"
+        />
+      </section>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Просроченные
-            </CardTitle>
-            <AlertTriangle className="h-4 w-4 text-destructive" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-destructive">
-              {overview?.tasks_overdue ?? 0}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Требуют внимания
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Команда
-            </CardTitle>
-            <Users className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {overview?.total_members ?? 0}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Встреч: {overview?.total_meetings ?? 0}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* ═══════════ My Tasks + Overdue ═══════════ */}
+      <section className="animate-fade-in-up stagger-6 grid gap-6 lg:grid-cols-2">
         {/* My Tasks */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Мои задачи</CardTitle>
-            <Link href="/tasks">
-              <Button variant="ghost" size="sm">
-                Все задачи <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
-            </Link>
-          </CardHeader>
-          <CardContent>
-            {myTasks.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                Нет активных задач
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {myTasks.map((task) => (
-                  <Link
-                    key={task.id}
-                    href={`/tasks/${task.short_id}`}
-                    className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-accent"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground font-mono">
-                          #{task.short_id}
-                        </span>
-                        {task.source === "voice" && (
-                          <Mic className="h-3 w-3 text-muted-foreground" />
-                        )}
-                        <span
-                          className={`text-sm font-medium truncate ${
-                            isOverdue(task) ? "text-destructive" : ""
-                          }`}
-                        >
-                          {task.title}
-                        </span>
-                      </div>
-                      <div className="mt-1 flex items-center gap-2">
-                        <StatusBadge status={task.status} />
-                        <PriorityBadge priority={task.priority} />
-                        {task.deadline && (
-                          <span
-                            className={`text-xs ${
-                              isOverdue(task)
-                                ? "text-destructive font-medium"
-                                : "text-muted-foreground"
-                            }`}
-                          >
-                            <CalendarDays className="inline h-3 w-3 mr-1" />
-                            {formatDate(task.deadline)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <div className="rounded-2xl border border-border/60 bg-card p-6">
+          <SectionHeader
+            title="Мои задачи"
+            count={myTasks.length}
+            linkHref="/tasks"
+            linkLabel="Смотреть все"
+          />
 
-        {/* Overdue Tasks */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-destructive" />
-              Просроченные
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {overdueTasks.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">
-                Нет просроченных задач
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {overdueTasks.slice(0, 5).map((task) => (
-                  <Link
-                    key={task.id}
-                    href={`/tasks/${task.short_id}`}
-                    className="flex items-center gap-3 rounded-lg border border-destructive/20 bg-destructive/5 p-3 transition-colors hover:bg-destructive/10"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground font-mono">
-                          #{task.short_id}
-                        </span>
-                        <span className="text-sm font-medium truncate text-destructive">
-                          {task.title}
-                        </span>
-                      </div>
-                      <div className="mt-1 flex items-center gap-2">
-                        <PriorityBadge priority={task.priority} />
-                        {task.deadline && (
-                          <span className="text-xs text-destructive font-medium">
-                            Дедлайн: {formatDate(task.deadline)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Moderator: Unassigned Tasks */}
-      {isModerator && unassignedTasks.length > 0 && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Неназначенные задачи</CardTitle>
-            <Link href="/tasks">
-              <Button variant="ghost" size="sm">
-                Все задачи <ArrowRight className="ml-1 h-4 w-4" />
-              </Button>
-            </Link>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {unassignedTasks.map((task) => (
-                <Link
+          {myTasks.length === 0 ? (
+            <EmptyState
+              variant="tasks"
+              title="Нет активных задач"
+              description="Все задачи выполнены — отличная работа!"
+              className="py-6"
+            />
+          ) : (
+            <div className="space-y-2">
+              {myTasks.map((task) => (
+                <TaskListItem
                   key={task.id}
-                  href={`/tasks/${task.short_id}`}
-                  className="flex items-center gap-3 rounded-lg border p-3 transition-colors hover:bg-accent"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-muted-foreground font-mono">
-                        #{task.short_id}
-                      </span>
-                      {task.source === "voice" && (
-                        <Mic className="h-3 w-3 text-muted-foreground" />
-                      )}
-                      <span className="text-sm font-medium truncate">
-                        {task.title}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex items-center gap-2">
-                      <PriorityBadge priority={task.priority} />
-                      {task.created_by && (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <UserAvatar
-                            name={task.created_by.full_name}
-                            size="sm"
-                          />
-                          {task.created_by.full_name}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </Link>
+                  task={task}
+                  variant={isOverdue(task) ? "overdue" : "default"}
+                />
               ))}
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </div>
+
+        {/* Overdue Tasks */}
+        <div
+          className={`rounded-2xl border p-6 ${
+            overdueTasks.length > 0
+              ? "border-destructive/20 bg-destructive/[0.02]"
+              : "border-border/60 bg-card"
+          }`}
+        >
+          <SectionHeader
+            title="Просроченные"
+            icon={AlertTriangle}
+            iconColor={ACCENT_DESTRUCTIVE}
+            count={overdueTasks.length}
+          />
+
+          {overdueTasks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-status-done-bg mb-3">
+                <CheckCircle2 className="h-5 w-5 text-status-done-fg" />
+              </div>
+              <p className="text-sm font-heading font-semibold text-foreground mb-0.5">
+                Всё в срок
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Нет просроченных задач
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {overdueTasks.slice(0, 5).map((task) => (
+                <TaskListItem key={task.id} task={task} variant="overdue" />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* ═══════════ Recent Meetings ═══════════ */}
+      {meetings.length > 0 && (
+        <section className="animate-fade-in-up stagger-7">
+          <SectionHeader
+            title="Последние встречи"
+            icon={CalendarDays}
+            linkHref="/meetings"
+            linkLabel="Все встречи"
+          />
+          <div className="grid gap-4 md:grid-cols-3">
+            {meetings.map((meeting, i) => (
+              <MeetingCard
+                key={meeting.id}
+                meeting={meeting}
+                staggerClass={`stagger-${i + 7}`}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ═══════════ Moderator: Unassigned ═══════════ */}
+      {isModerator && unassignedTasks.length > 0 && (
+        <section className="animate-fade-in-up stagger-8">
+          <div className="rounded-2xl border border-dashed border-muted-foreground/20 bg-card p-6">
+            <SectionHeader
+              title="Ожидают назначения"
+              icon={UserX}
+              count={unassignedTasks.length}
+              linkHref="/tasks"
+              linkLabel="Все задачи"
+            />
+            <div className="space-y-2">
+              {unassignedTasks.map((task) => (
+                <TaskListItem
+                  key={task.id}
+                  task={task}
+                  variant="unassigned"
+                />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ═══════════ Moderator: Stale Tasks ═══════════ */}
+      {isModerator && staleTasks.length > 0 && (
+        <section className="animate-fade-in-up stagger-8">
+          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.02] p-6">
+            <SectionHeader
+              title="Не обновлялись >3 дней"
+              icon={AlertOctagon}
+              iconColor="hsl(38, 80%, 52%)"
+              count={staleTasks.length}
+              linkHref="/tasks"
+              linkLabel="Все задачи"
+            />
+            <div className="space-y-2">
+              {staleTasks.map((task) => (
+                <TaskListItem key={task.id} task={task} variant="stale" />
+              ))}
+            </div>
+          </div>
+        </section>
       )}
     </div>
   );

@@ -1,14 +1,23 @@
 import type { Metadata } from "next";
+import { Manrope, Commissioner } from "next/font/google";
 import localFont from "next/font/local";
 import "./globals.css";
 import { AuthProvider } from "@/components/layout/AuthProvider";
 import { AppShell } from "@/components/layout/AppShell";
+import { ToastProvider } from "@/components/shared/Toast";
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
+const manrope = Manrope({
+  subsets: ["cyrillic", "latin"],
+  variable: "--font-heading",
+  display: "swap",
 });
+
+const commissioner = Commissioner({
+  subsets: ["cyrillic", "latin"],
+  variable: "--font-body",
+  display: "swap",
+});
+
 const geistMono = localFont({
   src: "./fonts/GeistMonoVF.woff",
   variable: "--font-geist-mono",
@@ -16,8 +25,14 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Онкошкола — Таск-менеджер",
+  title: {
+    template: "%s — Онкошкола",
+    default: "Онкошкола — Таск-менеджер",
+  },
   description: "Система управления задачами для команды Онкошколы",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
@@ -28,10 +43,12 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${manrope.variable} ${commissioner.variable} ${geistMono.variable} antialiased`}
       >
         <AuthProvider>
-          <AppShell>{children}</AppShell>
+          <ToastProvider>
+            <AppShell>{children}</AppShell>
+          </ToastProvider>
         </AuthProvider>
       </body>
     </html>
