@@ -1,4 +1,10 @@
+import logging
+import secrets
+import sys
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -57,7 +63,17 @@ class Settings(BaseSettings):
 
     @property
     def jwt_secret_key(self) -> str:
-        return self.JWT_SECRET or f"oncoschool-{self.BOT_TOKEN[:16]}"
+        if self.JWT_SECRET:
+            return self.JWT_SECRET
+        if not self.DEBUG:
+            logger.critical(
+                "JWT_SECRET is not set! This is required in production. "
+                "Set JWT_SECRET environment variable to a strong random string (32+ chars)."
+            )
+            sys.exit(1)
+        # In DEBUG mode, derive from BOT_TOKEN (development only)
+        logger.warning("JWT_SECRET not set — using derived key (DEBUG mode only)")
+        return f"dev-only-{self.BOT_TOKEN}"
 
 
 settings = Settings()

@@ -203,8 +203,24 @@ async def upload_avatar(
             detail="Максимальный размер файла: 2 МБ",
         )
 
+    # Validate magic bytes (file signature)
+    is_jpeg = contents[:2] == b'\xff\xd8'
+    is_png = contents[:8] == b'\x89PNG\r\n\x1a\n'
+    is_webp = contents[:4] == b'RIFF' and len(contents) > 12 and contents[8:12] == b'WEBP'
+    if not (is_jpeg or is_png or is_webp):
+        raise HTTPException(
+            status_code=400,
+            detail="Файл не является допустимым изображением (JPEG, PNG, WebP)",
+        )
+
     # Process with Pillow: resize to 256x256, convert to WebP
-    img = Image.open(io.BytesIO(contents))
+    try:
+        img = Image.open(io.BytesIO(contents))
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Не удалось обработать файл изображения",
+        )
     img = img.convert("RGB")
     img.thumbnail((256, 256))
 

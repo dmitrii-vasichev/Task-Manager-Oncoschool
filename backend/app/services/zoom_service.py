@@ -1,5 +1,6 @@
+import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 
@@ -18,23 +19,25 @@ class ZoomService:
         self.client_secret = client_secret
         self._token: str | None = None
         self._token_expires: datetime | None = None
+        self._token_lock = asyncio.Lock()
 
     async def _get_token(self) -> str:
-        """Get or refresh Server-to-Server OAuth token."""
-        if self._token and self._token_expires and datetime.utcnow() < self._token_expires:
-            return self._token
+        """Get or refresh Server-to-Server OAuth token (thread-safe)."""
+        async with self._token_lock:
+            if self._token and self._token_expires and datetime.now(timezone.utc) < self._token_expires:
+                return self._token
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                self.TOKEN_URL,
-                params={"grant_type": "account_credentials", "account_id": self.account_id},
-                auth=(self.client_id, self.client_secret),
-            )
-            response.raise_for_status()
-            data = response.json()
-            self._token = data["access_token"]
-            self._token_expires = datetime.utcnow() + timedelta(seconds=data["expires_in"] - 60)
-            return self._token
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    self.TOKEN_URL,
+                    params={"grant_type": "account_credentials", "account_id": self.account_id},
+                    auth=(self.client_id, self.client_secret),
+                )
+                response.raise_for_status()
+                data = response.json()
+                self._token = data["access_token"]
+                self._token_expires = datetime.now(timezone.utc) + timedelta(seconds=data["expires_in"] - 60)
+                return self._token
 
     async def _request(self, method: str, path: str, **kwargs) -> dict:
         """Execute an authorized request to Zoom API."""

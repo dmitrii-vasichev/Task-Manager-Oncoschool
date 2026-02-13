@@ -1,5 +1,6 @@
 import logging
 from datetime import date, datetime, timedelta
+from pathlib import Path
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
@@ -50,6 +51,14 @@ class ReminderService:
             "interval",
             hours=1,
             id="check_overdue",
+            replace_existing=True,
+        )
+        # Cleanup orphan avatar files daily at 3 AM
+        self.scheduler.add_job(
+            self._cleanup_orphan_avatars,
+            "cron",
+            hour=3,
+            id="cleanup_avatars",
             replace_existing=True,
         )
         self.scheduler.start()
@@ -259,6 +268,36 @@ class ReminderService:
 
         except Exception as e:
             logger.error(f"Error in _check_overdue_tasks: {e}")
+
+    async def _cleanup_orphan_avatars(self) -> None:
+        """Remove avatar files that don't belong to any active member (daily)."""
+        try:
+            from app.db.repositories import TeamMemberRepository
+
+            avatar_dir = Path(__file__).resolve().parents[2] / "static" / "avatars"
+            if not avatar_dir.exists():
+                return
+
+            async with self.session_maker() as session:
+                member_repo = TeamMemberRepository()
+                members = await member_repo.get_all_active(session)
+                valid_ids = {str(m.id) for m in members}
+
+            removed = 0
+            for f in avatar_dir.iterdir():
+                if not f.is_file() or f.name == ".gitkeep":
+                    continue
+                # Extract member UUID from filename (e.g. "uuid.webp" or "uuid_tg.webp")
+                stem = f.stem.replace("_tg", "")
+                if stem not in valid_ids:
+                    f.unlink()
+                    removed += 1
+
+            if removed:
+                logger.info("Avatar cleanup: removed %d orphan files", removed)
+
+        except Exception as e:
+            logger.error(f"Error in _cleanup_orphan_avatars: {e}")
 
     async def _send_safe(
         self, chat_id: int, text: str, reply_markup: InlineKeyboardMarkup | None = None

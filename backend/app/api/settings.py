@@ -1,3 +1,5 @@
+import logging
+import time
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -5,6 +7,12 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user, require_moderator
+
+logger = logging.getLogger(__name__)
+
+# Simple in-memory cooldown for bulk operations (member_id -> last_call_timestamp)
+_bulk_cooldowns: dict[str, float] = {}
+BULK_COOLDOWN_SECONDS = 30
 from app.db.database import get_session
 from app.db.models import TeamMember
 from app.db.repositories import (
@@ -125,11 +133,48 @@ async def bulk_update_reminders(
     session: AsyncSession = Depends(get_session),
 ):
     """Bulk update reminder settings for all members. Moderator only."""
+    # Throttle bulk operations
+    member_key = str(member.id)
+    now = time.time()
+    last_call = _bulk_cooldowns.get(member_key, 0)
+    if now - last_call < BULK_COOLDOWN_SECONDS:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Слишком частые запросы. Подождите {BULK_COOLDOWN_SECONDS} секунд.",
+        )
+    _bulk_cooldowns[member_key] = now
+
     from datetime import time as time_type
     from app.db.repositories import TeamMemberRepository
 
     member_repo = TeamMemberRepository()
     all_members = await member_repo.get_all_active(session)
+
+    # Validate time format
+    parsed_time = None
+    if data.reminder_time:
+        try:
+            parts = data.reminder_time.split(":")
+            if len(parts) != 2:
+                raise ValueError()
+            h, m_val = int(parts[0]), int(parts[1])
+            if not (0 <= h < 24 and 0 <= m_val < 60):
+                raise ValueError()
+            parsed_time = time_type(h, m_val)
+        except (ValueError, IndexError):
+            raise HTTPException(
+                status_code=400,
+                detail="Неверный формат времени. Используйте HH:MM (00:00 — 23:59)",
+            )
+
+    # Validate days_of_week
+    if data.days_of_week:
+        for d in data.days_of_week:
+            if not (0 <= d <= 6):
+                raise HTTPException(
+                    status_code=400,
+                    detail="days_of_week должен содержать числа от 0 (Пн) до 6 (Вс)",
+                )
 
     updated_count = 0
     for m in all_members:
@@ -137,9 +182,8 @@ async def bulk_update_reminders(
             "is_enabled": data.is_enabled,
             "configured_by_id": member.id,
         }
-        if data.reminder_time:
-            parts = data.reminder_time.split(":")
-            kwargs["reminder_time"] = time_type(int(parts[0]), int(parts[1]))
+        if parsed_time:
+            kwargs["reminder_time"] = parsed_time
         if data.days_of_week:
             kwargs["days_of_week"] = data.days_of_week
 

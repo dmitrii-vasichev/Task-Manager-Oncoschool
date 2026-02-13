@@ -223,8 +223,10 @@ class AIService:
             if config_setting and fallback_name in config_setting.value:
                 fallback_model = config_setting.value[fallback_name].get("default", model)
 
-            logger.warning(
-                "Провайдер %s недоступен (нет API ключа), переключаюсь на %s/%s",
+            logger.critical(
+                "AI PROVIDER FALLBACK: %s недоступен (нет API ключа), "
+                "автоматически переключено на %s/%s. "
+                "Проверьте конфигурацию AI-провайдера!",
                 provider_name, fallback_name, fallback_model,
             )
             await settings_repo.set(

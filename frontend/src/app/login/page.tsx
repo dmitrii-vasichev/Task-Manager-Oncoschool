@@ -76,8 +76,11 @@ function TelegramLoginButton({
     setWidgetLoading(true);
 
     const script = document.createElement("script");
+    // Note: Telegram doesn't publish stable SRI hashes; script may update without notice.
+    // The widget communicates via OAuth flow with signature verification on backend.
     script.src = "https://telegram.org/js/telegram-widget.js?22";
     script.async = true;
+    script.crossOrigin = "anonymous";
     script.setAttribute("data-telegram-login", botUsername);
     script.setAttribute("data-size", "large");
     script.setAttribute("data-radius", "12");

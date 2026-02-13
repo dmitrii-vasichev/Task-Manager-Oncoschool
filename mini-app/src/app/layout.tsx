@@ -24,9 +24,12 @@ export default function RootLayout({
   return (
     <html lang="ru">
       <body>
+        {/* Telegram SDK loaded via official CDN; SRI not available as Telegram updates scripts without versioning.
+            Security relies on HTTPS + initData signature verification on backend. */}
         <Script
           src="https://telegram.org/js/telegram-web-app.js"
           strategy="beforeInteractive"
+          crossOrigin="anonymous"
         />
         <Providers>{children}</Providers>
       </body>

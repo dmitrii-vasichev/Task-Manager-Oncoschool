@@ -466,7 +466,9 @@ export default function DashboardPage() {
     async function fetchData() {
       try {
         const catchLog = (label: string) => (err: unknown) => {
-          console.error(`[Dashboard] ${label} failed:`, err);
+          if (process.env.NODE_ENV === "development") {
+            console.error(`[Dashboard] ${label} failed:`, err);
+          }
           return null;
         };
 

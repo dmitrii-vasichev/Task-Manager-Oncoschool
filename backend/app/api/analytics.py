@@ -5,7 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import get_current_user
+from app.api.auth import get_current_user, require_moderator
 from app.db.database import get_session
 from app.db.models import Meeting, Task, TaskUpdate, TeamMember
 from app.db.repositories import TeamMemberRepository
@@ -111,7 +111,7 @@ async def analytics_overview(
 
 @router.get("/members", response_model=MembersAnalyticsResponse)
 async def analytics_members(
-    member: TeamMember = Depends(get_current_user),
+    member: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
 ):
     """Get per-member analytics (single aggregation query instead of N+1)."""
@@ -187,7 +187,7 @@ async def analytics_meetings(
     tasks_from = tasks_result.scalar_one()
 
     # Meetings this month
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     month_stmt = select(func.count(Meeting.id)).where(Meeting.created_at >= month_start)
     month_result = await session.execute(month_stmt)

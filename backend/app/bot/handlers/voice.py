@@ -247,9 +247,11 @@ async def cb_voice_create(
                 notification_service = NotificationService(bot)
                 await notification_service.notify_task_created(session, task, member)
     except Exception as e:
-        logger.error(f"Failed to create voice task: {e}")
-        await callback.message.answer(f"❌ Ошибка создания задачи: {e}")
+        logger.error(f"Failed to create voice task: {e}", exc_info=True)
         await state.clear()
+        await callback.message.answer(
+            "❌ Ошибка создания задачи. Попробуйте ещё раз."
+        )
         return
 
     await state.clear()
