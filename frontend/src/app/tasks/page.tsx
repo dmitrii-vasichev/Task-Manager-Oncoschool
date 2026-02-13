@@ -1,13 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { Plus, LayoutGrid } from "lucide-react";
-import {
-  DragDropContext,
-  Droppable,
-  Draggable,
-  type DropResult,
-} from "@hello-pangea/dnd";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TaskCard } from "@/components/tasks/TaskCard";
@@ -49,6 +43,11 @@ export default function TasksPage() {
   const [filters, setFilters] = useState<TaskFilterValues>(EMPTY_FILTERS);
   const [createOpen, setCreateOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<TaskStatus>("new");
+
+  // Native DnD state
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverStatus, setDragOverStatus] = useState<TaskStatus | null>(null);
+  const dragCounterRef = useRef<Record<string, number>>({});
 
   async function fetchData() {
     try {
@@ -102,38 +101,78 @@ export default function TasksPage() {
     );
   }, [filteredTasks]);
 
-  const onDragEnd = useCallback(
-    async (result: DropResult) => {
-      const { source, destination, draggableId } = result;
-      if (!destination) return;
+  // ── Native drag-and-drop handlers ──
 
-      const newStatus = destination.droppableId as TaskStatus;
-      const oldStatus = source.droppableId as TaskStatus;
-      if (newStatus === oldStatus) return;
+  const handleDragStart = useCallback(
+    (e: React.DragEvent, taskId: string) => {
+      e.dataTransfer.effectAllowed = "move";
+      // Required for Firefox
+      e.dataTransfer.setData("text/plain", taskId);
+      // Small delay so the browser captures the element before we style it
+      requestAnimationFrame(() => setDraggedTaskId(taskId));
+    },
+    []
+  );
 
-      const task = tasks.find((t) => t.id === draggableId);
-      if (!task) return;
+  const handleDragEnd = useCallback(() => {
+    setDraggedTaskId(null);
+    setDragOverStatus(null);
+    dragCounterRef.current = {};
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const handleDragEnter = useCallback(
+    (e: React.DragEvent, status: TaskStatus) => {
+      e.preventDefault();
+      dragCounterRef.current[status] = (dragCounterRef.current[status] || 0) + 1;
+      setDragOverStatus(status);
+    },
+    []
+  );
+
+  const handleDragLeave = useCallback(
+    (_e: React.DragEvent, status: TaskStatus) => {
+      dragCounterRef.current[status] = (dragCounterRef.current[status] || 0) - 1;
+      if (dragCounterRef.current[status] <= 0) {
+        dragCounterRef.current[status] = 0;
+        setDragOverStatus((prev) => (prev === status ? null : prev));
+      }
+    },
+    []
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent, newStatus: TaskStatus) => {
+      e.preventDefault();
+      const taskId = e.dataTransfer.getData("text/plain") || draggedTaskId;
+      if (!taskId) return;
+
+      const task = tasks.find((t) => t.id === taskId);
+      if (!task || task.status === newStatus) return;
+
+      const oldStatus = task.status;
 
       // Optimistic update
       setTasks((prev) =>
-        prev.map((t) =>
-          t.id === draggableId ? { ...t, status: newStatus } : t
-        )
+        prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
       );
+      setDraggedTaskId(null);
+      setDragOverStatus(null);
+      dragCounterRef.current = {};
 
-      try {
-        await api.updateTask(task.short_id, { status: newStatus });
-      } catch {
-        // Revert on error
+      // Persist to backend — revert on error
+      api.updateTask(task.short_id, { status: newStatus }).catch(() => {
         setTasks((prev) =>
-          prev.map((t) =>
-            t.id === draggableId ? { ...t, status: oldStatus } : t
-          )
+          prev.map((t) => (t.id === taskId ? { ...t, status: oldStatus } : t))
         );
         toastError("Не удалось изменить статус");
-      }
+      });
     },
-    [tasks, toastError]
+    [tasks, draggedTaskId, toastError]
   );
 
   if (loading) {
@@ -212,7 +251,7 @@ export default function TasksPage() {
         ))}
       </div>
 
-      {/* Mobile: single column — no DnD (avoids duplicate droppable IDs) */}
+      {/* Mobile: single column — no DnD */}
       <div className="lg:hidden">
         <StaticKanbanColumn
           status={mobileTab}
@@ -220,18 +259,24 @@ export default function TasksPage() {
         />
       </div>
 
-      {/* Desktop: 4 columns with drag-and-drop */}
-      <DragDropContext onDragEnd={onDragEnd}>
-        <div className="hidden lg:grid lg:grid-cols-4 gap-4" data-no-transition>
-          {COLUMNS.map((status) => (
-            <KanbanColumn
-              key={status}
-              status={status}
-              tasks={tasksByStatus[status]}
-            />
-          ))}
-        </div>
-      </DragDropContext>
+      {/* Desktop: 4 columns with native drag-and-drop */}
+      <div className="hidden lg:grid lg:grid-cols-4 gap-4" data-no-transition>
+        {COLUMNS.map((status) => (
+          <KanbanColumn
+            key={status}
+            status={status}
+            tasks={tasksByStatus[status]}
+            draggedTaskId={draggedTaskId}
+            isDragOver={dragOverStatus === status}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragOver={handleDragOver}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          />
+        ))}
+      </div>
 
       {user && (
         <CreateTaskDialog
@@ -281,44 +326,62 @@ function StaticKanbanColumn({ status, tasks }: { status: TaskStatus; tasks: Task
   );
 }
 
-/* Desktop: draggable column with Droppable/Draggable */
-function KanbanColumn({ status, tasks }: { status: TaskStatus; tasks: Task[] }) {
+/* Desktop: column with native HTML5 drag-and-drop */
+function KanbanColumn({
+  status,
+  tasks,
+  draggedTaskId,
+  isDragOver,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragEnter,
+  onDragLeave,
+  onDrop,
+}: {
+  status: TaskStatus;
+  tasks: Task[];
+  draggedTaskId: string | null;
+  isDragOver: boolean;
+  onDragStart: (e: React.DragEvent, taskId: string) => void;
+  onDragEnd: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragEnter: (e: React.DragEvent, status: TaskStatus) => void;
+  onDragLeave: (e: React.DragEvent, status: TaskStatus) => void;
+  onDrop: (e: React.DragEvent, status: TaskStatus) => void;
+}) {
   return (
     <div className="flex flex-col h-full">
       <ColumnHeader status={status} count={tasks.length} />
-      <Droppable droppableId={status}>
-        {(provided, snapshot) => (
-          <div
-            ref={provided.innerRef}
-            {...provided.droppableProps}
-            className={`
-              flex-1 flex flex-col gap-2.5 overflow-y-auto max-h-[calc(100vh-340px)]
-              rounded-xl p-2 min-h-[80px]
-              ${snapshot.isDraggingOver ? "bg-primary/5" : ""}
-            `}
-          >
-            {tasks.length === 0 && !snapshot.isDraggingOver ? (
-              <EmptyState variant="tasks" title="Нет задач" description="В этой колонке пока пусто" className="py-10" />
-            ) : (
-              tasks.map((task, i) => (
-                <Draggable key={task.id} draggableId={task.id} index={i}>
-                  {(dragProvided, dragSnapshot) => (
-                    <TaskCard
-                      ref={dragProvided.innerRef}
-                      task={task}
-                      isDragging={dragSnapshot.isDragging}
-                      style={dragProvided.draggableProps.style}
-                      {...dragProvided.draggableProps}
-                      {...dragProvided.dragHandleProps}
-                    />
-                  )}
-                </Draggable>
-              ))
-            )}
-            {provided.placeholder}
-          </div>
+      <div
+        onDragOver={onDragOver}
+        onDragEnter={(e) => onDragEnter(e, status)}
+        onDragLeave={(e) => onDragLeave(e, status)}
+        onDrop={(e) => onDrop(e, status)}
+        className={`
+          flex-1 flex flex-col gap-2.5 overflow-y-auto max-h-[calc(100vh-340px)]
+          rounded-xl p-2 min-h-[80px] transition-colors duration-150
+          ${isDragOver && draggedTaskId ? "bg-primary/5 ring-2 ring-primary/20 ring-inset" : ""}
+        `}
+      >
+        {tasks.length === 0 && !isDragOver ? (
+          <EmptyState variant="tasks" title="Нет задач" description="В этой колонке пока пусто" className="py-10" />
+        ) : (
+          tasks.map((task) => (
+            <div
+              key={task.id}
+              draggable
+              onDragStart={(e) => onDragStart(e, task.id)}
+              onDragEnd={onDragEnd}
+              className={
+                draggedTaskId === task.id ? "opacity-40 scale-[0.97]" : ""
+              }
+            >
+              <TaskCard task={task} />
+            </div>
+          ))
         )}
-      </Droppable>
+      </div>
     </div>
   );
 }
