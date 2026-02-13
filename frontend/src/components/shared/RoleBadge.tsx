@@ -1,10 +1,16 @@
 import type { MemberRole } from "@/lib/types";
-import { Shield, User } from "lucide-react";
+import { Crown, Shield, User } from "lucide-react";
 
 const ROLE_CONFIG: Record<
   MemberRole,
   { label: string; icon: typeof Shield; className: string }
 > = {
+  admin: {
+    label: "Администратор",
+    icon: Crown,
+    className:
+      "bg-role-admin-bg text-role-admin-fg ring-1 ring-inset ring-role-admin-ring",
+  },
   moderator: {
     label: "Модератор",
     icon: Shield,

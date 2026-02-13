@@ -22,6 +22,31 @@ class Base(DeclarativeBase):
     pass
 
 
+class Department(Base):
+    __tablename__ = "departments"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    head_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_members.id"), nullable=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    color: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    # Relationships
+    head: Mapped["TeamMember | None"] = relationship(
+        foreign_keys=[head_id]
+    )
+    members: Mapped[list["TeamMember"]] = relationship(
+        back_populates="department", foreign_keys="TeamMember.department_id"
+    )
+
+
 class TeamMember(Base):
     __tablename__ = "team_members"
 
@@ -36,6 +61,13 @@ class TeamMember(Base):
     name_variants: Mapped[list[str]] = mapped_column(
         ARRAY(String), default=list, server_default="{}"
     )
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("departments.id"), nullable=True
+    )
+    position: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    birthday: Mapped[date | None] = mapped_column(Date, nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     role: Mapped[str] = mapped_column(String(50), default="member", server_default="member")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_at: Mapped[datetime] = mapped_column(
@@ -46,6 +78,9 @@ class TeamMember(Base):
     )
 
     # Relationships
+    department: Mapped["Department | None"] = relationship(
+        back_populates="members", foreign_keys=[department_id]
+    )
     tasks: Mapped[list["Task"]] = relationship(
         back_populates="assignee", foreign_keys="Task.assignee_id"
     )

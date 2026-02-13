@@ -258,7 +258,7 @@ function TaskListItem({
           )}
           {variant === "unassigned" && task.created_by && (
             <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <UserAvatar name={task.created_by.full_name} size="sm" />
+              <UserAvatar name={task.created_by.full_name} avatarUrl={task.created_by.avatar_url} size="sm" />
               {task.created_by.full_name}
             </span>
           )}

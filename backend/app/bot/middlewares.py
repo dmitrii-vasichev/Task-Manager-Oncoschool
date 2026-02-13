@@ -1,23 +1,105 @@
+import asyncio
+import io
+import logging
+import time
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
-from aiogram import BaseMiddleware
+from aiogram import BaseMiddleware, Bot
 from aiogram.types import TelegramObject, Update
 
 from app.config import settings
 from app.db.database import async_session
 from app.db.repositories import TeamMemberRepository
 
+logger = logging.getLogger(__name__)
+
+AVATAR_CHECK_INTERVAL = 86400  # 24 hours
+AVATARS_DIR = Path(__file__).resolve().parents[2] / "static" / "avatars"
+
 
 class AuthMiddleware(BaseMiddleware):
     """
     Middleware для авторизации пользователей.
     - Ищет telegram_id в team_members
-    - Если не найден — авторегистрация (role=member, или moderator если в ADMIN_TELEGRAM_IDS)
+    - Если не найден — отказ (участники добавляются только через веб-интерфейс)
     - Добавляет member и db session в data
+    - Автоматически подтягивает фото профиля из Telegram
     """
 
     def __init__(self):
         self.member_repo = TeamMemberRepository()
+        self._avatar_last_checked: dict[int, float] = {}
+
+    def _needs_avatar_check(self, telegram_id: int, avatar_url: str | None) -> bool:
+        """Check if we should fetch avatar for this user."""
+        # Don't overwrite custom uploaded avatars
+        if (
+            avatar_url
+            and avatar_url.startswith("/static/avatars/")
+            and not avatar_url.endswith("_tg.webp")
+        ):
+            return False
+        # Rate limit: once per 24h
+        last_checked = self._avatar_last_checked.get(telegram_id, 0)
+        return (time.time() - last_checked) > AVATAR_CHECK_INTERVAL
+
+    async def _fetch_and_save_avatar(
+        self, bot: Bot, telegram_id: int, member_id: str
+    ) -> str | None:
+        """Download Telegram profile photo and save as local WebP file."""
+        try:
+            photos = await bot.get_user_profile_photos(telegram_id, limit=1)
+            if not photos.photos:
+                return None
+
+            # Largest size is last in the list
+            photo = photos.photos[0][-1]
+            file = await bot.get_file(photo.file_id)
+            if not file.file_path:
+                return None
+
+            bio = io.BytesIO()
+            await bot.download_file(file.file_path, bio)
+            bio.seek(0)
+
+            from PIL import Image
+
+            img = Image.open(bio)
+            img = img.convert("RGB")
+            img = img.resize((256, 256), Image.LANCZOS)
+
+            AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+            save_path = AVATARS_DIR / f"{member_id}_tg.webp"
+            img.save(str(save_path), "WEBP", quality=85)
+
+            return f"/static/avatars/{member_id}_tg.webp"
+        except Exception:
+            logger.debug("Failed to fetch avatar for tg_id=%s", telegram_id, exc_info=True)
+            return None
+
+    async def _update_avatar_bg(
+        self, bot: Bot, telegram_id: int, member_id: str, current_avatar: str | None
+    ) -> None:
+        """Background task: fetch avatar and update DB if changed."""
+        avatar_url = await self._fetch_and_save_avatar(bot, telegram_id, member_id)
+        if not avatar_url:
+            return
+        # Only update if actually different
+        if avatar_url == current_avatar:
+            return
+        try:
+            async with async_session() as session:
+                async with session.begin():
+                    member = await self.member_repo.get_by_telegram_id(session, telegram_id)
+                    if member and (
+                        not member.avatar_url
+                        or member.avatar_url.startswith("http")
+                        or member.avatar_url.endswith("_tg.webp")
+                    ):
+                        member.avatar_url = avatar_url
+        except Exception:
+            logger.debug("Failed to save avatar for tg_id=%s", telegram_id, exc_info=True)
 
     async def __call__(
         self,
@@ -45,37 +127,38 @@ class AuthMiddleware(BaseMiddleware):
                 member = await self.member_repo.get_by_telegram_id(session, user.id)
 
                 if not member:
-                    # Авторегистрация
-                    role = (
-                        "moderator"
-                        if user.id in settings.ADMIN_TELEGRAM_IDS
-                        else "member"
-                    )
-                    full_name = user.full_name or user.first_name or "Unknown"
-                    member = await self.member_repo.create(
-                        session,
-                        telegram_id=user.id,
-                        telegram_username=user.username,
-                        full_name=full_name,
-                        role=role,
-                    )
+                    # Не авторегистрируем — участники добавляются через веб-интерфейс
+                    if hasattr(event, "answer"):
+                        await event.answer(
+                            "\u26d4 Вы не зарегистрированы в системе.\n"
+                            "Обратитесь к администратору для добавления в команду."
+                        )
+                    return
                 else:
                     # Обновляем username если изменился
                     updated = False
                     if member.telegram_username != user.username:
                         member.telegram_username = user.username
                         updated = True
-                    # Проверяем: если в ADMIN_TELEGRAM_IDS, но роль member — повысить
+                    # Проверяем: если в ADMIN_TELEGRAM_IDS, но роль не admin — повысить
                     if (
                         user.id in settings.ADMIN_TELEGRAM_IDS
-                        and member.role != "moderator"
+                        and member.role != "admin"
                     ):
-                        member.role = "moderator"
+                        member.role = "admin"
                         updated = True
                     if updated:
                         await session.flush()
 
             data["member"] = member
             data["session_maker"] = async_session
+
+        # Fetch Telegram avatar in background (non-blocking)
+        if self._needs_avatar_check(user.id, member.avatar_url):
+            self._avatar_last_checked[user.id] = time.time()
+            bot: Bot = data["bot"]
+            asyncio.create_task(
+                self._update_avatar_bg(bot, user.id, str(member.id), member.avatar_url)
+            )
 
         return await handler(event, data)

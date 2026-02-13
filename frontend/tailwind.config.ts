@@ -111,6 +111,11 @@ const config: Config = {
   			},
   			// Semantic: roles
   			role: {
+  				admin: {
+  					bg: 'hsl(var(--role-admin-bg))',
+  					fg: 'hsl(var(--role-admin-fg))',
+  					ring: 'hsl(var(--role-admin-ring))',
+  				},
   				moderator: {
   					bg: 'hsl(var(--role-moderator-bg))',
   					fg: 'hsl(var(--role-moderator-fg))',

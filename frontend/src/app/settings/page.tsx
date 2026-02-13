@@ -49,6 +49,8 @@ import { UserAvatar } from "@/components/shared/UserAvatar";
 import { useToast } from "@/components/shared/Toast";
 import { api } from "@/lib/api";
 import { useTeam } from "@/hooks/useTeam";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { PermissionService } from "@/lib/permissions";
 import type {
   AISettingsResponse,
   ReminderSettings,
@@ -57,13 +59,16 @@ import type {
 } from "@/lib/types";
 
 export default function SettingsPage() {
+  const { user } = useCurrentUser();
+  const isAdmin = user ? PermissionService.isAdmin(user) : false;
+
   return (
     <ModeratorGuard>
       <div className="max-w-3xl space-y-8 animate-in fade-in duration-300">
-        <AIModelSection />
+        {isAdmin && <AIModelSection />}
         <NotificationsSection />
-        <TelegramTargetsSection />
-        <RemindersSection />
+        {isAdmin && <TelegramTargetsSection />}
+        {isAdmin && <RemindersSection />}
       </div>
     </ModeratorGuard>
   );
@@ -1053,7 +1058,7 @@ function RemindersSection() {
                   key={member.id}
                   className="group flex items-center gap-3 p-3.5 rounded-xl border border-border/60 hover:shadow-sm hover:border-border"
                 >
-                  <UserAvatar name={member.full_name} size="sm" />
+                  <UserAvatar name={member.full_name} avatarUrl={member.avatar_url} size="sm" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">
                       {member.full_name}
@@ -1179,7 +1184,7 @@ function ReminderEditDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3 font-heading">
-            <UserAvatar name={member.full_name} size="default" />
+            <UserAvatar name={member.full_name} avatarUrl={member.avatar_url} size="default" />
             <div>
               <span>Напоминания</span>
               <p className="text-xs text-muted-foreground font-normal mt-0.5">

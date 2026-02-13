@@ -296,7 +296,7 @@ export function ScheduleForm({
                         }
                       `}
                     >
-                      <UserAvatar name={member.full_name} size="sm" />
+                      <UserAvatar name={member.full_name} avatarUrl={member.avatar_url} size="sm" />
                       <span className="truncate max-w-[120px]">
                         {member.full_name.split(" ")[0]}
                       </span>

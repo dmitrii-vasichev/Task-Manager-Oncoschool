@@ -1,10 +1,12 @@
 import asyncio
 import logging
+from pathlib import Path
 
 import uvicorn
 from aiogram import Bot, Dispatcher
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api.router import api_router
 from app.bot.handlers.common import router as common_router
@@ -37,6 +39,12 @@ app.add_middleware(
 
 # REST API
 app.include_router(api_router)
+
+# Static files (avatars)
+static_dir = Path(__file__).resolve().parents[1] / "static"
+static_dir.mkdir(parents=True, exist_ok=True)
+(static_dir / "avatars").mkdir(parents=True, exist_ok=True)
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 bot = Bot(token=settings.BOT_TOKEN)
 dp = Dispatcher()

@@ -118,7 +118,7 @@ export function Header() {
           {/* User avatar */}
           {user && (
             <div className="ml-1">
-              <UserAvatar name={user.full_name} size="sm" />
+              <UserAvatar name={user.full_name} avatarUrl={user.avatar_url} size="sm" />
             </div>
           )}
         </div>

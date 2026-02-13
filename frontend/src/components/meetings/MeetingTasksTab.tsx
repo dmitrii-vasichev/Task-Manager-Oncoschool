@@ -101,7 +101,7 @@ export function MeetingTasksTab({
 
               {task.assignee && (
                 <div className="flex items-center gap-2 mt-2 ml-12">
-                  <UserAvatar name={task.assignee.full_name} size="sm" />
+                  <UserAvatar name={task.assignee.full_name} avatarUrl={task.assignee.avatar_url} size="sm" />
                   <span className="text-xs text-muted-foreground">
                     {task.assignee.full_name}
                   </span>

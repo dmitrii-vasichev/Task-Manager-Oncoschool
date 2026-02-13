@@ -118,7 +118,7 @@ export const TaskCard = forwardRef<HTMLDivElement, TaskCardProps>(
             <div className="flex items-center justify-between pt-0.5">
               {task.assignee ? (
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <UserAvatar name={task.assignee.full_name} size="sm" />
+                  <UserAvatar name={task.assignee.full_name} avatarUrl={task.assignee.avatar_url} size="sm" />
                   <span className="text-xs text-muted-foreground truncate max-w-[120px]">
                     {task.assignee.full_name}
                   </span>

@@ -80,6 +80,9 @@
     --priority-low-dot: 210 10% 68%;
 
     /* --- Roles --- */
+    --role-admin-bg: 270 60% 96%;
+    --role-admin-fg: 270 60% 40%;
+    --role-admin-ring: 270 40% 85%;
     --role-moderator-bg: 38 72% 92%;
     --role-moderator-fg: 30 65% 35%;
     --role-moderator-ring: 38 65% 68%;
@@ -153,6 +156,9 @@
     --priority-low-dot: 210 10% 42%;
 
     /* --- Roles (dark) --- */
+    --role-admin-bg: 270 40% 20%;
+    --role-admin-fg: 270 60% 75%;
+    --role-admin-ring: 270 30% 35%;
     --role-moderator-bg: 38 45% 14%;
     --role-moderator-fg: 35 55% 65%;
     --role-moderator-ring: 38 40% 28%;

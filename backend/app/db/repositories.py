@@ -12,6 +12,7 @@ from datetime import datetime
 
 from app.db.models import (
     AppSettings,
+    Department,
     Meeting,
     MeetingParticipant,
     MeetingSchedule,
@@ -34,9 +35,19 @@ class TeamMemberRepository:
         return result.scalar_one_or_none()
 
     async def get_all_active(self, session: AsyncSession) -> list[TeamMember]:
-        stmt = select(TeamMember).where(TeamMember.is_active.is_(True)).order_by(TeamMember.full_name)
+        stmt = (
+            select(TeamMember)
+            .options(selectinload(TeamMember.department))
+            .where(TeamMember.is_active.is_(True))
+            .order_by(TeamMember.full_name)
+        )
         result = await session.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_by_telegram_username(self, session: AsyncSession, username: str) -> TeamMember | None:
+        stmt = select(TeamMember).where(TeamMember.telegram_username == username)
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def create(self, session: AsyncSession, **kwargs) -> TeamMember:
         member = TeamMember(**kwargs)
@@ -52,6 +63,43 @@ class TeamMemberRepository:
             setattr(member, key, value)
         await session.flush()
         return member
+
+
+class DepartmentRepository:
+    async def get_all(self, session: AsyncSession) -> list[Department]:
+        stmt = (
+            select(Department)
+            .where(Department.is_active.is_(True))
+            .order_by(Department.sort_order, Department.name)
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_by_id(self, session: AsyncSession, dept_id: uuid.UUID) -> Department | None:
+        return await session.get(Department, dept_id)
+
+    async def create(self, session: AsyncSession, **kwargs) -> Department:
+        dept = Department(**kwargs)
+        session.add(dept)
+        await session.flush()
+        return dept
+
+    async def update(self, session: AsyncSession, dept_id: uuid.UUID, **kwargs) -> Department | None:
+        dept = await self.get_by_id(session, dept_id)
+        if not dept:
+            return None
+        for key, value in kwargs.items():
+            setattr(dept, key, value)
+        await session.flush()
+        return dept
+
+    async def delete(self, session: AsyncSession, dept_id: uuid.UUID) -> bool:
+        dept = await self.get_by_id(session, dept_id)
+        if not dept:
+            return False
+        await session.delete(dept)
+        await session.flush()
+        return True
 
 
 class TaskRepository:

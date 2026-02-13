@@ -9,6 +9,8 @@ import type {
   PaginatedResponse,
   Meeting,
   TeamMember,
+  Department,
+  TeamTreeResponse,
   OverviewAnalytics,
   MemberStats,
   MeetingAnalytics,
@@ -59,10 +61,17 @@ class ApiClient {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const res = await fetch(`${API_URL}${path}`, {
-      ...options,
-      headers,
-    });
+    let res: Response;
+    try {
+      res = await fetch(`${API_URL}${path}`, {
+        ...options,
+        headers,
+      });
+    } catch {
+      throw new Error(
+        "Сервер недоступен. Убедитесь, что бэкенд запущен на " + API_URL
+      );
+    }
 
     if (res.status === 401) {
       const body = await res.json().catch(() => ({}));
@@ -78,7 +87,14 @@ class ApiClient {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.detail || `HTTP ${res.status}`);
+      const detail = body.detail;
+      throw new Error(
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map((e: { msg?: string }) => e.msg || JSON.stringify(e)).join("; ")
+            : `HTTP ${res.status}`
+      );
     }
 
     if (res.status === 204) return undefined as T;
@@ -293,10 +309,57 @@ class ApiClient {
     });
   }
 
+  // ==================== Departments ====================
+
+  async getDepartments(): Promise<Department[]> {
+    return this.request<Department[]>("/api/departments");
+  }
+
+  async createDepartment(data: Partial<Department>): Promise<Department> {
+    return this.request<Department>("/api/departments", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateDepartment(id: string, data: Partial<Department>): Promise<Department> {
+    return this.request<Department>(`/api/departments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteDepartment(id: string): Promise<void> {
+    return this.request<void>(`/api/departments/${id}`, {
+      method: "DELETE",
+    });
+  }
+
   // ==================== Team ====================
 
   async getTeam(): Promise<TeamMember[]> {
     return this.request<TeamMember[]>("/api/team");
+  }
+
+  async createTeamMember(data: {
+    full_name: string;
+    role?: string;
+    telegram_id?: number | null;
+    telegram_username?: string;
+    department_id?: string | null;
+    position?: string;
+    email?: string;
+    birthday?: string;
+    name_variants?: string[];
+  }): Promise<TeamMember> {
+    return this.request<TeamMember>("/api/team", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getTeamTree(): Promise<TeamTreeResponse> {
+    return this.request<TeamTreeResponse>("/api/team/tree");
   }
 
   async updateTeamMember(
@@ -306,6 +369,32 @@ class ApiClient {
     return this.request<TeamMember>(`/api/team/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
+    });
+  }
+
+  async uploadAvatar(memberId: string, file: File): Promise<{ avatar_url: string }> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    const res = await fetch(`${API_URL}/api/team/${memberId}/avatar`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async deleteAvatar(memberId: string): Promise<void> {
+    return this.request<void>(`/api/team/${memberId}/avatar`, {
+      method: "DELETE",
     });
   }
 

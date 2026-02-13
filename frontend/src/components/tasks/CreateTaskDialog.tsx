@@ -247,7 +247,7 @@ export function CreateTaskDialog({
                       .map((m) => (
                         <SelectItem key={m.id} value={m.id}>
                           <span className="flex items-center gap-2">
-                            <UserAvatar name={m.full_name} size="sm" />
+                            <UserAvatar name={m.full_name} avatarUrl={m.avatar_url} size="sm" />
                             <span className="truncate">{m.full_name}</span>
                           </span>
                         </SelectItem>

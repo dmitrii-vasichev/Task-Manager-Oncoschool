@@ -6,6 +6,7 @@ import { UserAvatar } from "@/components/shared/UserAvatar";
 import { RoleBadge } from "@/components/shared/RoleBadge";
 import { useToast } from "@/components/shared/Toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { PermissionService } from "@/lib/permissions";
 import { api } from "@/lib/api";
 import type {
   OverviewAnalytics,
@@ -224,7 +225,7 @@ export default function AnalyticsPage() {
     null
   );
   const [loading, setLoading] = useState(true);
-  const isModerator = user?.role === "moderator";
+  const isModerator = user ? PermissionService.isModerator(user) : false;
 
   useEffect(() => {
     async function fetchData() {

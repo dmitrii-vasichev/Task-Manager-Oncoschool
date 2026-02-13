@@ -6,7 +6,7 @@ export type TaskStatus = "new" | "in_progress" | "review" | "done" | "cancelled"
 export type TaskPriority = "urgent" | "high" | "medium" | "low";
 export type TaskSource = "text" | "voice" | "summary" | "web";
 export type UpdateType = "progress" | "status_change" | "comment" | "blocker" | "completion";
-export type MemberRole = "moderator" | "member";
+export type MemberRole = "admin" | "moderator" | "member";
 export type MeetingRecurrence = "weekly" | "biweekly" | "monthly_last_workday";
 export type MeetingStatus = "scheduled" | "in_progress" | "completed" | "cancelled";
 
@@ -33,6 +33,7 @@ export const TASK_SOURCE_LABELS: Record<TaskSource, string> = {
 };
 
 export const ROLE_LABELS: Record<MemberRole, string> = {
+  admin: "Администратор",
   moderator: "Модератор",
   member: "Участник",
 };
@@ -41,16 +42,41 @@ export const ROLE_LABELS: Record<MemberRole, string> = {
 // Models
 // ============================================
 
+export interface Department {
+  id: string;
+  name: string;
+  description: string | null;
+  head_id: string | null;
+  color: string | null;
+  sort_order: number;
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface TeamMember {
   id: string;
   telegram_id: number | null;
   telegram_username: string | null;
   full_name: string;
   name_variants: string[];
+  department_id: string | null;
+  position: string | null;
+  email: string | null;
+  birthday: string | null;
+  avatar_url: string | null;
   role: MemberRole;
   is_active: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface DepartmentWithMembers extends Department {
+  members: TeamMember[];
+}
+
+export interface TeamTreeResponse {
+  departments: DepartmentWithMembers[];
+  unassigned: TeamMember[];
 }
 
 export interface Task {

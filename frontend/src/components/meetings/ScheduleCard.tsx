@@ -156,7 +156,7 @@ export function ScheduleCard({
             <div className="flex items-center gap-1">
               <div className="flex -space-x-1.5">
                 {participants.slice(0, 4).map((p) => (
-                  <UserAvatar key={p.id} name={p.full_name} size="sm" />
+                  <UserAvatar key={p.id} name={p.full_name} avatarUrl={p.avatar_url} size="sm" />
                 ))}
               </div>
               {participants.length > 4 && (

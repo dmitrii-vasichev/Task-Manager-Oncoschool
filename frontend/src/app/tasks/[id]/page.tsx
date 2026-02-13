@@ -412,7 +412,7 @@ export default function TaskDetailPage() {
             <dd>
               {task.assignee ? (
                 <div className="flex items-center gap-2">
-                  <UserAvatar name={task.assignee.full_name} size="sm" />
+                  <UserAvatar name={task.assignee.full_name} avatarUrl={task.assignee.avatar_url} size="sm" />
                   <span className="text-sm font-medium">
                     {task.assignee.full_name}
                   </span>
@@ -434,7 +434,7 @@ export default function TaskDetailPage() {
             <dd>
               {task.created_by ? (
                 <div className="flex items-center gap-2">
-                  <UserAvatar name={task.created_by.full_name} size="sm" />
+                  <UserAvatar name={task.created_by.full_name} avatarUrl={task.created_by.avatar_url} size="sm" />
                   <span className="text-sm font-medium">
                     {task.created_by.full_name}
                   </span>

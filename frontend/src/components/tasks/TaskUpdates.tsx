@@ -154,7 +154,7 @@ function TimelineItem({
         <div className="flex items-center gap-2 flex-wrap mb-1.5">
           {update.author && (
             <div className="flex items-center gap-1.5">
-              <UserAvatar name={update.author.full_name} size="sm" />
+              <UserAvatar name={update.author.full_name} avatarUrl={update.author.avatar_url} size="sm" />
               <span className="text-sm font-medium">
                 {update.author.full_name}
               </span>

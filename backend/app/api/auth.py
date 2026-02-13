@@ -1,9 +1,13 @@
 import hashlib
 import hmac
+import io
+import logging
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
+import httpx
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -14,6 +18,9 @@ from app.config import settings
 from app.db.database import get_session
 from app.db.models import TeamMember
 from app.db.repositories import TeamMemberRepository
+
+logger = logging.getLogger(__name__)
+AVATARS_DIR = Path(__file__).resolve().parents[2] / "static" / "avatars"
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 security = HTTPBearer()
@@ -108,13 +115,51 @@ async def get_current_user(
 async def require_moderator(
     member: TeamMember = Depends(get_current_user),
 ) -> TeamMember:
-    """Require moderator role."""
-    if member.role != "moderator":
+    """Require moderator or admin role."""
+    if member.role not in ("admin", "moderator"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Доступ только для модераторов",
         )
     return member
+
+
+async def require_admin(
+    member: TeamMember = Depends(get_current_user),
+) -> TeamMember:
+    """Require admin role."""
+    if member.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Доступ только для администраторов",
+        )
+    return member
+
+
+# --- Avatar helper ---
+
+
+async def _download_avatar_from_url(photo_url: str, member_id: str) -> str | None:
+    """Download avatar image from URL, resize and save as local WebP."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(photo_url)
+            resp.raise_for_status()
+
+        from PIL import Image
+
+        img = Image.open(io.BytesIO(resp.content))
+        img = img.convert("RGB")
+        img = img.resize((256, 256), Image.LANCZOS)
+
+        AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+        save_path = AVATARS_DIR / f"{member_id}_tg.webp"
+        img.save(str(save_path), "WEBP", quality=85)
+
+        return f"/static/avatars/{member_id}_tg.webp"
+    except Exception:
+        logger.debug("Failed to download avatar from %s", photo_url, exc_info=True)
+        return None
 
 
 # --- Endpoints ---
@@ -149,12 +194,31 @@ async def login_telegram(
         )
 
     # 4. Update telegram_username if changed
+    needs_commit = False
     if data.username and data.username != member.telegram_username:
         member.telegram_username = data.username
+        needs_commit = True
+
+    # 5. Download and save Telegram photo locally (skip custom uploads)
+    if data.photo_url:
+        has_custom_upload = (
+            member.avatar_url
+            and member.avatar_url.startswith("/static/avatars/")
+            and not member.avatar_url.endswith("_tg.webp")
+        )
+        if not has_custom_upload:
+            local_url = await _download_avatar_from_url(
+                data.photo_url, str(member.id)
+            )
+            if local_url and local_url != member.avatar_url:
+                member.avatar_url = local_url
+                needs_commit = True
+
+    if needs_commit:
         async with session.begin():
             session.add(member)
 
-    # 5. Issue JWT
+    # 6. Issue JWT
     token = create_access_token(member.id)
     return TokenResponse(
         access_token=token,
@@ -214,6 +278,14 @@ async def get_me(member: TeamMember = Depends(get_current_user)):
         "telegram_id": member.telegram_id,
         "telegram_username": member.telegram_username,
         "full_name": member.full_name,
+        "name_variants": member.name_variants,
         "role": member.role,
         "is_active": member.is_active,
+        "position": member.position,
+        "department_id": str(member.department_id) if member.department_id else None,
+        "avatar_url": member.avatar_url,
+        "email": member.email,
+        "birthday": member.birthday.isoformat() if member.birthday else None,
+        "created_at": member.created_at.isoformat() if member.created_at else None,
+        "updated_at": member.updated_at.isoformat() if member.updated_at else None,
     }

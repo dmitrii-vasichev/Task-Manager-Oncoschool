@@ -1,4 +1,4 @@
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 function getInitials(name: string): string {
   return name
@@ -23,25 +23,39 @@ function getAvatarColor(name: string): string {
   return `hsl(${hue}, 55%, 42%)`;
 }
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
+function resolveAvatarUrl(url: string): string {
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  return `${API_URL}${url}`;
+}
+
 export function UserAvatar({
   name,
+  avatarUrl,
   size = "default",
 }: {
   name: string;
-  size?: "sm" | "default" | "lg";
+  avatarUrl?: string | null;
+  size?: "sm" | "default" | "lg" | "xl";
 }) {
   const sizeClass = {
     sm: "h-6 w-6 text-2xs",
     default: "h-8 w-8 text-xs",
     lg: "h-10 w-10 text-sm",
+    xl: "h-20 w-20 text-2xl",
   }[size];
 
   const bgColor = getAvatarColor(name);
+  const resolvedUrl = avatarUrl ? resolveAvatarUrl(avatarUrl) : null;
 
   return (
     <Avatar
       className={`${sizeClass} hover:scale-110 hover:shadow-md cursor-default`}
     >
+      {resolvedUrl && (
+        <AvatarImage src={resolvedUrl} alt={name} className="object-cover" />
+      )}
       <AvatarFallback
         className="text-white font-heading font-semibold"
         style={{ backgroundColor: bgColor }}

@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 TaskStatusType = Literal["new", "in_progress", "review", "done", "cancelled"]
 TaskPriorityType = Literal["low", "medium", "high", "urgent"]
 TaskSourceType = Literal["text", "voice", "summary", "web"]
-MemberRoleType = Literal["moderator", "member"]
+MemberRoleType = Literal["admin", "moderator", "member"]
 UpdateTypeType = Literal["progress", "status_change", "comment", "blocker", "completion"]
 
 
@@ -16,11 +16,15 @@ UpdateTypeType = Literal["progress", "status_change", "comment", "blocker", "com
 
 
 class TeamMemberCreate(BaseModel):
+    full_name: str
+    role: MemberRoleType = "member"
     telegram_id: int | None = None
     telegram_username: str | None = None
-    full_name: str
     name_variants: list[str] = []
-    role: MemberRoleType = "member"
+    department_id: uuid.UUID | None = None
+    position: str | None = None
+    email: str | None = None
+    birthday: date | None = None
 
 
 class TeamMemberUpdate(BaseModel):
@@ -29,6 +33,10 @@ class TeamMemberUpdate(BaseModel):
     name_variants: list[str] | None = None
     role: MemberRoleType | None = None
     is_active: bool | None = None
+    department_id: uuid.UUID | None = None
+    position: str | None = None
+    email: str | None = None
+    birthday: date | None = None
 
 
 class TeamMemberResponse(BaseModel):
@@ -39,10 +47,48 @@ class TeamMemberResponse(BaseModel):
     telegram_username: str | None
     full_name: str
     name_variants: list[str]
+    department_id: uuid.UUID | None
+    position: str | None
+    email: str | None
+    birthday: date | None
+    avatar_url: str | None
     role: str
     is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+# ── Department ──
+
+
+class DepartmentCreate(BaseModel):
+    name: str
+    description: str | None = None
+    head_id: uuid.UUID | None = None
+    color: str | None = None
+    sort_order: int = 0
+
+
+class DepartmentUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    head_id: uuid.UUID | None = None
+    color: str | None = None
+    sort_order: int | None = None
+    is_active: bool | None = None
+
+
+class DepartmentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    description: str | None
+    head_id: uuid.UUID | None
+    color: str | None
+    sort_order: int
+    is_active: bool
+    created_at: datetime
 
 
 # ── Task ──

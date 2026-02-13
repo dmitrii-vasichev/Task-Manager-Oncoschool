@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select
 
-from app.bot.filters import IsModeratorFilter
+from app.bot.filters import IsAdminFilter, IsModeratorFilter
 from app.bot.keyboards import (
     EVENT_TYPES,
     ai_model_keyboard,
@@ -105,7 +105,7 @@ async def cb_subscribe_toggle(
 # ══════════════════════════════════════════
 
 
-@router.message(Command("reminders"), IsModeratorFilter())
+@router.message(Command("reminders"), IsAdminFilter())
 async def cmd_reminders(
     message: Message,
     member: TeamMember,
@@ -481,7 +481,7 @@ async def cmd_myreminder(
 # ══════════════════════════════════════════
 
 
-@router.message(Command("aimodel"), IsModeratorFilter())
+@router.message(Command("aimodel"), IsAdminFilter())
 async def cmd_aimodel(
     message: Message,
     member: TeamMember,
@@ -520,7 +520,7 @@ async def cb_ai_provider(
     from app.services.permission_service import PermissionService
 
     if not PermissionService.can_change_ai_settings(member):
-        await callback.answer("Только модератор может менять AI-модель", show_alert=True)
+        await callback.answer("Только администратор может менять AI-модель", show_alert=True)
         return
 
     provider = callback.data.split(":", 1)[1]
@@ -562,7 +562,7 @@ async def cb_ai_model(
     from app.services.permission_service import PermissionService
 
     if not PermissionService.can_change_ai_settings(member):
-        await callback.answer("Только модератор может менять AI-модель", show_alert=True)
+        await callback.answer("Только администратор может менять AI-модель", show_alert=True)
         return
 
     parts = callback.data.split(":", 2)

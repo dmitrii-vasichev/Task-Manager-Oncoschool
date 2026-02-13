@@ -72,13 +72,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/tasks", label: "Задачи", icon: CheckSquare, section: "main" },
   { href: "/meetings", label: "Встречи", icon: CalendarDays, section: "main" },
   { href: "/analytics", label: "Аналитика", icon: BarChart3, section: "main" },
-{
-    href: "/team",
-    label: "Команда",
-    icon: Users,
-    moderatorOnly: true,
-    section: "manage",
-  },
+  { href: "/team", label: "Команда", icon: Users, section: "main" },
   {
     href: "/settings",
     label: "Настройки",
@@ -246,7 +240,7 @@ function SidebarInner({ collapsed }: { collapsed: boolean }) {
                 onClick={logout}
                 className="flex flex-col items-center gap-2 rounded-lg p-1.5 hover:bg-muted transition-colors"
               >
-                <UserAvatar name={user.full_name} size="default" />
+                <UserAvatar name={user.full_name} avatarUrl={user.avatar_url} size="default" />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right" sideOffset={12}>
@@ -256,7 +250,7 @@ function SidebarInner({ collapsed }: { collapsed: boolean }) {
           </Tooltip>
         ) : (
           <div className="flex items-center gap-3">
-            <UserAvatar name={user.full_name} size="default" />
+            <UserAvatar name={user.full_name} avatarUrl={user.avatar_url} size="default" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate leading-tight">
                 {user.full_name}
