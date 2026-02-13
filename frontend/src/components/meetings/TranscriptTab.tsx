@@ -1,0 +1,300 @@
+"use client";
+
+import { useState } from "react";
+import {
+  FileText,
+  Copy,
+  Check,
+  Loader2,
+  Download,
+  Bot,
+  Upload,
+  RefreshCw,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { useToast } from "@/components/shared/Toast";
+import { api } from "@/lib/api";
+import type { Meeting } from "@/lib/types";
+
+interface TranscriptTabProps {
+  meeting: Meeting;
+  isModerator: boolean;
+  onMeetingUpdate: (meeting: Meeting) => void;
+  onSwitchToSummary: () => void;
+}
+
+export function TranscriptTab({
+  meeting,
+  isModerator,
+  onMeetingUpdate,
+  onSwitchToSummary,
+}: TranscriptTabProps) {
+  const { toastSuccess, toastError } = useToast();
+  const [manualText, setManualText] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // ── Copy transcript ──
+  const handleCopy = async () => {
+    if (!meeting.transcript) return;
+    await navigator.clipboard.writeText(meeting.transcript);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  // ── Save manual transcript ──
+  const handleSaveManual = async () => {
+    if (!manualText.trim()) return;
+    setSaving(true);
+    try {
+      const updated = await api.addTranscript(meeting.id, manualText.trim());
+      onMeetingUpdate(updated);
+      setManualText("");
+      toastSuccess("Транскрипция сохранена");
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Ошибка сохранения");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ── Fetch from Zoom API ──
+  const handleFetchZoom = async () => {
+    setFetching(true);
+    try {
+      const result = await api.fetchZoomTranscript(meeting.id);
+      if (result.transcript) {
+        // Refetch the meeting to get updated data
+        const updated = await api.getMeeting(meeting.id);
+        onMeetingUpdate(updated);
+        toastSuccess("Транскрипция получена из Zoom");
+      } else {
+        toastError(result.message || "Транскрипция недоступна в Zoom");
+      }
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Ошибка получения");
+    } finally {
+      setFetching(false);
+    }
+  };
+
+  // ── State A: Transcript exists ──
+  if (meeting.transcript) {
+    return (
+      <div className="space-y-4">
+        {/* Header with source + actions */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Badge
+              variant="secondary"
+              className="rounded-lg text-2xs gap-1 font-medium"
+            >
+              {meeting.transcript_source === "zoom_api" ? (
+                <>
+                  <Download className="h-3 w-3" />
+                  Zoom API
+                </>
+              ) : (
+                <>
+                  <Upload className="h-3 w-3" />
+                  Вставлено вручную
+                </>
+              )}
+            </Badge>
+            <span className="text-2xs text-muted-foreground/50 tabular-nums">
+              {meeting.transcript.length.toLocaleString("ru-RU")} символов
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleCopy}
+              className="h-7 text-xs gap-1.5 rounded-lg"
+            >
+              {copied ? (
+                <>
+                  <Check className="h-3.5 w-3.5 text-emerald-500" />
+                  Скопировано
+                </>
+              ) : (
+                <>
+                  <Copy className="h-3.5 w-3.5" />
+                  Копировать
+                </>
+              )}
+            </Button>
+            {isModerator && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={onSwitchToSummary}
+                className="h-7 text-xs gap-1.5 rounded-lg bg-accent hover:bg-accent/90 text-accent-foreground"
+              >
+                <Bot className="h-3.5 w-3.5" />
+                Распознать AI
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Scrollable transcript with line numbers */}
+        <div className="rounded-2xl border border-border/60 bg-card overflow-hidden">
+          <div className="max-h-[500px] overflow-y-auto p-5">
+            <div className="font-mono text-sm leading-relaxed">
+              {meeting.transcript.split("\n").map((line, i) => (
+                <div
+                  key={i}
+                  className="flex gap-4 hover:bg-muted/30 -mx-2 px-2 rounded"
+                >
+                  <span className="select-none text-muted-foreground/40 text-right min-w-[2.5rem] text-xs leading-relaxed tabular-nums">
+                    {i + 1}
+                  </span>
+                  <span className="text-muted-foreground whitespace-pre-wrap break-all">
+                    {line || "\u00A0"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── State B: No transcript but has Zoom ID ──
+  if (meeting.zoom_meeting_id) {
+    return (
+      <div className="space-y-5">
+        {/* Zoom fetch section */}
+        <div className="rounded-2xl border border-border/60 bg-card p-6 text-center space-y-4">
+          <div className="h-14 w-14 rounded-2xl bg-blue-500/10 flex items-center justify-center mx-auto">
+            <Download className="h-6 w-6 text-blue-600" />
+          </div>
+          <div>
+            <h3 className="text-sm font-heading font-semibold">
+              Получить транскрипцию из Zoom
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1">
+              Если запись облачная и транскрипция включена, она будет загружена
+              автоматически
+            </p>
+          </div>
+          {isModerator && (
+            <Button
+              onClick={handleFetchZoom}
+              disabled={fetching}
+              className="rounded-xl gap-2"
+            >
+              {fetching ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Загрузка...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4" />
+                  Попробовать получить
+                </>
+              )}
+            </Button>
+          )}
+        </div>
+
+        {/* Manual fallback */}
+        {isModerator && (
+          <ManualTranscriptInput
+            value={manualText}
+            onChange={setManualText}
+            onSave={handleSaveManual}
+            saving={saving}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ── State C: No transcript, no Zoom ──
+  if (!isModerator) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="h-12 w-12 rounded-xl bg-muted/50 flex items-center justify-center mb-3">
+          <FileText className="h-5 w-5 text-muted-foreground/50" />
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Транскрипция пока не добавлена
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <ManualTranscriptInput
+      value={manualText}
+      onChange={setManualText}
+      onSave={handleSaveManual}
+      saving={saving}
+    />
+  );
+}
+
+// ── Manual transcript textarea ──
+function ManualTranscriptInput({
+  value,
+  onChange,
+  onSave,
+  saving,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onSave: () => Promise<void>;
+  saving: boolean;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card p-6 space-y-4">
+      <div className="flex items-center gap-2">
+        <Upload className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm font-heading font-semibold">
+          Вставить вручную
+        </span>
+      </div>
+      <div className="relative">
+        <Textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={
+            "Вставьте текст Zoom AI Summary или транскрипцию...\n\nПоддерживаются форматы:\n— Summary Overview\n— Action Items\n— Decisions & Notes"
+          }
+          rows={10}
+          className="font-mono text-sm rounded-xl border-border/60 bg-background/50 resize-none focus:bg-background placeholder:text-muted-foreground/40"
+        />
+        {value && (
+          <div className="absolute bottom-3 right-3 text-2xs text-muted-foreground/50 tabular-nums">
+            {value.length.toLocaleString("ru-RU")} символов
+          </div>
+        )}
+      </div>
+      <Button
+        onClick={onSave}
+        disabled={!value.trim() || saving}
+        className="w-full h-11 rounded-xl gap-2"
+      >
+        {saving ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Сохранение...
+          </>
+        ) : (
+          <>
+            <Check className="h-4 w-4" />
+            Сохранить транскрипцию
+          </>
+        )}
+      </Button>
+    </div>
+  );
+}

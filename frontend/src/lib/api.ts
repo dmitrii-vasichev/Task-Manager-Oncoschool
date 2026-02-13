@@ -18,6 +18,10 @@ import type {
   ParseSummaryResponse,
   CreateMeetingRequest,
   MeetingWithTasksResponse,
+  MeetingSchedule,
+  MeetingScheduleCreateRequest,
+  TelegramNotificationTarget,
+  ZoomStatusResponse,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -162,8 +166,12 @@ class ApiClient {
 
   // ==================== Meetings ====================
 
-  async getMeetings(): Promise<Meeting[]> {
-    return this.request<Meeting[]>("/api/meetings");
+  async getMeetings(params?: { upcoming?: boolean; past?: boolean }): Promise<Meeting[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.upcoming) searchParams.set("upcoming", "true");
+    if (params?.past) searchParams.set("past", "true");
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return this.request<Meeting[]>(`/api/meetings${query}`);
   }
 
   async getMeeting(id: string): Promise<Meeting> {
@@ -174,22 +182,113 @@ class ApiClient {
     return this.request<Task[]>(`/api/meetings/${id}/tasks`);
   }
 
-  async parseSummary(summaryText: string): Promise<ParseSummaryResponse> {
-    return this.request<ParseSummaryResponse>("/api/meetings/parse-summary", {
+  async createMeetingManual(data: { title: string; meeting_date: string; zoom_enabled?: boolean }): Promise<Meeting> {
+    return this.request<Meeting>("/api/meetings", {
       method: "POST",
-      body: JSON.stringify({ summary_text: summaryText }),
+      body: JSON.stringify(data),
     });
   }
 
-  async createMeeting(data: CreateMeetingRequest): Promise<MeetingWithTasksResponse> {
-    return this.request<MeetingWithTasksResponse>("/api/meetings", {
-      method: "POST",
+  async updateMeeting(id: string, data: Partial<Meeting>): Promise<Meeting> {
+    return this.request<Meeting>(`/api/meetings/${id}`, {
+      method: "PATCH",
       body: JSON.stringify(data),
     });
   }
 
   async deleteMeeting(id: string): Promise<void> {
     return this.request<void>(`/api/meetings/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  // Transcript & Summary
+  async addTranscript(meetingId: string, text: string): Promise<Meeting> {
+    return this.request<Meeting>(`/api/meetings/${meetingId}/transcript`, {
+      method: "POST",
+      body: JSON.stringify({ text, source: "manual" }),
+    });
+  }
+
+  async fetchZoomTranscript(meetingId: string): Promise<{ transcript: string | null; message?: string }> {
+    return this.request<{ transcript: string | null; message?: string }>(
+      `/api/meetings/${meetingId}/fetch-transcript`,
+      { method: "POST" }
+    );
+  }
+
+  async parseMeetingSummary(meetingId: string, text?: string): Promise<ParseSummaryResponse> {
+    return this.request<ParseSummaryResponse>(
+      `/api/meetings/${meetingId}/parse-summary`,
+      {
+        method: "POST",
+        body: JSON.stringify(text ? { text } : {}),
+      }
+    );
+  }
+
+  async applySummary(meetingId: string, data: CreateMeetingRequest): Promise<MeetingWithTasksResponse> {
+    return this.request<MeetingWithTasksResponse>(
+      `/api/meetings/${meetingId}/apply-summary`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
+  }
+
+  async getZoomStatus(meetingId: string): Promise<ZoomStatusResponse> {
+    return this.request<ZoomStatusResponse>(`/api/meetings/${meetingId}/zoom-status`);
+  }
+
+  // ==================== Meeting Schedules ====================
+
+  async getMeetingSchedules(): Promise<MeetingSchedule[]> {
+    return this.request<MeetingSchedule[]>("/api/meeting-schedules");
+  }
+
+  async createMeetingSchedule(data: MeetingScheduleCreateRequest): Promise<MeetingSchedule> {
+    return this.request<MeetingSchedule>("/api/meeting-schedules", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateMeetingSchedule(id: string, data: Partial<MeetingScheduleCreateRequest>): Promise<MeetingSchedule> {
+    return this.request<MeetingSchedule>(`/api/meeting-schedules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteMeetingSchedule(id: string): Promise<void> {
+    return this.request<void>(`/api/meeting-schedules/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  // ==================== Telegram Targets ====================
+
+  async getTelegramTargets(): Promise<TelegramNotificationTarget[]> {
+    return this.request<TelegramNotificationTarget[]>("/api/telegram-targets");
+  }
+
+  async createTelegramTarget(data: { chat_id: number; thread_id?: number | null; label?: string | null }): Promise<TelegramNotificationTarget> {
+    return this.request<TelegramNotificationTarget>("/api/telegram-targets", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateTelegramTarget(id: string, data: { chat_id?: number; thread_id?: number | null; label?: string | null }): Promise<TelegramNotificationTarget> {
+    return this.request<TelegramNotificationTarget>(`/api/telegram-targets/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteTelegramTarget(id: string): Promise<void> {
+    return this.request<void>(`/api/telegram-targets/${id}`, {
       method: "DELETE",
     });
   }

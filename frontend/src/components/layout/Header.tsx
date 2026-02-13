@@ -8,7 +8,6 @@ import {
   CheckSquare,
   CalendarDays,
   BarChart3,
-  FileText,
   Users,
   Settings,
 } from "lucide-react";
@@ -31,8 +30,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "/tasks": { title: "Задачи", icon: CheckSquare },
   "/meetings": { title: "Встречи", icon: CalendarDays },
   "/analytics": { title: "Аналитика", icon: BarChart3 },
-  "/summary": { title: "Zoom Summary", icon: FileText },
-  "/team": { title: "Команда", icon: Users },
+"/team": { title: "Команда", icon: Users },
   "/settings": { title: "Настройки", icon: Settings },
 };
 

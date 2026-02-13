@@ -61,6 +61,40 @@ class TeamMember(Base):
     )
 
 
+class MeetingSchedule(Base):
+    __tablename__ = "meeting_schedules"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    day_of_week: Mapped[int] = mapped_column(Integer, nullable=False)  # 1=Mon ... 7=Sun (ISO)
+    time_utc: Mapped[time] = mapped_column(Time, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(50), default="Europe/Moscow", server_default="Europe/Moscow")
+    duration_minutes: Mapped[int] = mapped_column(Integer, default=60, server_default="60")
+    recurrence: Mapped[str] = mapped_column(
+        String(30), default="weekly", server_default="weekly"
+    )  # weekly | biweekly | monthly_last_workday
+    reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    reminder_minutes_before: Mapped[int] = mapped_column(Integer, default=60, server_default="60")
+    reminder_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    telegram_targets: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
+    participant_ids: Mapped[list[uuid.UUID]] = mapped_column(
+        ARRAY(UUID(as_uuid=True)), default=list, server_default="{}"
+    )
+    zoom_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_members.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    created_by: Mapped["TeamMember | None"] = relationship()
+    meetings: Mapped[list["Meeting"]] = relationship(back_populates="schedule")
+
+
 class Meeting(Base):
     __tablename__ = "meetings"
 
@@ -68,7 +102,7 @@ class Meeting(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     title: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    raw_summary: Mapped[str] = mapped_column(Text, nullable=False)
+    raw_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     parsed_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     decisions: Mapped[list[str]] = mapped_column(
         ARRAY(String), default=list, server_default="{}"
@@ -82,8 +116,24 @@ class Meeting(Base):
         server_default=func.now()
     )
 
+    # New fields for Zoom integration & scheduling
+    schedule_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("meeting_schedules.id"), nullable=True
+    )
+    zoom_meeting_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    zoom_join_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    zoom_recording_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transcript_source: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # 'zoom_api' | 'manual'
+    status: Mapped[str] = mapped_column(
+        String(30), default="scheduled", server_default="scheduled"
+    )  # scheduled | in_progress | completed | cancelled
+
     # Relationships
     created_by: Mapped["TeamMember | None"] = relationship()
+    schedule: Mapped["MeetingSchedule | None"] = relationship(back_populates="meetings")
     tasks: Mapped[list["Task"]] = relationship(back_populates="meeting")
     participants: Mapped[list["MeetingParticipant"]] = relationship(
         back_populates="meeting"
@@ -255,6 +305,19 @@ class ReminderSettings(Base):
     configured_by: Mapped["TeamMember | None"] = relationship(
         foreign_keys=[configured_by_id]
     )
+
+
+class TelegramNotificationTarget(Base):
+    __tablename__ = "telegram_notification_targets"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    thread_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
 class AppSettings(Base):

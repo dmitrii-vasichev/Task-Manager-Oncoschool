@@ -2,10 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
-import type { Meeting } from "@/lib/types";
+import type { MeetingSchedule } from "@/lib/types";
 
-export function useMeetings(params?: { upcoming?: boolean; past?: boolean }) {
-  const [meetings, setMeetings] = useState<Meeting[]>([]);
+export function useMeetingSchedules() {
+  const [schedules, setSchedules] = useState<MeetingSchedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -13,19 +13,18 @@ export function useMeetings(params?: { upcoming?: boolean; past?: boolean }) {
     try {
       setLoading(true);
       setError(null);
-      const result = await api.getMeetings(params);
-      setMeetings(result);
+      const result = await api.getMeetingSchedules();
+      setSchedules(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params?.upcoming, params?.past]);
+  }, []);
 
   useEffect(() => {
     fetch();
   }, [fetch]);
 
-  return { meetings, loading, error, refetch: fetch };
+  return { schedules, loading, error, refetch: fetch };
 }

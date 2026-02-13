@@ -1,13 +1,15 @@
 import logging
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from aiogram import Router
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.filters import IsModeratorFilter
+from app.config import settings
 from app.db.models import Meeting, Task, TaskUpdate, TeamMember
 from app.db.repositories import MeetingRepository, TeamMemberRepository
 
@@ -18,34 +20,181 @@ router = Router()
 meeting_repo = MeetingRepository()
 member_repo = TeamMemberRepository()
 
+TIMEZONE = ZoneInfo(settings.TIMEZONE)
+
+# ── Helpers ──
+
+MONTH_NAMES_RU = {
+    1: "января", 2: "февраля", 3: "марта", 4: "апреля",
+    5: "мая", 6: "июня", 7: "июля", 8: "августа",
+    9: "сентября", 10: "октября", 11: "ноября", 12: "декабря",
+}
+
+DAY_NAMES_RU = {
+    0: "Понедельник", 1: "Вторник", 2: "Среда", 3: "Четверг",
+    4: "Пятница", 5: "Суббота", 6: "Воскресенье",
+}
+
+DAY_NAMES_SHORT_RU = {
+    0: "Пн", 1: "Вт", 2: "Ср", 3: "Чт", 4: "Пт", 5: "Сб", 6: "Вс",
+}
+
+
+def _format_meeting_date_short(dt: datetime) -> str:
+    """Format as 'Пн, 17 февраля'."""
+    local = dt.astimezone(TIMEZONE) if dt.tzinfo else dt.replace(tzinfo=timezone.utc).astimezone(TIMEZONE)
+    day_name = DAY_NAMES_SHORT_RU[local.weekday()]
+    month_name = MONTH_NAMES_RU[local.month]
+    return f"{day_name}, {local.day} {month_name}"
+
+
+def _format_meeting_time(dt: datetime) -> str:
+    """Format time as '15:00 МСК'."""
+    local = dt.astimezone(TIMEZONE) if dt.tzinfo else dt.replace(tzinfo=timezone.utc).astimezone(TIMEZONE)
+    return f"{local.strftime('%H:%M')} МСК"
+
+
+def _format_meeting_date_full(dt: datetime) -> str:
+    """Format as 'Понедельник, 17 февраля 2026'."""
+    local = dt.astimezone(TIMEZONE) if dt.tzinfo else dt.replace(tzinfo=timezone.utc).astimezone(TIMEZONE)
+    day_name = DAY_NAMES_RU[local.weekday()]
+    month_name = MONTH_NAMES_RU[local.month]
+    return f"{day_name}, {local.day} {month_name} {local.year}"
+
+
+def _time_until(dt: datetime) -> str:
+    """Human-readable time until a date, e.g. 'через 2 дня'."""
+    now = datetime.now(timezone.utc)
+    target = dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    delta = target - now
+
+    if delta.total_seconds() < 0:
+        return "уже началась"
+
+    hours = delta.total_seconds() / 3600
+    if hours < 1:
+        minutes = int(delta.total_seconds() / 60)
+        return f"через {minutes} мин"
+    if hours < 24:
+        return f"через {int(hours)} ч"
+    days = delta.days
+    if days == 1:
+        return "завтра"
+    if days < 5:
+        return f"через {days} дня"
+    return f"через {days} дней"
+
+
+def _zoom_short_url(url: str | None) -> str | None:
+    """Extract short Zoom URL for display."""
+    if not url:
+        return None
+    # Show just the domain/path, not full URL
+    if "zoom.us" in url:
+        # Extract the join part
+        parts = url.split("zoom.us")
+        if len(parts) > 1:
+            return f"zoom.us{parts[1][:30]}"
+    return url[:40]
+
+
+# ── /meetings command ──
 
 @router.message(Command("meetings"), IsModeratorFilter())
 async def cmd_meetings(
     message: Message, member: TeamMember, session_maker: async_sessionmaker
 ) -> None:
-    """Show recent meetings list (moderator only)."""
+    """Show upcoming and recent meetings (moderator only)."""
     async with session_maker() as session:
-        meetings = await meeting_repo.get_all(session)
+        upcoming = await meeting_repo.get_upcoming(session, limit=5)
+        past = await meeting_repo.get_past(session, limit=5)
 
-    if not meetings:
-        await message.answer("📋 Встречи пока не создавались.")
+        # Count tasks per past meeting
+        past_task_counts = {}
+        if past:
+            for m in past:
+                count_stmt = select(func.count(Task.id)).where(Task.meeting_id == m.id)
+                result = await session.execute(count_stmt)
+                past_task_counts[m.id] = result.scalar_one()
+
+    lines = []
+
+    # Upcoming meetings
+    if upcoming:
+        lines.append("<b>📋 Предстоящие встречи:</b>\n")
+        for m in upcoming:
+            title = m.title or "Без названия"
+            lines.append(f"📹 <b>{title}</b>")
+            if m.meeting_date:
+                date_str = _format_meeting_date_short(m.meeting_date)
+                time_str = _format_meeting_time(m.meeting_date)
+                lines.append(f"📅 {date_str} · {time_str}")
+            if m.zoom_join_url:
+                lines.append(f"🔗 {_zoom_short_url(m.zoom_join_url)}")
+            lines.append("")
+    else:
+        lines.append("📋 Нет предстоящих встреч.\n")
+
+    # Separator
+    lines.append("───────────\n")
+
+    # Past meetings
+    if past:
+        lines.append("<b>✅ Последние завершённые:</b>")
+        for m in past:
+            title = m.title or "Без названия"
+            date_str = ""
+            if m.meeting_date:
+                local = m.meeting_date.astimezone(TIMEZONE) if m.meeting_date.tzinfo else m.meeting_date.replace(tzinfo=timezone.utc).astimezone(TIMEZONE)
+                date_str = f" — {local.strftime('%d.%m')}"
+            task_count = past_task_counts.get(m.id, 0)
+            task_str = f" ({task_count} задач)" if task_count > 0 else ""
+            lines.append(f"• {title}{date_str}{task_str}")
+
+    lines.append("\n<i>Все встречи → веб-интерфейс</i>")
+
+    keyboard = None
+    if settings.NEXT_PUBLIC_FRONTEND_URL:
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🌐 Открыть в браузере", url=f"{settings.NEXT_PUBLIC_FRONTEND_URL}/meetings")]
+            ]
+        )
+
+    await message.answer("\n".join(lines), parse_mode="HTML", reply_markup=keyboard)
+
+
+# ── /nextmeeting command ──
+
+@router.message(Command("nextmeeting"))
+async def cmd_nextmeeting(
+    message: Message, member: TeamMember, session_maker: async_sessionmaker
+) -> None:
+    """Show the next upcoming meeting."""
+    async with session_maker() as session:
+        upcoming = await meeting_repo.get_upcoming(session, limit=1)
+
+    if not upcoming:
+        await message.answer("📋 Нет запланированных встреч.")
         return
 
-    lines = ["<b>📋 Последние встречи:</b>\n"]
-    for m in meetings[:10]:
-        date_str = (
-            m.meeting_date.strftime("%d.%m.%Y")
-            if m.meeting_date
-            else m.created_at.strftime("%d.%m.%Y")
-        )
-        title = m.title or "Без названия"
-        lines.append(f"• <b>{title}</b> — {date_str}")
+    m = upcoming[0]
+    title = m.title or "Без названия"
 
-    if len(meetings) > 10:
-        lines.append(f"\n<i>Показано 10 из {len(meetings)}. Все встречи — в веб-интерфейсе.</i>")
+    lines = ["<b>📹 Следующая встреча:</b>\n"]
+    lines.append(f"<b>{title}</b>")
+
+    if m.meeting_date:
+        lines.append(f"📅 {_format_meeting_date_full(m.meeting_date)}")
+        lines.append(f"⏰ {_format_meeting_time(m.meeting_date)} ({_time_until(m.meeting_date)})")
+
+    if m.zoom_join_url:
+        lines.append(f"🔗 Подключиться: {m.zoom_join_url}")
 
     await message.answer("\n".join(lines), parse_mode="HTML")
 
+
+# ── /stats command ──
 
 @router.message(Command("stats"), IsModeratorFilter())
 async def cmd_stats(
@@ -127,10 +276,10 @@ async def cmd_stats(
 
     # Source icons
     source_icons = {
-        "text": "💬",
-        "voice": "🎤",
-        "summary": "📋",
-        "web": "🌐",
+        "text": "\U0001f4ac",
+        "voice": "\U0001f3a4",
+        "summary": "\U0001f4cb",
+        "web": "\U0001f310",
     }
 
     text = (
@@ -146,7 +295,7 @@ async def cmd_stats(
     )
 
     for source, count in sorted(source_counts.items(), key=lambda x: -x[1]):
-        icon = source_icons.get(source, "📄")
+        icon = source_icons.get(source, "\U0001f4c4")
         text += f"  {icon} {source}: {count}\n"
 
     text += (

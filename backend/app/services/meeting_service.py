@@ -18,6 +18,8 @@ class MeetingService:
         self.member_repo = TeamMemberRepository()
         self.task_service = TaskService()
 
+    # ── Creation ──
+
     async def create_meeting_from_parsed(
         self,
         session: AsyncSession,
@@ -32,7 +34,6 @@ class MeetingService:
         if not PermissionService.can_submit_summary(creator):
             raise PermissionError("Только модератор может создавать встречи из summary")
 
-        # Match participant names to team members
         all_members = await self.member_repo.get_all_active(session)
         participant_ids = self._match_participants(participant_names, all_members)
 
@@ -48,6 +49,30 @@ class MeetingService:
         )
         return meeting
 
+    async def create_manual_meeting(
+        self,
+        session: AsyncSession,
+        title: str,
+        meeting_date: datetime,
+        creator: TeamMember,
+        zoom_data: dict | None = None,
+    ) -> Meeting:
+        """Create a meeting manually (without schedule). Optionally with Zoom."""
+        kwargs = dict(
+            title=title,
+            meeting_date=meeting_date,
+            status="scheduled",
+            created_by_id=creator.id,
+        )
+        if zoom_data:
+            kwargs["zoom_meeting_id"] = str(zoom_data["id"])
+            kwargs["zoom_join_url"] = zoom_data.get("join_url")
+
+        meeting = await self.meeting_repo.create(session, **kwargs)
+        return meeting
+
+    # ── Task creation from parsed data ──
+
     async def create_tasks_from_parsed(
         self,
         session: AsyncSession,
@@ -60,18 +85,15 @@ class MeetingService:
         created_tasks = []
 
         for pt in parsed_tasks:
-            # Match assignee
             assignee_id = None
             if pt.get("assignee_name"):
                 assignee = self._find_member_by_name(pt["assignee_name"], team_members)
                 if assignee:
                     assignee_id = assignee.id
 
-            # If no assignee found, assign to creator
             if not assignee_id:
                 assignee_id = creator.id
 
-            # Parse deadline
             deadline = None
             if pt.get("deadline"):
                 try:
@@ -94,6 +116,8 @@ class MeetingService:
 
         return created_tasks
 
+    # ── Queries ──
+
     async def get_all_meetings(self, session: AsyncSession) -> list[Meeting]:
         return await self.meeting_repo.get_all(session)
 
@@ -101,6 +125,138 @@ class MeetingService:
         self, session: AsyncSession, meeting_id: uuid.UUID
     ) -> Meeting | None:
         return await self.meeting_repo.get_by_id(session, meeting_id)
+
+    async def get_upcoming_meetings(self, session: AsyncSession, limit: int = 10) -> list[Meeting]:
+        return await self.meeting_repo.get_upcoming(session, limit=limit)
+
+    async def get_past_meetings(self, session: AsyncSession, limit: int = 20) -> list[Meeting]:
+        return await self.meeting_repo.get_past(session, limit=limit)
+
+    # ── Updates ──
+
+    async def update_meeting(
+        self,
+        session: AsyncSession,
+        meeting_id: uuid.UUID,
+        **fields,
+    ) -> Meeting | None:
+        """Update meeting fields."""
+        meeting = await session.get(Meeting, meeting_id)
+        if not meeting:
+            return None
+        for key, value in fields.items():
+            setattr(meeting, key, value)
+        await session.flush()
+        return meeting
+
+    async def add_transcript(
+        self,
+        session: AsyncSession,
+        meeting_id: uuid.UUID,
+        transcript_text: str,
+        source: str = "manual",
+    ) -> Meeting | None:
+        """Save transcript and its source ('zoom_api' | 'manual')."""
+        meeting = await session.get(Meeting, meeting_id)
+        if not meeting:
+            return None
+        meeting.transcript = transcript_text
+        meeting.transcript_source = source
+        await session.flush()
+        return meeting
+
+    async def update_meeting_status(
+        self,
+        session: AsyncSession,
+        meeting_id: uuid.UUID,
+        new_status: str,
+    ) -> Meeting | None:
+        """Update meeting status."""
+        meeting = await session.get(Meeting, meeting_id)
+        if not meeting:
+            return None
+        meeting.status = new_status
+        await session.flush()
+        return meeting
+
+    async def complete_meeting_with_summary(
+        self,
+        session: AsyncSession,
+        meeting_id: uuid.UUID,
+        raw_summary: str,
+        parsed_summary: str,
+        decisions: list[str],
+        participant_names: list[str],
+        tasks_data: list[dict],
+        creator: TeamMember,
+    ) -> tuple[Meeting, list[Task]]:
+        """Apply parsed summary to a meeting: update fields + create tasks."""
+        meeting = await session.get(Meeting, meeting_id)
+        if not meeting:
+            raise ValueError("Встреча не найдена")
+
+        # Update meeting fields
+        meeting.raw_summary = raw_summary
+        meeting.parsed_summary = parsed_summary
+        meeting.decisions = decisions
+        if meeting.status != "completed":
+            meeting.status = "completed"
+
+        # Match participants
+        all_members = await self.member_repo.get_all_active(session)
+        participant_ids = self._match_participants(participant_names, all_members)
+        # Add MeetingParticipant records
+        from app.db.models import MeetingParticipant
+        # Clear existing participants first
+        from sqlalchemy import delete as sa_delete
+        await session.execute(
+            sa_delete(MeetingParticipant).where(MeetingParticipant.meeting_id == meeting_id)
+        )
+        for member_id in participant_ids:
+            session.add(MeetingParticipant(meeting_id=meeting_id, member_id=member_id))
+
+        await session.flush()
+
+        # Create tasks
+        created_tasks = await self.create_tasks_from_parsed(
+            session, meeting, tasks_data, creator, all_members
+        )
+
+        return meeting, created_tasks
+
+    # ── Zoom transcript ──
+
+    async def try_fetch_zoom_transcript(
+        self,
+        session: AsyncSession,
+        meeting_id: uuid.UUID,
+        zoom_service,
+    ) -> str | None:
+        """
+        Try to fetch transcript from Zoom API.
+        If zoom_meeting_id exists -> zoom_service.get_transcript()
+        If found -> save with transcript_source='zoom_api'
+        Returns transcript text or None.
+        """
+        meeting = await session.get(Meeting, meeting_id)
+        if not meeting or not meeting.zoom_meeting_id or not zoom_service:
+            return None
+
+        try:
+            transcript_text = await zoom_service.get_transcript(meeting.zoom_meeting_id)
+        except Exception as e:
+            logger.error(f"Failed to fetch Zoom transcript for meeting {meeting_id}: {e}")
+            return None
+
+        if transcript_text:
+            meeting.transcript = transcript_text
+            meeting.transcript_source = "zoom_api"
+            await session.flush()
+            return transcript_text
+
+        return None
+
+    # ── Name matching helpers ──
 
     @staticmethod
     def _match_participants(
@@ -133,11 +289,9 @@ def _name_matches(name_lower: str, member: TeamMember) -> bool:
     """Check if a name matches a team member (full_name or name_variants)."""
     if name_lower == member.full_name.lower():
         return True
-    # Check first name only
     member_first = member.full_name.lower().split()[0] if member.full_name else ""
     if name_lower == member_first:
         return True
-    # Check name_variants
     if member.name_variants:
         for variant in member.name_variants:
             if name_lower == variant.lower():

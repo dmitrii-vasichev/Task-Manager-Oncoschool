@@ -33,6 +33,7 @@ async def cmd_help(message: Message, member: TeamMember) -> None:
         "/update &lt;id&gt; &lt;текст&gt; — промежуточный апдейт\n"
         "/status &lt;id&gt; &lt;статус&gt; — изменить статус\n"
         "\U0001f3a4 Голосовое сообщение — создать задачу голосом\n"
+        "/nextmeeting — следующая встреча\n"
         "/myreminder — мои настройки напоминаний"
     )
 
@@ -40,8 +41,7 @@ async def cmd_help(message: Message, member: TeamMember) -> None:
         mod_commands = (
             "\n\n<b>Модератор:</b>\n\n"
             "/assign @username &lt;текст&gt; — назначить задачу\n"
-            "/summary — обработать Zoom Summary\n"
-            "/meetings — история встреч\n"
+            "/meetings — предстоящие и прошедшие встречи\n"
             "/team — управление командой\n"
             "/setrole @username &lt;роль&gt; — назначить роль\n"
             "/reminders — настройки напоминаний\n"

@@ -17,7 +17,9 @@ from app.bot.handlers.voice import router as voice_router
 from app.bot.middlewares import AuthMiddleware
 from app.config import settings
 from app.db.database import async_session
+from app.services.meeting_scheduler_service import MeetingSchedulerService
 from app.services.reminder_service import ReminderService
+from app.services.zoom_service import ZoomService
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -52,8 +54,26 @@ dp.include_router(voice_router)
 dp.include_router(settings_router)
 dp.include_router(meetings_router)
 
-# Scheduler
+# Zoom Service (optional — graceful fallback if not configured)
+zoom_service = None
+if settings.zoom_configured:
+    zoom_service = ZoomService(
+        account_id=settings.ZOOM_ACCOUNT_ID,
+        client_id=settings.ZOOM_CLIENT_ID,
+        client_secret=settings.ZOOM_CLIENT_SECRET,
+    )
+    logger.info("ZoomService initialized")
+else:
+    logger.info("Zoom not configured — ZoomService disabled")
+
+# Make zoom_service accessible from API endpoints via app.state
+app.state.zoom_service = zoom_service
+
+# Schedulers
 reminder_service = ReminderService(bot=bot, session_maker=async_session)
+meeting_scheduler = MeetingSchedulerService(
+    bot=bot, session_maker=async_session, zoom_service=zoom_service
+)
 
 
 @app.get("/health")
@@ -82,9 +102,11 @@ async def start_api():
 
 async def main():
     """Запуск FastAPI + aiogram polling + APScheduler параллельно."""
-    # Start reminder scheduler
+    # Start schedulers
     reminder_service.start()
     logger.info("Reminder scheduler started")
+    meeting_scheduler.start()
+    logger.info("Meeting scheduler started")
 
     try:
         await asyncio.gather(
@@ -93,6 +115,7 @@ async def main():
         )
     finally:
         reminder_service.stop()
+        meeting_scheduler.stop()
 
 
 if __name__ == "__main__":

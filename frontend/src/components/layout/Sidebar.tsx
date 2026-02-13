@@ -8,7 +8,6 @@ import {
   CheckSquare,
   CalendarDays,
   BarChart3,
-  FileText,
   Users,
   Settings,
   LogOut,
@@ -73,14 +72,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/tasks", label: "Задачи", icon: CheckSquare, section: "main" },
   { href: "/meetings", label: "Встречи", icon: CalendarDays, section: "main" },
   { href: "/analytics", label: "Аналитика", icon: BarChart3, section: "main" },
-  {
-    href: "/summary",
-    label: "Summary",
-    icon: FileText,
-    moderatorOnly: true,
-    section: "manage",
-  },
-  {
+{
     href: "/team",
     label: "Команда",
     icon: Users,

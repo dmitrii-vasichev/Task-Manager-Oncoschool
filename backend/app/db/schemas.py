@@ -134,12 +134,96 @@ class MeetingResponse(BaseModel):
 
     id: uuid.UUID
     title: str | None
-    raw_summary: str
+    raw_summary: str | None
     parsed_summary: str | None
     decisions: list[str]
     notes: str | None
     meeting_date: datetime | None
     created_by_id: uuid.UUID | None
+    created_at: datetime
+    # New fields for Zoom integration & scheduling
+    schedule_id: uuid.UUID | None = None
+    zoom_meeting_id: str | None = None
+    zoom_join_url: str | None = None
+    zoom_recording_url: str | None = None
+    transcript: str | None = None
+    transcript_source: str | None = None
+    status: str = "scheduled"
+
+
+# ── MeetingSchedule ──
+
+
+class MeetingScheduleCreate(BaseModel):
+    title: str
+    day_of_week: int  # 1-7
+    time_local: str  # "15:00" — frontend sends local time
+    timezone: str = "Europe/Moscow"
+    duration_minutes: int = 60
+    recurrence: str = "weekly"  # weekly | biweekly | monthly_last_workday
+    reminder_enabled: bool = True
+    reminder_minutes_before: int = 60
+    reminder_text: str | None = None
+    telegram_targets: list[dict] = []  # [{"chat_id": ..., "thread_id": ...}]
+    participant_ids: list[uuid.UUID] = []
+    zoom_enabled: bool = True
+
+
+class MeetingScheduleUpdate(BaseModel):
+    title: str | None = None
+    day_of_week: int | None = None
+    time_local: str | None = None
+    timezone: str | None = None
+    duration_minutes: int | None = None
+    recurrence: str | None = None
+    reminder_enabled: bool | None = None
+    reminder_minutes_before: int | None = None
+    reminder_text: str | None = None
+    telegram_targets: list[dict] | None = None
+    participant_ids: list[uuid.UUID] | None = None
+    zoom_enabled: bool | None = None
+    is_active: bool | None = None
+
+
+class MeetingScheduleResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    day_of_week: int
+    time_utc: time
+    timezone: str
+    duration_minutes: int
+    recurrence: str
+    reminder_enabled: bool
+    reminder_minutes_before: int
+    reminder_text: str | None
+    telegram_targets: list[dict]
+    participant_ids: list[uuid.UUID]
+    zoom_enabled: bool
+    is_active: bool
+    created_by_id: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
+# ── TelegramNotificationTarget ──
+
+
+class TelegramTargetCreate(BaseModel):
+    chat_id: int
+    thread_id: int | None = None
+    label: str | None = None
+
+
+class TelegramTargetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    chat_id: int
+    thread_id: int | None
+    label: str | None
+    is_active: bool
     created_at: datetime
 
 

@@ -13,6 +13,8 @@ import {
   Clock,
   UserX,
   AlertOctagon,
+  Video,
+  ExternalLink,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -322,7 +324,73 @@ function SectionHeader({
 }
 
 // ────────────────────────────────────────────
-// Meeting card
+// Upcoming meeting card (with Zoom link)
+// ────────────────────────────────────────────
+
+function UpcomingMeetingCard({
+  meeting,
+  staggerClass,
+}: {
+  meeting: Meeting;
+  staggerClass: string;
+}) {
+  const meetingDate = meeting.meeting_date
+    ? new Date(meeting.meeting_date)
+    : null;
+
+  const dateStr = meetingDate
+    ? meetingDate.toLocaleDateString("ru-RU", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+      })
+    : "";
+
+  const timeStr = meetingDate
+    ? meetingDate.toLocaleTimeString("ru-RU", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+
+  return (
+    <div
+      className={`animate-fade-in-up ${staggerClass} group rounded-2xl border border-border/60 bg-card p-5 hover:-translate-y-0.5 hover:shadow-md hover:shadow-primary/5`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <Link
+            href={`/meetings/${meeting.id}`}
+            className="text-sm font-semibold truncate block group-hover:text-primary transition-colors"
+          >
+            {meeting.title || "Встреча без названия"}
+          </Link>
+          <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
+            <CalendarDays className="h-3 w-3 shrink-0" />
+            {dateStr} · {timeStr}
+          </p>
+        </div>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+          <Video className="h-4 w-4" />
+        </div>
+      </div>
+      {meeting.zoom_join_url && (
+        <a
+          href={meeting.zoom_join_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+        >
+          <ExternalLink className="h-3 w-3" />
+          Подключиться к Zoom
+        </a>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────
+// Meeting card (past)
 // ────────────────────────────────────────────
 
 function MeetingCard({
@@ -387,6 +455,7 @@ export default function DashboardPage() {
   const [overdueTasks, setOverdueTasks] = useState<Task[]>([]);
   const [completedThisWeek, setCompletedThisWeek] = useState(0);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [upcomingMeetings, setUpcomingMeetings] = useState<Meeting[]>([]);
   const [unassignedTasks, setUnassignedTasks] = useState<Task[]>([]);
   const [staleTasks, setStaleTasks] = useState<Task[]>([]);
 
@@ -416,7 +485,8 @@ export default function DashboardPage() {
             per_page: "50",
             sort: "created_at_desc",
           }).catch(catchLog("getDoneTasks")),
-          api.getMeetings().catch(catchLog("getMeetings")),
+          api.getMeetings({ upcoming: true }).catch(catchLog("getUpcomingMeetings")),
+          api.getMeetings({ past: true }).catch(catchLog("getPastMeetings")),
         ];
 
         // Moderator-only data
@@ -445,7 +515,8 @@ export default function DashboardPage() {
         const meetingData = results[1] as MeetingAnalytics | null;
         const myTasksData = results[2] as { items: Task[] } | null;
         const doneTasksData = results[3] as { items: Task[] } | null;
-        const meetingsData = results[4] as Meeting[] | null;
+        const upcomingData = results[4] as Meeting[] | null;
+        const pastData = results[5] as Meeting[] | null;
 
         const hasError = results.some((r) => r === null);
 
@@ -468,13 +539,16 @@ export default function DashboardPage() {
           setCompletedThisWeek(thisWeekCount);
         }
 
-        // Recent meetings (last 3)
-        if (meetingsData) setMeetings(meetingsData.slice(0, 3));
+        // Upcoming meetings (top 3)
+        if (upcomingData) setUpcomingMeetings(upcomingData.slice(0, 3));
+
+        // Recent past meetings (top 3)
+        if (pastData) setMeetings(pastData.slice(0, 3));
 
         // Moderator data
         if (isMod) {
-          const unassignedData = results[5] as { items: Task[] } | null;
-          const staleData = results[6] as { items: Task[] } | null;
+          const unassignedData = results[6] as { items: Task[] } | null;
+          const staleData = results[7] as { items: Task[] } | null;
 
           if (unassignedData) {
             setUnassignedTasks(
@@ -638,7 +712,30 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      {/* ═══════════ Recent Meetings ═══════════ */}
+      {/* ═══════════ Upcoming Meetings ═══════════ */}
+      {upcomingMeetings.length > 0 && (
+        <section className="animate-fade-in-up stagger-7">
+          <SectionHeader
+            title="Предстоящие встречи"
+            icon={Video}
+            iconColor={ACCENT_BLUE}
+            linkHref="/meetings"
+            linkLabel="Все встречи"
+            count={upcomingMeetings.length}
+          />
+          <div className="grid gap-4 md:grid-cols-3">
+            {upcomingMeetings.map((meeting, i) => (
+              <UpcomingMeetingCard
+                key={meeting.id}
+                meeting={meeting}
+                staggerClass={`stagger-${i + 7}`}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ═══════════ Recent Past Meetings ═══════════ */}
       {meetings.length > 0 && (
         <section className="animate-fade-in-up stagger-7">
           <SectionHeader

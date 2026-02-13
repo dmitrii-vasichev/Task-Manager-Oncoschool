@@ -7,6 +7,8 @@ export type TaskPriority = "urgent" | "high" | "medium" | "low";
 export type TaskSource = "text" | "voice" | "summary" | "web";
 export type UpdateType = "progress" | "status_change" | "comment" | "blocker" | "completion";
 export type MemberRole = "moderator" | "member";
+export type MeetingRecurrence = "weekly" | "biweekly" | "monthly_last_workday";
+export type MeetingStatus = "scheduled" | "in_progress" | "completed" | "cancelled";
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   new: "Новые",
@@ -87,13 +89,76 @@ export interface TaskUpdate {
 export interface Meeting {
   id: string;
   title: string | null;
-  raw_summary: string;
+  raw_summary: string | null;
   parsed_summary: string | null;
   decisions: string[];
   notes: string | null;
   meeting_date: string | null;
   created_by_id: string | null;
   created_at: string;
+  schedule_id: string | null;
+  zoom_meeting_id: string | null;
+  zoom_join_url: string | null;
+  zoom_recording_url: string | null;
+  transcript: string | null;
+  transcript_source: "zoom_api" | "manual" | null;
+  status: MeetingStatus;
+}
+
+export interface TelegramTargetRef {
+  chat_id: string;
+  thread_id: number | null;
+}
+
+export interface TelegramNotificationTarget {
+  id: string;
+  chat_id: number;
+  thread_id: number | null;
+  label: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface MeetingSchedule {
+  id: string;
+  title: string;
+  day_of_week: number;
+  time_utc: string;
+  timezone: string;
+  duration_minutes: number;
+  recurrence: MeetingRecurrence;
+  reminder_enabled: boolean;
+  reminder_minutes_before: number;
+  reminder_text: string | null;
+  telegram_targets: TelegramTargetRef[];
+  participant_ids: string[];
+  zoom_enabled: boolean;
+  is_active: boolean;
+  created_by_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MeetingScheduleCreateRequest {
+  title: string;
+  day_of_week: number;
+  time_local: string;
+  timezone?: string;
+  duration_minutes?: number;
+  recurrence?: MeetingRecurrence;
+  reminder_enabled?: boolean;
+  reminder_minutes_before?: number;
+  reminder_text?: string | null;
+  telegram_targets?: TelegramTargetRef[];
+  participant_ids?: string[];
+  zoom_enabled?: boolean;
+}
+
+export interface ZoomStatusResponse {
+  zoom_configured: boolean;
+  has_recording: boolean;
+  has_transcript: boolean;
+  recording_url: string | null;
 }
 
 export interface NotificationSubscription {
@@ -246,3 +311,40 @@ export interface MeetingAnalytics {
   tasks_from_meetings: number;
   meetings_this_month: number;
 }
+
+// ============================================
+// Meeting / Schedule Labels
+// ============================================
+
+export const DAY_OF_WEEK_LABELS: Record<number, string> = {
+  1: "Понедельник",
+  2: "Вторник",
+  3: "Среда",
+  4: "Четверг",
+  5: "Пятница",
+  6: "Суббота",
+  7: "Воскресенье",
+};
+
+export const DAY_OF_WEEK_SHORT: Record<number, string> = {
+  1: "Пн",
+  2: "Вт",
+  3: "Ср",
+  4: "Чт",
+  5: "Пт",
+  6: "Сб",
+  7: "Вс",
+};
+
+export const RECURRENCE_LABELS: Record<MeetingRecurrence, string> = {
+  weekly: "Еженедельно",
+  biweekly: "Раз в 2 недели",
+  monthly_last_workday: "Последний рабочий день месяца",
+};
+
+export const MEETING_STATUS_LABELS: Record<MeetingStatus, string> = {
+  scheduled: "Запланирована",
+  in_progress: "Идёт",
+  completed: "Завершена",
+  cancelled: "Отменена",
+};

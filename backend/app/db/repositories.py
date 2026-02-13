@@ -8,15 +8,19 @@ from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
 
+from datetime import datetime
+
 from app.db.models import (
     AppSettings,
     Meeting,
     MeetingParticipant,
+    MeetingSchedule,
     NotificationSubscription,
     ReminderSettings,
     Task,
     TaskUpdate,
     TeamMember,
+    TelegramNotificationTarget,
 )
 
 
@@ -179,8 +183,120 @@ class MeetingRepository:
 
         return meeting
 
+    async def get_by_zoom_id(self, session: AsyncSession, zoom_meeting_id: str) -> Meeting | None:
+        stmt = (
+            select(Meeting)
+            .options(selectinload(Meeting.participants))
+            .where(Meeting.zoom_meeting_id == zoom_meeting_id)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_upcoming(self, session: AsyncSession, limit: int = 10) -> list[Meeting]:
+        stmt = (
+            select(Meeting)
+            .where(Meeting.status == "scheduled", Meeting.meeting_date > datetime.utcnow())
+            .order_by(Meeting.meeting_date.asc())
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_past(self, session: AsyncSession, limit: int = 20) -> list[Meeting]:
+        stmt = (
+            select(Meeting)
+            .where(Meeting.status.in_(["completed", "cancelled"]))
+            .order_by(Meeting.meeting_date.desc().nullslast())
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
     async def delete(self, session: AsyncSession, meeting_id: uuid.UUID) -> bool:
         stmt = delete(Meeting).where(Meeting.id == meeting_id)
+        result = await session.execute(stmt)
+        return result.rowcount > 0
+
+
+class MeetingScheduleRepository:
+    async def get_all_active(self, session: AsyncSession) -> list[MeetingSchedule]:
+        stmt = (
+            select(MeetingSchedule)
+            .where(MeetingSchedule.is_active.is_(True))
+            .order_by(MeetingSchedule.day_of_week, MeetingSchedule.time_utc)
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_by_id(self, session: AsyncSession, schedule_id: uuid.UUID) -> MeetingSchedule | None:
+        return await session.get(MeetingSchedule, schedule_id)
+
+    async def create(self, session: AsyncSession, **kwargs) -> MeetingSchedule:
+        schedule = MeetingSchedule(**kwargs)
+        session.add(schedule)
+        await session.flush()
+        return schedule
+
+    async def update(self, session: AsyncSession, schedule_id: uuid.UUID, **kwargs) -> MeetingSchedule | None:
+        schedule = await self.get_by_id(session, schedule_id)
+        if not schedule:
+            return None
+        for key, value in kwargs.items():
+            setattr(schedule, key, value)
+        await session.flush()
+        return schedule
+
+    async def delete(self, session: AsyncSession, schedule_id: uuid.UUID) -> None:
+        schedule = await self.get_by_id(session, schedule_id)
+        if schedule:
+            schedule.is_active = False
+            await session.flush()
+
+    async def get_schedules_for_time(
+        self, session: AsyncSession, day_of_week: int, hour_utc: int, minute_utc: int
+    ) -> list[MeetingSchedule]:
+        """Find active schedules that should trigger at or near the given time."""
+        stmt = (
+            select(MeetingSchedule)
+            .where(
+                MeetingSchedule.is_active.is_(True),
+                MeetingSchedule.day_of_week == day_of_week,
+            )
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+
+class TelegramTargetRepository:
+    async def get_all_active(self, session: AsyncSession) -> list[TelegramNotificationTarget]:
+        stmt = (
+            select(TelegramNotificationTarget)
+            .where(TelegramNotificationTarget.is_active.is_(True))
+            .order_by(TelegramNotificationTarget.created_at)
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_by_id(self, session: AsyncSession, target_id: uuid.UUID) -> TelegramNotificationTarget | None:
+        return await session.get(TelegramNotificationTarget, target_id)
+
+    async def create(self, session: AsyncSession, **kwargs) -> TelegramNotificationTarget:
+        target = TelegramNotificationTarget(**kwargs)
+        session.add(target)
+        await session.flush()
+        return target
+
+    async def update(self, session: AsyncSession, target_id: uuid.UUID, **kwargs) -> TelegramNotificationTarget | None:
+        target = await self.get_by_id(session, target_id)
+        if not target:
+            return None
+        for key, value in kwargs.items():
+            setattr(target, key, value)
+        await session.flush()
+        return target
+
+    async def delete(self, session: AsyncSession, target_id: uuid.UUID) -> bool:
+        stmt = delete(TelegramNotificationTarget).where(TelegramNotificationTarget.id == target_id)
         result = await session.execute(stmt)
         return result.rowcount > 0
 
