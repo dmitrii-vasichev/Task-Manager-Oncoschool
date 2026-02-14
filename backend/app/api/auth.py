@@ -166,8 +166,10 @@ async def require_admin(
 # --- Avatar helper ---
 
 
-async def _download_avatar_from_url(photo_url: str, member_id: str) -> str | None:
-    """Download avatar image from URL, resize and save as local WebP."""
+async def _download_avatar_from_url(
+    photo_url: str, member_id: str, storage_service=None
+) -> str | None:
+    """Download avatar image from URL, resize and save to Supabase (or local)."""
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(photo_url)
@@ -179,11 +181,17 @@ async def _download_avatar_from_url(photo_url: str, member_id: str) -> str | Non
         img = img.convert("RGB")
         img = img.resize((256, 256), Image.LANCZOS)
 
-        AVATARS_DIR.mkdir(parents=True, exist_ok=True)
-        save_path = AVATARS_DIR / f"{member_id}_tg.webp"
-        img.save(str(save_path), "WEBP", quality=85)
+        buf = io.BytesIO()
+        img.save(buf, "WEBP", quality=85)
+        image_bytes = buf.getvalue()
 
-        return f"/static/avatars/{member_id}_tg.webp"
+        if storage_service:
+            return await storage_service.upload(f"{member_id}_tg.webp", image_bytes)
+        else:
+            AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+            save_path = AVATARS_DIR / f"{member_id}_tg.webp"
+            save_path.write_bytes(image_bytes)
+            return f"/static/avatars/{member_id}_tg.webp"
     except Exception:
         logger.debug("Failed to download avatar from %s", photo_url, exc_info=True)
         return None
@@ -233,16 +241,21 @@ async def login_telegram(
         member.telegram_username = data.username
         needs_commit = True
 
-    # 5. Download and save Telegram photo locally (skip custom uploads)
+    # 5. Download and save Telegram photo (skip custom uploads)
     if data.photo_url:
-        has_custom_upload = (
+        has_custom_upload = bool(
             member.avatar_url
-            and member.avatar_url.startswith("/static/avatars/")
             and not member.avatar_url.endswith("_tg.webp")
+            and (
+                "/static/avatars/" in member.avatar_url
+                or "supabase.co" in member.avatar_url
+            )
         )
         if not has_custom_upload:
             local_url = await _download_avatar_from_url(
-                data.photo_url, str(member.id)
+                data.photo_url,
+                str(member.id),
+                storage_service=request.app.state.storage_service,
             )
             if local_url and local_url != member.avatar_url:
                 member.avatar_url = local_url

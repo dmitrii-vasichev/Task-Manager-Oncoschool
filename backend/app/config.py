@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     JWT_SECRET: str = ""  # If empty, derived from BOT_TOKEN
     TELEGRAM_BOT_USERNAME: str = ""
 
+    # Supabase Storage (for avatar uploads)
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_KEY: str = ""
+
     # General
     DEBUG: bool = False
     TIMEZONE: str = "Europe/Moscow"
@@ -68,6 +72,10 @@ class Settings(BaseSettings):
         if url.startswith("postgresql://"):
             url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
         return url
+
+    @property
+    def supabase_storage_configured(self) -> bool:
+        return bool(self.SUPABASE_URL and self.SUPABASE_SERVICE_KEY)
 
     @property
     def zoom_configured(self) -> bool:

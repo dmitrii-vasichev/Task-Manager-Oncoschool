@@ -19,7 +19,9 @@ export function AvatarUpload({ memberId, currentAvatarUrl, memberName, onAvatarC
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const isCustomAvatar = currentAvatarUrl?.includes("/static/avatars/");
+  const isCustomAvatar = currentAvatarUrl != null
+    && !currentAvatarUrl.endsWith("_tg.webp")
+    && (currentAvatarUrl.includes("/static/avatars/") || currentAvatarUrl.includes("supabase.co"));
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

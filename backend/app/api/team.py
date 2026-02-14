@@ -2,7 +2,9 @@ import io
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
 from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +17,7 @@ from app.db.repositories import DepartmentRepository, TeamMemberRepository
 from app.db.schemas import TeamMemberCreate, TeamMemberResponse, TeamMemberUpdate
 from app.services.permission_service import PermissionService
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/team", tags=["team"])
 member_repo = TeamMemberRepository()
 dept_repo = DepartmentRepository()
@@ -178,6 +181,7 @@ async def update_team_member(
 
 @router.post("/{member_id}/avatar")
 async def upload_avatar(
+    request: Request,
     member_id: uuid.UUID,
     file: UploadFile = File(...),
     member: TeamMember = Depends(require_moderator),
@@ -224,13 +228,20 @@ async def upload_avatar(
     img = img.convert("RGB")
     img.thumbnail((256, 256))
 
-    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
-    avatar_filename = f"{member_id}.webp"
-    avatar_path = AVATAR_DIR / avatar_filename
-    img.save(avatar_path, format="WEBP", quality=85)
+    buf = io.BytesIO()
+    img.save(buf, format="WEBP", quality=85)
+    image_bytes = buf.getvalue()
 
-    # Update member
-    avatar_url = f"/static/avatars/{avatar_filename}"
+    # Upload to Supabase Storage or local filesystem
+    storage_service = request.app.state.storage_service
+    if storage_service:
+        avatar_url = await storage_service.upload(f"{member_id}.webp", image_bytes)
+    else:
+        AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+        avatar_path = AVATAR_DIR / f"{member_id}.webp"
+        avatar_path.write_bytes(image_bytes)
+        avatar_url = f"/static/avatars/{member_id}.webp"
+
     await member_repo.update(session, member_id, avatar_url=avatar_url)
     await session.commit()
 
@@ -239,6 +250,7 @@ async def upload_avatar(
 
 @router.delete("/{member_id}/avatar")
 async def delete_avatar(
+    request: Request,
     member_id: uuid.UUID,
     member: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
@@ -248,10 +260,18 @@ async def delete_avatar(
     if not target:
         raise HTTPException(status_code=404, detail="Участник не найден")
 
-    # Delete file if exists
-    avatar_path = AVATAR_DIR / f"{member_id}.webp"
-    if avatar_path.exists():
-        avatar_path.unlink()
+    # Delete files from Supabase Storage or local filesystem
+    storage_service = request.app.state.storage_service
+    if storage_service:
+        try:
+            await storage_service.delete([f"{member_id}.webp", f"{member_id}_tg.webp"])
+        except Exception:
+            logger.warning("Failed to delete avatar from Supabase for %s", member_id, exc_info=True)
+    else:
+        for suffix in ("", "_tg"):
+            path = AVATAR_DIR / f"{member_id}{suffix}.webp"
+            if path.exists():
+                path.unlink()
 
     # Clear avatar_url
     await member_repo.update(session, member_id, avatar_url=None)

@@ -27,19 +27,17 @@ class AuthMiddleware(BaseMiddleware):
     - Автоматически подтягивает фото профиля из Telegram
     """
 
-    def __init__(self):
+    def __init__(self, storage_service=None):
         self.member_repo = TeamMemberRepository()
         self._avatar_last_checked: dict[int, float] = {}
+        self.storage_service = storage_service
 
     def _needs_avatar_check(self, telegram_id: int, avatar_url: str | None) -> bool:
         """Check if we should fetch avatar for this user."""
-        # Don't overwrite custom uploaded avatars
-        if (
-            avatar_url
-            and avatar_url.startswith("/static/avatars/")
-            and not avatar_url.endswith("_tg.webp")
-        ):
-            return False
+        # Don't overwrite custom uploaded avatars (local or Supabase)
+        if avatar_url and not avatar_url.endswith("_tg.webp"):
+            if avatar_url.startswith("/static/avatars/") or "supabase.co" in avatar_url:
+                return False
         # Rate limit: once per 24h
         last_checked = self._avatar_last_checked.get(telegram_id, 0)
         return (time.time() - last_checked) > AVATAR_CHECK_INTERVAL
@@ -47,7 +45,7 @@ class AuthMiddleware(BaseMiddleware):
     async def _fetch_and_save_avatar(
         self, bot: Bot, telegram_id: int, member_id: str
     ) -> str | None:
-        """Download Telegram profile photo and save as local WebP file."""
+        """Download Telegram profile photo and save to Supabase (or local)."""
         try:
             photos = await bot.get_user_profile_photos(telegram_id, limit=1)
             if not photos.photos:
@@ -69,14 +67,35 @@ class AuthMiddleware(BaseMiddleware):
             img = img.convert("RGB")
             img = img.resize((256, 256), Image.LANCZOS)
 
-            AVATARS_DIR.mkdir(parents=True, exist_ok=True)
-            save_path = AVATARS_DIR / f"{member_id}_tg.webp"
-            img.save(str(save_path), "WEBP", quality=85)
+            buf = io.BytesIO()
+            img.save(buf, "WEBP", quality=85)
+            image_bytes = buf.getvalue()
 
-            return f"/static/avatars/{member_id}_tg.webp"
+            if self.storage_service:
+                return await self.storage_service.upload(
+                    f"{member_id}_tg.webp", image_bytes
+                )
+            else:
+                AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+                save_path = AVATARS_DIR / f"{member_id}_tg.webp"
+                save_path.write_bytes(image_bytes)
+                return f"/static/avatars/{member_id}_tg.webp"
         except Exception:
             logger.debug("Failed to fetch avatar for tg_id=%s", telegram_id, exc_info=True)
             return None
+
+    @staticmethod
+    def _should_update_avatar(avatar_url: str | None) -> bool:
+        """Return True if this avatar can be overwritten by a Telegram photo."""
+        if not avatar_url:
+            return True
+        # Telegram auto-fetched photos can always be refreshed
+        if avatar_url.endswith("_tg.webp"):
+            return True
+        # Custom uploads (local or Supabase) must NOT be overwritten
+        if avatar_url.startswith("/static/avatars/") or "supabase.co" in avatar_url:
+            return False
+        return True
 
     async def _update_avatar_bg(
         self, bot: Bot, telegram_id: int, member_id: str, current_avatar: str | None
@@ -92,11 +111,7 @@ class AuthMiddleware(BaseMiddleware):
             async with async_session() as session:
                 async with session.begin():
                     member = await self.member_repo.get_by_telegram_id(session, telegram_id)
-                    if member and (
-                        not member.avatar_url
-                        or member.avatar_url.startswith("http")
-                        or member.avatar_url.endswith("_tg.webp")
-                    ):
+                    if member and self._should_update_avatar(member.avatar_url):
                         member.avatar_url = avatar_url
         except Exception:
             logger.debug("Failed to save avatar for tg_id=%s", telegram_id, exc_info=True)

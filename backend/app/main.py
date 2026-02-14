@@ -29,6 +29,7 @@ from app.config import settings
 from app.db.database import async_session
 from app.services.meeting_scheduler_service import MeetingSchedulerService
 from app.services.reminder_service import ReminderService
+from app.services.supabase_storage import SupabaseStorageService
 from app.services.zoom_service import ZoomService
 
 logging.basicConfig(level=logging.INFO)
@@ -110,9 +111,21 @@ bot = Bot(token=settings.BOT_TOKEN)
 app.state.bot = bot
 dp = Dispatcher()
 
+# Supabase Storage (optional — graceful fallback to local filesystem)
+storage_service = None
+if settings.supabase_storage_configured:
+    storage_service = SupabaseStorageService(
+        supabase_url=settings.SUPABASE_URL,
+        service_key=settings.SUPABASE_SERVICE_KEY,
+    )
+    logger.info("SupabaseStorageService initialized")
+else:
+    logger.info("Supabase Storage not configured — using local filesystem for avatars")
+app.state.storage_service = storage_service
+
 # Bot Middleware
-dp.message.middleware(AuthMiddleware())
-dp.callback_query.middleware(AuthMiddleware())
+dp.message.middleware(AuthMiddleware(storage_service=storage_service))
+dp.callback_query.middleware(AuthMiddleware(storage_service=storage_service))
 
 # Bot Роутеры
 dp.include_router(common_router)
