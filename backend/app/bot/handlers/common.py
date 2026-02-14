@@ -88,6 +88,7 @@ async def cmd_help(message: Message, member: TeamMember) -> None:
             "/meetings — предстоящие и прошедшие встречи\n"
             "/team — управление командой\n"
             "/subscribe — подписки на уведомления\n"
+            "/aimodel — текущая AI-модель\n"
             "/stats — статистика"
         )
         text += mod_commands
@@ -96,7 +97,6 @@ async def cmd_help(message: Message, member: TeamMember) -> None:
         admin_commands = (
             "\n\n<b>\U0001f451 Администрирование:</b>\n\n"
             "/setrole @username admin|moderator|member — изменить роль\n"
-            "/aimodel — текущая AI-модель\n"
             "/reminders — настройки напоминаний\n"
             "\u2699\ufe0f Настройки AI, напоминания — через веб-интерфейс"
         )

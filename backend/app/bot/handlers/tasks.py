@@ -43,9 +43,7 @@ def _format_task_line(task) -> str:
     prio = PRIORITY_EMOJI.get(task.priority, "")
     source_icon = "🎤 " if task.source == "voice" else ""
     deadline_str = f" · 📅 {task.deadline.strftime('%d.%m')}" if task.deadline else ""
-    updates_count = len(task.updates) if hasattr(task, "updates") and task.updates else 0
-    updates_str = f" ({updates_count} обн.)" if updates_count > 0 else ""
-    return f"{source_icon}#{task.short_id} · {task.title} · {prio} {task.priority}{deadline_str}{updates_str}"
+    return f"{source_icon}#{task.short_id} · {task.title} · {prio} {task.priority}{deadline_str}"
 
 
 def _format_task_detail(task) -> str:

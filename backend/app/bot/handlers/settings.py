@@ -481,7 +481,7 @@ async def cmd_myreminder(
 # ══════════════════════════════════════════
 
 
-@router.message(Command("aimodel"), IsAdminFilter())
+@router.message(Command("aimodel"), IsModeratorFilter())
 async def cmd_aimodel(
     message: Message,
     member: TeamMember,
