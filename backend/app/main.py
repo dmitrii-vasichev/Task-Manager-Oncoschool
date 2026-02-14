@@ -110,6 +110,7 @@ static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 bot = Bot(token=settings.BOT_TOKEN)
+app.state.bot = bot
 dp = Dispatcher()
 
 # Bot Middleware

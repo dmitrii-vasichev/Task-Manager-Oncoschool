@@ -129,6 +129,22 @@ class ApiClient {
     return this.request<TeamMember>("/api/auth/me");
   }
 
+  async initiateWebLogin(username: string): Promise<{ request_id: string; expires_at: string }> {
+    return this.request("/api/auth/web-login", {
+      method: "POST",
+      body: JSON.stringify({ username }),
+    });
+  }
+
+  async checkWebLoginStatus(requestId: string): Promise<{
+    status: "pending" | "confirmed" | "expired";
+    access_token?: string;
+    member_id?: string;
+    role?: string;
+  }> {
+    return this.request(`/api/auth/web-login/${requestId}/status`);
+  }
+
   logout() {
     this.setToken(null);
   }

@@ -1,12 +1,17 @@
-from aiogram import Router
+import logging
+
+from aiogram import Bot, F, Router
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, WebAppInfo
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.config import settings
 from app.db.models import TeamMember
 from app.db.repositories import TeamMemberRepository
 from app.services.permission_service import PermissionService
+from app.services.web_login_service import web_login_service
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -152,3 +157,100 @@ async def cmd_setrole(
         f"\u2705 Роль @{username} изменена:\n"
         f"{role_labels.get(old_role, old_role)} → {role_labels.get(new_role, new_role)}",
     )
+
+
+# ── Web Login via Telegram confirmation ──
+
+
+async def send_web_login_confirmation(
+    bot: Bot, telegram_id: int, request_id: str
+) -> int | None:
+    """Send login confirmation request to user in Telegram.
+
+    Returns the message_id of the sent message, or None on failure.
+    """
+    text = (
+        "\U0001f510 <b>Запрос на вход в веб-портал</b>\n\n"
+        "Кто-то запрашивает вход в Task Manager Онкошколы через ваш аккаунт.\n\n"
+        "Если это вы — нажмите кнопку ниже. Запрос действителен 5 минут."
+    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="\u2705 Подтвердить вход",
+                callback_data=f"web_login_confirm:{request_id}",
+            ),
+            InlineKeyboardButton(
+                text="\u274c Отклонить",
+                callback_data=f"web_login_reject:{request_id}",
+            ),
+        ]
+    ])
+
+    try:
+        msg = await bot.send_message(
+            chat_id=telegram_id, text=text, reply_markup=keyboard, parse_mode="HTML"
+        )
+        # Store message_id so we can edit the message later
+        login_request = web_login_service.get_request(request_id)
+        if login_request:
+            login_request.message_id = msg.message_id
+        return msg.message_id
+    except Exception:
+        logger.exception("Failed to send web login confirmation to tg_id=%s", telegram_id)
+        return None
+
+
+@router.callback_query(F.data.startswith("web_login_confirm:"))
+async def on_web_login_confirm(callback: CallbackQuery) -> None:
+    """User confirmed web login from Telegram."""
+    request_id = callback.data.split(":", 1)[1]
+    login_request = web_login_service.get_request(request_id)
+
+    if login_request is None:
+        await callback.answer("\u274c Запрос не найден или истёк", show_alert=True)
+        return
+
+    # Security: only the target user can confirm
+    if callback.from_user.id != login_request.telegram_id:
+        await callback.answer("\u26d4 Этот запрос не для вас", show_alert=True)
+        return
+
+    if login_request.status != "pending":
+        await callback.answer("\u26a0\ufe0f Запрос уже обработан", show_alert=True)
+        return
+
+    web_login_service.confirm_request(request_id)
+    await callback.answer("\u2705 Вход подтверждён!")
+
+    # Edit the original message — remove keyboard, show confirmation
+    try:
+        await callback.message.edit_text(
+            "\u2705 Вход в веб-портал подтверждён.\nМожете вернуться в браузер.",
+        )
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("web_login_reject:"))
+async def on_web_login_reject(callback: CallbackQuery) -> None:
+    """User rejected web login from Telegram."""
+    request_id = callback.data.split(":", 1)[1]
+    login_request = web_login_service.get_request(request_id)
+
+    if login_request is None:
+        await callback.answer("\u274c Запрос не найден или истёк", show_alert=True)
+        return
+
+    # Security: only the target user can reject
+    if callback.from_user.id != login_request.telegram_id:
+        await callback.answer("\u26d4 Этот запрос не для вас", show_alert=True)
+        return
+
+    web_login_service.delete_request(request_id)
+    await callback.answer("\u274c Запрос на вход отклонён")
+
+    try:
+        await callback.message.edit_text("\u274c Запрос на вход отклонён.")
+    except Exception:
+        pass

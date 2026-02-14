@@ -21,6 +21,7 @@ from app.config import settings
 from app.db.database import get_session
 from app.db.models import TeamMember
 from app.db.repositories import TeamMemberRepository
+from app.services.web_login_service import web_login_service
 
 logger = logging.getLogger(__name__)
 auth_logger = logging.getLogger("auth.audit")
@@ -59,6 +60,22 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     member_id: str
     role: str
+
+
+class WebLoginInitRequest(BaseModel):
+    username: str  # Telegram @username (with or without @)
+
+
+class WebLoginInitResponse(BaseModel):
+    request_id: str
+    expires_at: str
+
+
+class WebLoginStatusResponse(BaseModel):
+    status: str  # "pending" | "confirmed" | "expired"
+    access_token: str | None = None
+    member_id: str | None = None
+    role: str | None = None
 
 
 # --- Token helpers ---
@@ -348,15 +365,103 @@ async def login_mini_app(
 
 @router.get("/config")
 async def get_auth_config():
-    """Public endpoint — returns bot username for Telegram Login Widget.
-
-    Note: DEBUG flag is intentionally NOT exposed to prevent
-    information disclosure about server configuration.
-    """
+    """Public endpoint — returns bot username and auth mode config."""
     return {
         "bot_username": settings.TELEGRAM_BOT_USERNAME,
         "debug": settings.DEBUG,
     }
+
+
+@router.post("/web-login", response_model=WebLoginInitResponse)
+@limiter.limit("5/minute")
+async def web_login_init(
+    request: Request,
+    data: WebLoginInitRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Initiate web login via Telegram bot confirmation."""
+    client_ip = request.client.host if request.client else "unknown"
+    username = data.username.lstrip("@").lower()
+
+    member = await member_repo.get_by_telegram_username(session, username)
+    if not member or not member.is_active:
+        auth_logger.warning(
+            "web_login FAIL: user not found, username=%s, ip=%s", username, client_ip
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"Пользователь @{username} не найден. "
+                "Убедитесь, что вы зарегистрированы — напишите /start боту"
+            ),
+        )
+
+    login_request = web_login_service.create_request(member.telegram_id)
+    auth_logger.info(
+        "web_login initiated: username=%s, telegram_id=%s, request_id=%s, ip=%s",
+        username, member.telegram_id, login_request.request_id, client_ip,
+    )
+
+    # Send confirmation message to user's Telegram
+    bot = request.app.state.bot
+    if bot:
+        from app.bot.handlers.common import send_web_login_confirmation
+
+        await send_web_login_confirmation(
+            bot, member.telegram_id, login_request.request_id
+        )
+    else:
+        logger.warning("Bot not available — cannot send web login confirmation to tg_id=%s", member.telegram_id)
+
+    return WebLoginInitResponse(
+        request_id=login_request.request_id,
+        expires_at=login_request.expires_at.isoformat(),
+    )
+
+
+@router.get("/web-login/{request_id}/status", response_model=WebLoginStatusResponse)
+@limiter.limit("30/minute")
+async def web_login_status(
+    request: Request,
+    request_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Check web login request status (called by frontend polling)."""
+    login_request = web_login_service.get_request(request_id)
+    if login_request is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Запрос на вход не найден",
+        )
+
+    if login_request.status == "expired":
+        return WebLoginStatusResponse(status="expired")
+
+    if login_request.status == "confirmed":
+        member = await member_repo.get_by_telegram_id(
+            session, login_request.telegram_id
+        )
+        if not member or not member.is_active:
+            web_login_service.delete_request(request_id)
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Пользователь не найден или деактивирован",
+            )
+        token = create_access_token(member.id)
+        # Clean up: remove request to prevent issuing multiple tokens
+        web_login_service.delete_request(request_id)
+        auth_logger.info(
+            "web_login confirmed: telegram_id=%s, request_id=%s",
+            login_request.telegram_id, request_id,
+        )
+        return WebLoginStatusResponse(
+            status="confirmed",
+            access_token=token,
+            member_id=str(member.id),
+            role=member.role,
+        )
+
+    return WebLoginStatusResponse(status="pending")
 
 
 @router.get("/me", response_model=dict)

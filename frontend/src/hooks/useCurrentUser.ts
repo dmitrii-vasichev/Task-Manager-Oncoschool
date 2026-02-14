@@ -16,6 +16,7 @@ interface AuthContextValue {
   loading: boolean;
   loginWithTelegram: (data: TelegramAuthData) => Promise<void>;
   loginWithTelegramId: (telegramId: number) => Promise<void>;
+  loginWithWebLogin: (token: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -70,12 +71,18 @@ export function useAuthProvider(): AuthContextValue {
     setUser(me);
   }, []);
 
+  const loginWithWebLogin = useCallback(async (token: string) => {
+    api.setToken(token);
+    const me = await api.getMe();
+    setUser(me);
+  }, []);
+
   const logout = useCallback(() => {
     api.logout();
     setUser(null);
   }, []);
 
-  return { user, loading, loginWithTelegram, loginWithTelegramId, logout, refreshUser };
+  return { user, loading, loginWithTelegram, loginWithTelegramId, loginWithWebLogin, logout, refreshUser };
 }
 
 export function createAuthProvider(children: ReactNode, value: AuthContextValue) {

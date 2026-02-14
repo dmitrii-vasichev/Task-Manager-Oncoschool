@@ -45,7 +45,9 @@ class TeamMemberRepository:
         return list(result.scalars().all())
 
     async def get_by_telegram_username(self, session: AsyncSession, username: str) -> TeamMember | None:
-        stmt = select(TeamMember).where(TeamMember.telegram_username == username)
+        stmt = select(TeamMember).where(
+            func.lower(TeamMember.telegram_username) == username.lower()
+        )
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
 
