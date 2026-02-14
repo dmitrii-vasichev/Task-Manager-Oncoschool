@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -187,8 +187,9 @@ async def analytics_meetings(
     tasks_from = tasks_result.scalar_one()
 
     # Meetings this month
-    now = datetime.now(timezone.utc)
-    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # Keep UTC timestamp naive to match DB columns stored without tz info.
+    now_utc_naive = datetime.utcnow()
+    month_start = now_utc_naive.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     month_stmt = select(func.count(Meeting.id)).where(Meeting.created_at >= month_start)
     month_result = await session.execute(month_stmt)
     this_month = month_result.scalar_one()

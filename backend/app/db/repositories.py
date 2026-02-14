@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 
 logger = logging.getLogger(__name__)
 
-from datetime import datetime, timezone
+from datetime import datetime
 
 from app.db.models import (
     AppSettings,
@@ -243,9 +243,15 @@ class MeetingRepository:
         return result.scalar_one_or_none()
 
     async def get_upcoming(self, session: AsyncSession, limit: int = 10) -> list[Meeting]:
+        # Keep UTC timestamp naive to match DB columns stored without tz info.
+        now_utc_naive = datetime.utcnow()
         stmt = (
             select(Meeting)
-            .where(Meeting.status == "scheduled", Meeting.meeting_date > datetime.now(timezone.utc))
+            .where(
+                Meeting.status == "scheduled",
+                Meeting.meeting_date.is_not(None),
+                Meeting.meeting_date > now_utc_naive,
+            )
             .order_by(Meeting.meeting_date.asc())
             .limit(limit)
         )
