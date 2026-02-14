@@ -31,6 +31,7 @@ class OverviewResponse(BaseModel):
 class MemberStats(BaseModel):
     id: str
     full_name: str
+    avatar_url: str | None
     role: str
     total_tasks: int
     tasks_done: int
@@ -158,6 +159,7 @@ async def analytics_members(
             MemberStats(
                 id=str(m.id),
                 full_name=m.full_name,
+                avatar_url=m.avatar_url,
                 role=m.role,
                 total_tasks=row.total if row else 0,
                 tasks_done=row.done if row else 0,

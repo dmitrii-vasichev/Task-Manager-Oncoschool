@@ -324,6 +324,7 @@ export interface OverviewAnalytics {
 export interface MemberStats {
   id: string;
   full_name: string;
+  avatar_url: string | null;
   role: MemberRole;
   total_tasks: number;
   tasks_done: number;

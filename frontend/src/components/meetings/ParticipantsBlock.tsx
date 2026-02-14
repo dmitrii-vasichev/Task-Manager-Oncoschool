@@ -15,11 +15,10 @@ export function ParticipantsBlock({
   participants,
   participantNames,
 }: ParticipantsBlockProps) {
-  const names = participants.length > 0
-    ? participants.map((p) => p.full_name)
-    : participantNames || [];
+  const hasMembers = participants.length > 0;
+  const count = hasMembers ? participants.length : (participantNames?.length ?? 0);
 
-  if (names.length === 0) return null;
+  if (count === 0) return null;
 
   return (
     <div className="rounded-2xl border border-border/60 bg-card p-4">
@@ -29,19 +28,29 @@ export function ParticipantsBlock({
         </div>
         <span className="text-sm font-heading font-semibold">Участники</span>
         <span className="text-2xs text-muted-foreground/60 ml-auto">
-          {names.length}
+          {count}
         </span>
       </div>
       <div className="flex flex-wrap gap-2">
-        {names.map((name, i) => (
-          <div
-            key={i}
-            className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/50 text-sm"
-          >
-            <UserAvatar name={name} size="sm" />
-            <span className="text-foreground font-medium">{name}</span>
-          </div>
-        ))}
+        {hasMembers
+          ? participants.map((p, i) => (
+              <div
+                key={i}
+                className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/50 text-sm"
+              >
+                <UserAvatar name={p.full_name} avatarUrl={p.avatar_url} size="sm" />
+                <span className="text-foreground font-medium">{p.full_name}</span>
+              </div>
+            ))
+          : participantNames?.map((name, i) => (
+              <div
+                key={i}
+                className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-muted/50 text-sm"
+              >
+                <UserAvatar name={name} size="sm" />
+                <span className="text-foreground font-medium">{name}</span>
+              </div>
+            ))}
       </div>
     </div>
   );

@@ -503,7 +503,7 @@ export default function AnalyticsPage() {
                     key={m.id}
                     className="flex items-center gap-3 p-3 rounded-xl border border-amber-500/20 bg-card"
                   >
-                    <UserAvatar name={m.full_name} size="sm" />
+                    <UserAvatar name={m.full_name} avatarUrl={m.avatar_url} size="sm" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">
                         {m.full_name}
@@ -608,7 +608,7 @@ export default function AnalyticsPage() {
                         </td>
                         <td className="px-3 py-3">
                           <div className="flex items-center gap-2">
-                            <UserAvatar name={m.full_name} size="sm" />
+                            <UserAvatar name={m.full_name} avatarUrl={m.avatar_url} size="sm" />
                             <span className="font-medium text-sm truncate">
                               {m.full_name}
                             </span>

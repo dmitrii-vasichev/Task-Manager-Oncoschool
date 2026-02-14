@@ -6,6 +6,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import { api } from "@/lib/api";
@@ -57,6 +58,20 @@ export function useAuthProvider(): AuthContextValue {
 
   useEffect(() => {
     refreshUser();
+  }, [refreshUser]);
+
+  // Re-fetch user data when tab regains focus (picks up avatar changes etc.)
+  const lastRefreshRef = useRef(0);
+  useEffect(() => {
+    function onFocus() {
+      // Throttle: at most once per 30 seconds
+      if (Date.now() - lastRefreshRef.current < 30_000) return;
+      if (!api.getToken()) return;
+      lastRefreshRef.current = Date.now();
+      refreshUser();
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
   }, [refreshUser]);
 
   const loginWithTelegram = useCallback(async (data: TelegramAuthData) => {
