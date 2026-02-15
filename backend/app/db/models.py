@@ -118,6 +118,7 @@ class MeetingSchedule(Base):
         ARRAY(UUID(as_uuid=True)), default=list, server_default="{}"
     )
     zoom_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    last_triggered_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("team_members.id"), nullable=True

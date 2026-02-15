@@ -7,7 +7,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.db.models import Meeting, MeetingParticipant, MeetingSchedule
+from app.db.models import Meeting, MeetingParticipant, MeetingSchedule, TeamMember
 from app.db.repositories import MeetingScheduleRepository
 
 logger = logging.getLogger(__name__)
@@ -30,8 +30,6 @@ class MeetingSchedulerService:
         self.session_maker = session_maker
         self.zoom_service = zoom_service
         self.scheduler = AsyncIOScheduler()
-        # Track: "schedule_id:date" -> True (to avoid duplicates)
-        self._triggered_today: dict[str, bool] = {}
 
     def start(self) -> None:
         """Start the scheduler with a per-minute check."""
@@ -62,7 +60,7 @@ class MeetingSchedulerService:
 
                 for schedule in schedules:
                     try:
-                        if await self._should_trigger(schedule, now_utc):
+                        if self._should_trigger(schedule, now_utc):
                             await self._trigger_meeting(session, schedule, now_utc)
                     except Exception as e:
                         logger.error(
@@ -72,16 +70,14 @@ class MeetingSchedulerService:
         except Exception as e:
             logger.error(f"Error in _check_schedules: {e}", exc_info=True)
 
-        # Cleanup old triggered entries (keep only today)
-        today = datetime.now(ZoneInfo("UTC")).date()
-        self._triggered_today = {
-            k: v for k, v in self._triggered_today.items()
-            if k.endswith(str(today))
-        }
-
-    async def _should_trigger(self, schedule: MeetingSchedule, now_utc: datetime) -> bool:
+    def _should_trigger(self, schedule: MeetingSchedule, now_utc: datetime) -> bool:
         """Check all conditions for triggering a schedule."""
-        # 1. Day of week — check in LOCAL timezone to handle UTC/local day mismatch
+        # 1. Already triggered today? (DB-based, survives restarts)
+        today_utc = now_utc.date()
+        if schedule.last_triggered_date and schedule.last_triggered_date >= today_utc:
+            return False
+
+        # 2. Day of week — check in LOCAL timezone to handle UTC/local day mismatch
         meeting_dt_utc = datetime.combine(
             now_utc.date(), schedule.time_utc, tzinfo=ZoneInfo("UTC")
         )
@@ -89,7 +85,7 @@ class MeetingSchedulerService:
         if meeting_dt_local.isoweekday() != schedule.day_of_week:
             return False
 
-        # 2. Recurrence
+        # 3. Recurrence
         if schedule.recurrence == "biweekly":
             week_number = meeting_dt_local.isocalendar()[1]
             if week_number % 2 != 0:
@@ -98,7 +94,7 @@ class MeetingSchedulerService:
             if not self._is_last_workday_friday(meeting_dt_local):
                 return False
 
-        # 3. Time: trigger at (time_utc - reminder_minutes_before) with catch-up
+        # 4. Time: trigger at (time_utc - reminder_minutes_before) with catch-up
         trigger_time = self._calc_trigger_time(schedule)
         current_minutes = now_utc.hour * 60 + now_utc.minute
         trigger_minutes = trigger_time.hour * 60 + trigger_time.minute
@@ -118,11 +114,6 @@ class MeetingSchedulerService:
             in_catchup = current_minutes >= trigger_minutes or current_minutes <= meeting_minutes
 
         if not in_trigger_window and not in_catchup:
-            return False
-
-        # 4. Already triggered today?
-        key = f"{schedule.id}:{now_utc.date()}"
-        if key in self._triggered_today:
             return False
 
         return True
@@ -210,11 +201,11 @@ class MeetingSchedulerService:
 
         # 3. Send Telegram reminders (only if enabled)
         if schedule.reminder_enabled:
-            await self._send_reminders(schedule, meeting, zoom_data)
+            await self._send_reminders(session, schedule, meeting, zoom_data)
 
-        # 4. Mark as triggered
-        key = f"{schedule.id}:{now_utc.date()}"
-        self._triggered_today[key] = True
+        # 4. Mark as triggered in DB (survives restarts)
+        schedule.last_triggered_date = now_utc.date()
+        await session.commit()
 
     def _next_meeting_datetime(self, schedule: MeetingSchedule, now_utc: datetime) -> datetime:
         """Calculate the meeting datetime (UTC-aware) for today's trigger."""
@@ -237,18 +228,38 @@ class MeetingSchedulerService:
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def _send_reminders(self, schedule: MeetingSchedule, meeting: Meeting, zoom_data) -> None:
-        """Send reminders to all telegram_targets."""
+    async def _send_reminders(
+        self, session, schedule: MeetingSchedule, meeting: Meeting, zoom_data
+    ) -> None:
+        """Send reminders to all telegram_targets, including participant @mentions."""
         text = schedule.reminder_text or self._default_reminder_text(schedule, meeting)
+
+        # Add participant @username mentions
+        if schedule.participant_ids:
+            members = await self._get_participants(session, schedule.participant_ids)
+            mentions = []
+            for m in members:
+                if m.telegram_username:
+                    username = m.telegram_username.lstrip("@")
+                    mentions.append(f"@{username}")
+            if mentions:
+                text += "\n\n" + " ".join(mentions)
 
         if zoom_data and zoom_data.get("join_url"):
             text += f"\n\nСсылка для подключения: {zoom_data['join_url']}"
 
+        # Deduplicate targets by chat_id+thread_id to avoid sending twice
+        seen_targets: set[str] = set()
         for target in schedule.telegram_targets or []:
             chat_id = target.get("chat_id")
             thread_id = target.get("thread_id")
             if not chat_id:
                 continue
+            target_key = f"{chat_id}:{thread_id}"
+            if target_key in seen_targets:
+                logger.warning(f"Skipping duplicate target {target_key} for '{schedule.title}'")
+                continue
+            seen_targets.add(target_key)
             try:
                 kwargs = {"chat_id": int(chat_id), "text": text, "parse_mode": "HTML"}
                 if thread_id:
@@ -257,6 +268,18 @@ class MeetingSchedulerService:
                 logger.info(f"Reminder sent to chat {chat_id} for '{schedule.title}'")
             except Exception as e:
                 logger.error(f"Failed to send reminder to {chat_id}: {e}")
+
+    @staticmethod
+    async def _get_participants(session, participant_ids: list) -> list[TeamMember]:
+        """Fetch TeamMember objects by their IDs."""
+        if not participant_ids:
+            return []
+        stmt = select(TeamMember).where(
+            TeamMember.id.in_(participant_ids),
+            TeamMember.is_active.is_(True),
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
 
     @staticmethod
     def _default_reminder_text(schedule: MeetingSchedule, meeting: Meeting) -> str:
