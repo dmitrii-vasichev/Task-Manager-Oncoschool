@@ -98,6 +98,11 @@ async def handle_voice(
     if not _should_process_voice(message):
         return
 
+    # Voice tasks only for admin/moderator
+    if not PermissionService.is_moderator(member):
+        await message.reply("⛔ Создание задач голосом доступно только администраторам и модераторам.")
+        return
+
     voice = message.voice or message.video_note
 
     # Check file size (Whisper limit 25MB, soft limit 20MB)
