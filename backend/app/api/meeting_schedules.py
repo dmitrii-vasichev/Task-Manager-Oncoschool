@@ -1,19 +1,22 @@
+import logging
 import uuid
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from zoneinfo import ZoneInfo
 
 from app.api.auth import get_current_user, require_moderator
 from app.db.database import get_session
-from app.db.models import TeamMember
+from app.db.models import Meeting, MeetingParticipant, TeamMember
 from app.db.repositories import MeetingScheduleRepository, TelegramTargetRepository, TeamMemberRepository
 from app.db.schemas import (
     MeetingScheduleCreate,
     MeetingScheduleResponse,
     MeetingScheduleUpdate,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/meeting-schedules", tags=["meeting-schedules"])
 
@@ -31,6 +34,29 @@ def _local_to_utc(time_local: str, timezone: str) -> time:
     local_dt = local_dt.replace(tzinfo=ZoneInfo(timezone))
     utc_dt = local_dt.astimezone(ZoneInfo("UTC"))
     return utc_dt.time()
+
+
+def _calc_next_meeting_datetime(
+    day_of_week: int, time_utc: time, timezone_str: str
+) -> datetime | None:
+    """Calculate the next meeting datetime (naive UTC) for a given schedule.
+
+    Iterates 0-7 days ahead, finds the first date where:
+    - the meeting time converted to local timezone matches day_of_week
+    - the meeting time is in the future
+    """
+    now_utc = datetime.now(ZoneInfo("UTC"))
+    tz = ZoneInfo(timezone_str)
+
+    for days_ahead in range(8):
+        candidate_date = now_utc.date() + timedelta(days=days_ahead)
+        candidate_dt = datetime.combine(candidate_date, time_utc, tzinfo=ZoneInfo("UTC"))
+        candidate_local = candidate_dt.astimezone(tz)
+
+        if candidate_local.isoweekday() == day_of_week and candidate_dt > now_utc:
+            return candidate_dt.replace(tzinfo=None)  # Return naive UTC
+
+    return None
 
 
 @router.get("", response_model=list[MeetingScheduleResponse])
@@ -59,6 +85,7 @@ async def get_schedule(
 @router.post("", response_model=MeetingScheduleResponse, status_code=status.HTTP_201_CREATED)
 async def create_schedule(
     data: MeetingScheduleCreate,
+    request: Request,
     member: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
 ):
@@ -109,6 +136,42 @@ async def create_schedule(
         zoom_enabled=data.zoom_enabled,
         created_by_id=member.id,
     )
+
+    # Create the first upcoming meeting immediately so it appears in the UI
+    next_meeting_date = _calc_next_meeting_datetime(
+        data.day_of_week, time_utc, data.timezone
+    )
+    if next_meeting_date:
+        zoom_data = None
+        zoom_service = getattr(request.app.state, "zoom_service", None)
+        if data.zoom_enabled and zoom_service:
+            try:
+                tz_aware = next_meeting_date.replace(tzinfo=ZoneInfo("UTC"))
+                zoom_data = await zoom_service.create_meeting(
+                    topic=data.title,
+                    start_time=tz_aware,
+                    duration=data.duration_minutes,
+                    timezone=data.timezone,
+                )
+            except Exception as e:
+                logger.warning(f"Zoom create failed for new schedule: {e}")
+
+        meeting = Meeting(
+            title=data.title,
+            meeting_date=next_meeting_date,
+            schedule_id=schedule.id,
+            status="scheduled",
+            zoom_meeting_id=str(zoom_data["id"]) if zoom_data else None,
+            zoom_join_url=zoom_data.get("join_url") if zoom_data else None,
+            created_by_id=member.id,
+        )
+        session.add(meeting)
+        await session.flush()
+
+        if data.participant_ids:
+            for pid in data.participant_ids:
+                session.add(MeetingParticipant(meeting_id=meeting.id, member_id=pid))
+
     await session.commit()
     return schedule
 

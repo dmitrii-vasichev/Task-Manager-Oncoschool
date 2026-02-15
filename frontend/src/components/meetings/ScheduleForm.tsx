@@ -51,6 +51,36 @@ const REMINDER_OPTIONS = [
   { value: "120", label: "за 2 часа" },
 ];
 
+const TIMEZONE_OPTIONS = [
+  { value: "Europe/Moscow", label: "Москва (МСК)" },
+  { value: "Europe/Kaliningrad", label: "Калининград (UTC+2)" },
+  { value: "Europe/Samara", label: "Самара (UTC+4)" },
+  { value: "Asia/Yekaterinburg", label: "Екатеринбург (UTC+5)" },
+  { value: "Asia/Omsk", label: "Омск (UTC+6)" },
+  { value: "Asia/Krasnoyarsk", label: "Красноярск (UTC+7)" },
+  { value: "Asia/Irkutsk", label: "Иркутск (UTC+8)" },
+  { value: "Asia/Yakutsk", label: "Якутск (UTC+9)" },
+  { value: "Asia/Vladivostok", label: "Владивосток (UTC+10)" },
+  { value: "Asia/Kamchatka", label: "Камчатка (UTC+12)" },
+  { value: "Europe/London", label: "Лондон (GMT)" },
+  { value: "Europe/Berlin", label: "Берлин (CET)" },
+  { value: "America/New_York", label: "Нью-Йорк (EST)" },
+  { value: "America/Chicago", label: "Чикаго (CST)" },
+  { value: "America/Denver", label: "Денвер (MST)" },
+  { value: "America/Los_Angeles", label: "Лос-Анджелес (PST)" },
+  { value: "Asia/Dubai", label: "Дубай (UTC+4)" },
+  { value: "Asia/Tokyo", label: "Токио (JST)" },
+];
+
+function getTimezoneShortLabel(tz: string): string {
+  const opt = TIMEZONE_OPTIONS.find((o) => o.value === tz);
+  if (opt) {
+    const match = opt.label.match(/\((.+)\)/);
+    return match ? match[1] : tz;
+  }
+  return tz;
+}
+
 function utcTimeToLocal(timeUtc: string, timezone: string): string {
   try {
     const [h, m] = timeUtc.split(":").map(Number);
@@ -84,6 +114,7 @@ export function ScheduleForm({
 
   const [title, setTitle] = useState(schedule?.title ?? "");
   const [dayOfWeek, setDayOfWeek] = useState(String(schedule?.day_of_week ?? 1));
+  const [timezone, setTimezone] = useState(schedule?.timezone ?? "Europe/Moscow");
   const [timeLocal, setTimeLocal] = useState(
     schedule ? utcTimeToLocal(schedule.time_utc, schedule.timezone) : "15:00"
   );
@@ -150,7 +181,7 @@ export function ScheduleForm({
         title: title.trim(),
         day_of_week: Number(dayOfWeek),
         time_local: timeLocal,
-        timezone: "Europe/Moscow",
+        timezone,
         duration_minutes: Number(duration),
         recurrence,
         reminder_enabled: reminderEnabled,
@@ -214,7 +245,7 @@ export function ScheduleForm({
             </div>
             <div>
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Время (МСК)
+                Время ({getTimezoneShortLabel(timezone)})
               </Label>
               <Input
                 type="time"
@@ -223,6 +254,25 @@ export function ScheduleForm({
                 className="mt-1.5 rounded-xl"
               />
             </div>
+          </div>
+
+          {/* Timezone */}
+          <div>
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Часовой пояс
+            </Label>
+            <Select value={timezone} onValueChange={setTimezone}>
+              <SelectTrigger className="mt-1.5 rounded-xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TIMEZONE_OPTIONS.map((tz) => (
+                  <SelectItem key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Duration + Recurrence */}

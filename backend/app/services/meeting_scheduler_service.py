@@ -4,9 +4,10 @@ from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.db.models import Meeting, MeetingSchedule
+from app.db.models import Meeting, MeetingParticipant, MeetingSchedule
 from app.db.repositories import MeetingScheduleRepository
 
 logger = logging.getLogger(__name__)
@@ -79,32 +80,47 @@ class MeetingSchedulerService:
 
     async def _should_trigger(self, schedule: MeetingSchedule, now_utc: datetime) -> bool:
         """Check all conditions for triggering a schedule."""
-        if not schedule.reminder_enabled:
+        # NOTE: reminder_enabled no longer gates meeting creation —
+        # meetings are always created, reminders are sent only if enabled.
+
+        # 1. Day of week — check in LOCAL timezone to handle UTC/local day mismatch
+        meeting_dt_utc = datetime.combine(
+            now_utc.date(), schedule.time_utc, tzinfo=ZoneInfo("UTC")
+        )
+        meeting_dt_local = meeting_dt_utc.astimezone(ZoneInfo(schedule.timezone))
+        if meeting_dt_local.isoweekday() != schedule.day_of_week:
             return False
 
-        # 1. Day of week
-        current_dow = now_utc.isoweekday()  # 1=Mon
-        if schedule.day_of_week != current_dow:
-            return False
-
-        # 2. Recurrence
+        # 2. Recurrence (use local date for week/month checks)
         if schedule.recurrence == "biweekly":
-            week_number = now_utc.isocalendar()[1]
+            week_number = meeting_dt_local.isocalendar()[1]
             if week_number % 2 != 0:
                 return False
         elif schedule.recurrence == "monthly_last_workday":
-            if not self._is_last_workday_friday(now_utc):
+            if not self._is_last_workday_friday(meeting_dt_local):
                 return False
 
-        # 3. Time: trigger at (time_utc - reminder_minutes_before)
+        # 3. Time: trigger at (time_utc - reminder_minutes_before) with catch-up
         trigger_time = self._calc_trigger_time(schedule)
         current_minutes = now_utc.hour * 60 + now_utc.minute
         trigger_minutes = trigger_time.hour * 60 + trigger_time.minute
+        meeting_minutes = schedule.time_utc.hour * 60 + schedule.time_utc.minute
+
+        # Check normal ±1 minute trigger window
         diff = abs(current_minutes - trigger_minutes)
-        # Handle midnight wrap
         if diff > 720:
             diff = 1440 - diff
-        if diff > 1:
+        in_trigger_window = diff <= 1
+
+        # Catch-up: if trigger time has passed but meeting time hasn't,
+        # still allow (handles schedule created after trigger window).
+        if trigger_minutes <= meeting_minutes:
+            in_catchup = trigger_minutes <= current_minutes <= meeting_minutes
+        else:
+            # Trigger crosses midnight
+            in_catchup = current_minutes >= trigger_minutes or current_minutes <= meeting_minutes
+
+        if not in_trigger_window and not in_catchup:
             return False
 
         # 4. Already triggered today?
@@ -139,30 +155,45 @@ class MeetingSchedulerService:
         schedule: MeetingSchedule,
         now_utc: datetime,
     ) -> None:
-        """Create Zoom meeting + Meeting record + send Telegram reminders."""
+        """Create Zoom meeting (if needed) + Meeting record + send Telegram reminders."""
         meeting_date = self._next_meeting_datetime(schedule, now_utc)
+        meeting_date_naive = meeting_date.replace(tzinfo=None)
 
-        # 1. Create Zoom meeting (if configured)
+        # Check if meeting already exists (pre-created when schedule was created)
+        existing = await self._find_existing_meeting(session, schedule.id, meeting_date_naive)
+
+        # 1. Create Zoom meeting (if configured and not already set up)
         zoom_data = None
         if schedule.zoom_enabled and self.zoom_service:
-            try:
-                zoom_data = await self.zoom_service.create_meeting(
-                    topic=schedule.title,
-                    start_time=meeting_date,
-                    duration=schedule.duration_minutes,
-                    timezone=schedule.timezone,
-                )
-                logger.info(
-                    f"Zoom meeting created for schedule '{schedule.title}': {zoom_data.get('id')}"
-                )
-            except Exception as e:
-                logger.error(f"Zoom create failed for schedule {schedule.id}: {e}")
+            if existing and existing.zoom_meeting_id:
+                zoom_data = {"id": existing.zoom_meeting_id, "join_url": existing.zoom_join_url}
+            else:
+                try:
+                    zoom_data = await self.zoom_service.create_meeting(
+                        topic=schedule.title,
+                        start_time=meeting_date,
+                        duration=schedule.duration_minutes,
+                        timezone=schedule.timezone,
+                    )
+                    logger.info(
+                        f"Zoom meeting created for schedule '{schedule.title}': {zoom_data.get('id')}"
+                    )
+                except Exception as e:
+                    logger.error(f"Zoom create failed for schedule {schedule.id}: {e}")
 
-        # 2. Create Meeting in DB
-        async with session.begin():
+        # 2. Use existing meeting or create new one
+        if existing:
+            meeting = existing
+            # Update with Zoom info if it was missing
+            if zoom_data and not existing.zoom_meeting_id:
+                existing.zoom_meeting_id = str(zoom_data["id"])
+                existing.zoom_join_url = zoom_data.get("join_url")
+                await session.commit()
+            logger.info(f"Using existing meeting for schedule '{schedule.title}' at {meeting_date}")
+        else:
             meeting = Meeting(
                 title=schedule.title,
-                meeting_date=meeting_date,
+                meeting_date=meeting_date_naive,
                 schedule_id=schedule.id,
                 status="scheduled",
                 zoom_meeting_id=str(zoom_data["id"]) if zoom_data else None,
@@ -170,13 +201,19 @@ class MeetingSchedulerService:
                 created_by_id=schedule.created_by_id,
             )
             session.add(meeting)
+            await session.flush()
 
-        logger.info(
-            f"Meeting record created for schedule '{schedule.title}' at {meeting_date}"
-        )
+            # Add participants from schedule
+            if schedule.participant_ids:
+                for pid in schedule.participant_ids:
+                    session.add(MeetingParticipant(meeting_id=meeting.id, member_id=pid))
 
-        # 3. Send Telegram reminders
-        await self._send_reminders(schedule, meeting, zoom_data)
+            await session.commit()
+            logger.info(f"Meeting created for schedule '{schedule.title}' at {meeting_date}")
+
+        # 3. Send Telegram reminders (only if enabled)
+        if schedule.reminder_enabled:
+            await self._send_reminders(schedule, meeting, zoom_data)
 
         # 4. Mark as triggered
         key = f"{schedule.id}:{now_utc.date()}"
@@ -186,6 +223,22 @@ class MeetingSchedulerService:
         """Calculate the meeting datetime (UTC-aware) for today's trigger."""
         meeting_dt = datetime.combine(now_utc.date(), schedule.time_utc)
         return meeting_dt.replace(tzinfo=ZoneInfo("UTC"))
+
+    async def _find_existing_meeting(
+        self, session, schedule_id, meeting_date_naive: datetime
+    ) -> Meeting | None:
+        """Find existing scheduled meeting for this schedule and date."""
+        target_date = (
+            meeting_date_naive.date()
+            if isinstance(meeting_date_naive, datetime)
+            else meeting_date_naive
+        )
+        stmt = select(Meeting).where(
+            Meeting.schedule_id == schedule_id,
+            func.date(Meeting.meeting_date) == target_date,
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def _send_reminders(self, schedule: MeetingSchedule, meeting: Meeting, zoom_data) -> None:
         """Send reminders to all telegram_targets."""
