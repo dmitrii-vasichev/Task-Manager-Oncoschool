@@ -34,8 +34,6 @@ from app.services.zoom_service import ZoomService
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-# Enable debug for scheduler diagnostics
-logging.getLogger("app.services.meeting_scheduler_service").setLevel(logging.DEBUG)
 
 app = FastAPI(
     title="Oncoschool Task Manager",

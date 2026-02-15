@@ -59,19 +59,10 @@ class MeetingSchedulerService:
 
             async with self.session_maker() as session:
                 schedules = await schedule_repo.get_all_active(session)
-                logger.debug(
-                    f"[SCHEDULER] tick at {now_utc.strftime('%Y-%m-%d %H:%M:%S')} UTC, "
-                    f"active schedules: {len(schedules)}"
-                )
 
                 for schedule in schedules:
                     try:
-                        should = await self._should_trigger(schedule, now_utc)
-                        logger.debug(
-                            f"[SCHEDULER] '{schedule.title}' (id={schedule.id}): "
-                            f"should_trigger={should}"
-                        )
-                        if should:
+                        if await self._should_trigger(schedule, now_utc):
                             await self._trigger_meeting(session, schedule, now_utc)
                     except Exception as e:
                         logger.error(
@@ -90,32 +81,21 @@ class MeetingSchedulerService:
 
     async def _should_trigger(self, schedule: MeetingSchedule, now_utc: datetime) -> bool:
         """Check all conditions for triggering a schedule."""
-        tag = f"[SCHEDULER] '{schedule.title}'"
-
         # 1. Day of week — check in LOCAL timezone to handle UTC/local day mismatch
         meeting_dt_utc = datetime.combine(
             now_utc.date(), schedule.time_utc, tzinfo=ZoneInfo("UTC")
         )
         meeting_dt_local = meeting_dt_utc.astimezone(ZoneInfo(schedule.timezone))
-        local_dow = meeting_dt_local.isoweekday()
-        if local_dow != schedule.day_of_week:
-            logger.debug(
-                f"{tag} SKIP: day mismatch — local_dow={local_dow} "
-                f"(need {schedule.day_of_week}), "
-                f"now_utc={now_utc.strftime('%A %H:%M')}, "
-                f"local={meeting_dt_local.strftime('%A %H:%M')} {schedule.timezone}"
-            )
+        if meeting_dt_local.isoweekday() != schedule.day_of_week:
             return False
 
         # 2. Recurrence
         if schedule.recurrence == "biweekly":
             week_number = meeting_dt_local.isocalendar()[1]
             if week_number % 2 != 0:
-                logger.debug(f"{tag} SKIP: biweekly — wrong week ({week_number})")
                 return False
         elif schedule.recurrence == "monthly_last_workday":
             if not self._is_last_workday_friday(meeting_dt_local):
-                logger.debug(f"{tag} SKIP: not last workday Friday")
                 return False
 
         # 3. Time: trigger at (time_utc - reminder_minutes_before) with catch-up
@@ -129,34 +109,22 @@ class MeetingSchedulerService:
             diff = 1440 - diff
         in_trigger_window = diff <= 1
 
+        # Catch-up: if trigger time has passed but meeting time hasn't,
+        # still allow (handles schedule created after trigger window).
         if trigger_minutes <= meeting_minutes:
             in_catchup = trigger_minutes <= current_minutes <= meeting_minutes
         else:
+            # Trigger crosses midnight
             in_catchup = current_minutes >= trigger_minutes or current_minutes <= meeting_minutes
 
         if not in_trigger_window and not in_catchup:
-            logger.debug(
-                f"{tag} SKIP: time mismatch — "
-                f"now={current_minutes}min, trigger={trigger_minutes}min, "
-                f"meeting={meeting_minutes}min, "
-                f"trigger_time_utc={trigger_time.strftime('%H:%M')}, "
-                f"meeting_time_utc={schedule.time_utc.strftime('%H:%M')}, "
-                f"reminder_before={schedule.reminder_minutes_before}min, "
-                f"in_window={in_trigger_window}, in_catchup={in_catchup}"
-            )
             return False
 
         # 4. Already triggered today?
         key = f"{schedule.id}:{now_utc.date()}"
         if key in self._triggered_today:
-            logger.debug(f"{tag} SKIP: already triggered today (key={key})")
             return False
 
-        logger.debug(
-            f"{tag} WILL TRIGGER — "
-            f"now={current_minutes}min, trigger={trigger_minutes}min, "
-            f"window={in_trigger_window}, catchup={in_catchup}"
-        )
         return True
 
     def _calc_trigger_time(self, schedule: MeetingSchedule) -> time:
@@ -242,16 +210,7 @@ class MeetingSchedulerService:
 
         # 3. Send Telegram reminders (only if enabled)
         if schedule.reminder_enabled:
-            targets = schedule.telegram_targets or []
-            logger.info(
-                f"[SCHEDULER] '{schedule.title}': reminder_enabled=True, "
-                f"telegram_targets count={len(targets)}, targets={targets}"
-            )
             await self._send_reminders(schedule, meeting, zoom_data)
-        else:
-            logger.info(
-                f"[SCHEDULER] '{schedule.title}': reminder_enabled=False — skipping reminders"
-            )
 
         # 4. Mark as triggered
         key = f"{schedule.id}:{now_utc.date()}"
