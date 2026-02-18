@@ -16,6 +16,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { api } from "@/lib/api";
 import type { Task, TaskStatus, TeamMember } from "@/lib/types";
 import { TASK_STATUS_LABELS } from "@/lib/types";
+import { PermissionService } from "@/lib/permissions";
 import { EmptyState } from "@/components/shared/EmptyState";
 
 const COLUMNS: TaskStatus[] = ["new", "in_progress", "review", "done"];
@@ -154,6 +155,15 @@ export default function TasksPage() {
       const task = tasks.find((t) => t.id === taskId);
       if (!task || task.status === newStatus) return;
 
+      // Permission check: only moderator or task assignee can change status
+      if (user && !PermissionService.canChangeTaskStatus(user, task)) {
+        setDraggedTaskId(null);
+        setDragOverStatus(null);
+        dragCounterRef.current = {};
+        toastError("Нет прав на изменение статуса этой задачи");
+        return;
+      }
+
       const oldStatus = task.status;
 
       // Optimistic update
@@ -172,7 +182,7 @@ export default function TasksPage() {
         toastError("Не удалось изменить статус");
       });
     },
-    [tasks, draggedTaskId, toastError]
+    [tasks, draggedTaskId, toastError, user]
   );
 
   if (loading) {

@@ -232,7 +232,9 @@ export default function AnalyticsPage() {
       try {
         const [overviewData, membersData, meetingsData] = await Promise.all([
           api.getOverview(),
-          api.getMembersAnalytics(),
+          isModerator
+            ? api.getMembersAnalytics()
+            : Promise.resolve({ members: [] }),
           api.getMeetingsAnalytics(),
         ]);
         setOverview(overviewData);

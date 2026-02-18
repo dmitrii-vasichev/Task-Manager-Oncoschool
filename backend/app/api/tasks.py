@@ -151,8 +151,20 @@ async def update_task(
         raise HTTPException(status_code=404, detail="Задача не найдена")
 
     # Permission: moderator can edit any, member can edit own
-    if not PermissionService.is_moderator(member) and task.assignee_id != member.id:
+    is_moderator = PermissionService.is_moderator(member)
+    if not is_moderator and task.assignee_id != member.id:
         raise HTTPException(status_code=403, detail="Нет прав на редактирование этой задачи")
+
+    # Members can only change status on their own tasks
+    if not is_moderator:
+        moderator_only_fields = {"assignee_id", "priority", "deadline", "title", "description"}
+        provided_fields = set(data.model_dump(exclude_unset=True).keys())
+        forbidden = provided_fields & moderator_only_fields
+        if forbidden:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Нет прав на изменение полей: {', '.join(forbidden)}",
+            )
 
     try:
         # Handle status change separately (creates TaskUpdate)

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import get_current_user, require_moderator
+from app.api.auth import get_current_user, require_admin, require_moderator
 
 logger = logging.getLogger(__name__)
 
@@ -96,10 +96,10 @@ async def update_notifications(
 @router.get("/reminders/{member_id}", response_model=ReminderSettingsResponse | None)
 async def get_reminder_settings(
     member_id: uuid.UUID,
-    member: TeamMember = Depends(require_moderator),
+    member: TeamMember = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    """Get reminder settings for a member. Moderator only."""
+    """Get reminder settings for a member. Admin only."""
     rs = await reminder_repo.get_by_member(session, member_id)
     return rs
 
@@ -108,10 +108,10 @@ async def get_reminder_settings(
 async def update_reminder_settings(
     member_id: uuid.UUID,
     data: ReminderSettingsUpdate,
-    member: TeamMember = Depends(require_moderator),
+    member: TeamMember = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    """Update reminder settings for a member. Moderator only."""
+    """Update reminder settings for a member. Admin only."""
     update_data = data.model_dump(exclude_unset=True)
     update_data["configured_by_id"] = member.id
 
@@ -129,10 +129,10 @@ class BulkReminderRequest(BaseModel):
 @router.post("/reminders/bulk", response_model=dict)
 async def bulk_update_reminders(
     data: BulkReminderRequest,
-    member: TeamMember = Depends(require_moderator),
+    member: TeamMember = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    """Bulk update reminder settings for all members. Moderator only."""
+    """Bulk update reminder settings for all members. Admin only."""
     # Throttle bulk operations
     member_key = str(member.id)
     now = time.time()
@@ -228,10 +228,10 @@ async def get_ai_settings(
 @router.put("/ai", response_model=AISettingsResponse)
 async def update_ai_settings(
     data: AIProviderUpdate,
-    member: TeamMember = Depends(require_moderator),
+    member: TeamMember = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    """Change AI provider and model. Moderator only."""
+    """Change AI provider and model. Admin only."""
     # Validate provider is available
     available = ai_service.get_available_providers()
     if data.provider not in available:

@@ -111,7 +111,6 @@ async def cmd_help(message: Message, member: TeamMember) -> None:
             "\n\n<b>\U0001f6e1\ufe0f Модератор:</b>\n\n"
             "/meetings — предстоящие и прошедшие встречи\n"
             "/subscribe — подписки на уведомления\n"
-            "/aimodel — текущая AI-модель\n"
             "/summary — парсинг Zoom AI Summary\n"
             "/stats — статистика"
         )
@@ -121,6 +120,7 @@ async def cmd_help(message: Message, member: TeamMember) -> None:
         admin_commands = (
             "\n\n<b>\U0001f451 Администрирование:</b>\n\n"
             "/setrole @username admin|moderator|member — изменить роль\n"
+            "/aimodel — текущая AI-модель\n"
             "/reminders — настройки напоминаний\n"
             "\u2699\ufe0f Настройки AI, напоминания — через веб-интерфейс"
         )
@@ -244,8 +244,8 @@ async def menu_btn_ai_model(
     member: TeamMember,
     session_maker: async_sessionmaker,
 ) -> None:
-    if not PermissionService.is_moderator(member):
-        await message.answer("⛔ Эта кнопка доступна только модератору.")
+    if not PermissionService.is_admin(member):
+        await message.answer("⛔ Эта кнопка доступна только администратору.")
         return
 
     from app.bot.handlers.settings import cmd_aimodel

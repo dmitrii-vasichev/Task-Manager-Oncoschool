@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import get_current_user, require_moderator
+from app.api.auth import get_current_user, require_admin, require_moderator
 from app.db.database import get_session
 from app.db.models import TeamMember
 from app.db.repositories import TelegramTargetRepository
@@ -26,10 +26,10 @@ async def get_all_targets(
 @router.post("", response_model=TelegramTargetResponse, status_code=status.HTTP_201_CREATED)
 async def create_target(
     data: TelegramTargetCreate,
-    _: TeamMember = Depends(require_moderator),
+    _: TeamMember = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    """Create a new telegram notification target (moderator only)."""
+    """Create a new telegram notification target (admin only)."""
     target = await target_repo.create(
         session,
         chat_id=data.chat_id,
@@ -44,10 +44,10 @@ async def create_target(
 async def update_target(
     target_id: uuid.UUID,
     data: TelegramTargetCreate,
-    _: TeamMember = Depends(require_moderator),
+    _: TeamMember = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    """Update a telegram notification target (moderator only)."""
+    """Update a telegram notification target (admin only)."""
     target = await target_repo.get_by_id(session, target_id)
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Цель не найдена")
@@ -61,10 +61,10 @@ async def update_target(
 @router.delete("/{target_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_target(
     target_id: uuid.UUID,
-    _: TeamMember = Depends(require_moderator),
+    _: TeamMember = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ):
-    """Delete a telegram notification target (moderator only)."""
+    """Delete a telegram notification target (admin only)."""
     target = await target_repo.get_by_id(session, target_id)
     if not target:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Цель не найдена")
