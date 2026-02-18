@@ -55,10 +55,7 @@ async def configure_global_menu(bot: Bot) -> None:
     private_scope = BotCommandScopeAllPrivateChats()
 
     await bot.set_my_commands(commands=commands, scope=private_scope)
-    await bot.set_chat_menu_button(
-        menu_button=MenuButtonCommands(),
-        scope=private_scope,
-    )
+    await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
 
 
 async def configure_chat_menu(
@@ -74,4 +71,4 @@ async def configure_chat_menu(
     )
     chat_scope = BotCommandScopeChat(chat_id=chat_id)
     await bot.set_my_commands(commands=commands, scope=chat_scope)
-    await bot.set_chat_menu_button(menu_button=MenuButtonCommands(), scope=chat_scope)
+    await bot.set_chat_menu_button(chat_id=chat_id, menu_button=MenuButtonCommands())
