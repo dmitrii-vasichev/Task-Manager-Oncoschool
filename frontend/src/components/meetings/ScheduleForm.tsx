@@ -270,7 +270,7 @@ export function ScheduleForm({
               <TimePicker
                 value={timeLocal}
                 onChange={setTimeLocal}
-                className="mt-1.5 rounded-xl"
+                className="mt-1.5 w-full rounded-xl"
               />
             </div>
           </div>
