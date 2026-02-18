@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ChevronLeft, ChevronRight } from "lucide-react"
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
 import { DayPicker, getDefaultClassNames } from "react-day-picker"
 import { ru } from "date-fns/locale"
 
@@ -31,23 +31,23 @@ function Calendar({
         ),
         month: cn("flex flex-col w-full gap-4", defaultClassNames.month),
         month_caption: cn(
-          "flex items-center justify-center h-8 w-full px-8",
+          "flex h-9 w-full items-center justify-center px-9",
           defaultClassNames.month_caption
         ),
         caption_label: cn(
-          "text-sm font-medium select-none",
+          "inline-flex w-full items-center justify-between gap-1.5 whitespace-nowrap text-sm font-semibold leading-none select-none",
           defaultClassNames.caption_label
         ),
         dropdowns: cn(
-          "flex items-center gap-2",
+          "flex items-center justify-center gap-1.5",
           defaultClassNames.dropdowns
         ),
         dropdown: cn(
-          "cursor-pointer appearance-none bg-background border border-input rounded-md px-2 py-1 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-ring",
+          "absolute inset-0 z-10 w-full cursor-pointer opacity-0",
           defaultClassNames.dropdown
         ),
         dropdown_root: cn(
-          "relative",
+          "relative inline-flex h-9 items-center rounded-lg border border-input/80 bg-background px-2.5 text-sm font-medium shadow-sm transition-colors focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/30 has-[.rdp-months_dropdown]:min-w-[8.5rem] has-[.rdp-years_dropdown]:min-w-[6rem]",
           defaultClassNames.dropdown_root
         ),
         months_dropdown: cn(
@@ -59,17 +59,17 @@ function Calendar({
           defaultClassNames.years_dropdown
         ),
         nav: cn(
-          "flex items-center gap-1 w-full absolute top-0 inset-x-0 justify-between",
+          "absolute inset-x-0 top-0 flex h-9 items-center justify-between",
           defaultClassNames.nav
         ),
         button_previous: cn(
           buttonVariants({ variant: "outline" }),
-          "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
+          "h-7 w-7 rounded-lg bg-background p-0 text-muted-foreground opacity-80 hover:bg-accent hover:text-foreground hover:opacity-100",
           defaultClassNames.button_previous
         ),
         button_next: cn(
           buttonVariants({ variant: "outline" }),
-          "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
+          "h-7 w-7 rounded-lg bg-background p-0 text-muted-foreground opacity-80 hover:bg-accent hover:text-foreground hover:opacity-100",
           defaultClassNames.button_next
         ),
         weekdays: cn("flex", defaultClassNames.weekdays),
@@ -111,6 +111,9 @@ function Calendar({
         Chevron: ({ orientation, ...chevronProps }) => {
           if (orientation === "left") {
             return <ChevronLeft className="h-4 w-4" {...chevronProps} />
+          }
+          if (orientation === "down") {
+            return <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" {...chevronProps} />
           }
           return <ChevronRight className="h-4 w-4" {...chevronProps} />
         },
