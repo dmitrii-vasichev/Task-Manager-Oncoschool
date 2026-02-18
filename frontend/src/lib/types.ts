@@ -160,6 +160,9 @@ export interface MeetingSchedule {
   participant_ids: string[];
   zoom_enabled: boolean;
   is_active: boolean;
+  next_occurrence_skip: boolean;
+  next_occurrence_time_override: string | null;
+  next_occurrence_date: string | null;
   created_by_id: string | null;
   created_at: string;
   updated_at: string;
@@ -178,6 +181,8 @@ export interface MeetingScheduleCreateRequest {
   telegram_targets?: TelegramTargetRef[];
   participant_ids?: string[];
   zoom_enabled?: boolean;
+  next_occurrence_skip?: boolean;
+  next_occurrence_time_local?: string | null;
 }
 
 export interface ZoomStatusResponse {

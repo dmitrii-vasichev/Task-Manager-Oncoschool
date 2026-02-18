@@ -229,6 +229,8 @@ class MeetingScheduleUpdate(BaseModel):
     participant_ids: list[uuid.UUID] | None = None
     zoom_enabled: bool | None = None
     is_active: bool | None = None
+    next_occurrence_skip: bool | None = None
+    next_occurrence_time_local: str | None = None  # "HH:MM" local, converted to UTC
 
 
 class MeetingScheduleResponse(BaseModel):
@@ -248,6 +250,9 @@ class MeetingScheduleResponse(BaseModel):
     participant_ids: list[uuid.UUID]
     zoom_enabled: bool
     is_active: bool
+    next_occurrence_skip: bool
+    next_occurrence_time_override: time | None
+    next_occurrence_date: date | None = None  # Computed, not stored in DB
     created_by_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime

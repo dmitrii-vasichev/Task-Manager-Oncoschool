@@ -8,6 +8,7 @@ import {
   Clock,
   Repeat,
   Users,
+  SkipForward,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -145,6 +146,20 @@ export function ScheduleCard({
               <div className="flex items-center gap-1 text-2xs text-muted-foreground">
                 <Bell className="h-3 w-3 text-amber-500" />
                 <span>за {schedule.reminder_minutes_before} мин</span>
+              </div>
+            )}
+            {schedule.next_occurrence_skip && (
+              <div className="flex items-center gap-1 text-2xs text-amber-600 font-medium">
+                <SkipForward className="h-3 w-3" />
+                <span>Следующая отменена</span>
+              </div>
+            )}
+            {!schedule.next_occurrence_skip && schedule.next_occurrence_time_override && (
+              <div className="flex items-center gap-1 text-2xs text-blue-600 font-medium">
+                <Clock className="h-3 w-3" />
+                <span>
+                  Перенос на {utcTimeToLocal(schedule.next_occurrence_time_override, schedule.timezone)}
+                </span>
               </div>
             )}
           </div>

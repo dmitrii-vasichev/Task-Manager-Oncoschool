@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from app.api.auth import get_current_user, require_moderator
 from app.db.database import get_session
-from app.db.models import Meeting, MeetingParticipant, TeamMember
+from app.db.models import Meeting, MeetingParticipant, MeetingSchedule, TeamMember
 from app.db.repositories import MeetingScheduleRepository, TelegramTargetRepository, TeamMemberRepository
 from app.db.schemas import (
     MeetingScheduleCreate,
@@ -59,6 +59,57 @@ def _calc_next_meeting_datetime(
     return None
 
 
+def _calc_next_occurrence_date(schedule: MeetingSchedule) -> date | None:
+    """Calculate the next occurrence date for a schedule, considering recurrence rules."""
+    now_utc = datetime.now(ZoneInfo("UTC"))
+    tz = ZoneInfo(schedule.timezone)
+    effective_time = schedule.next_occurrence_time_override or schedule.time_utc
+
+    for days_ahead in range(60):  # Look up to ~2 months ahead
+        candidate_date = now_utc.date() + timedelta(days=days_ahead)
+        candidate_dt = datetime.combine(candidate_date, effective_time, tzinfo=ZoneInfo("UTC"))
+        candidate_local = candidate_dt.astimezone(tz)
+
+        # Must be in the future (or today if not yet triggered)
+        if candidate_dt <= now_utc:
+            # Allow today if not yet triggered
+            if candidate_date != now_utc.date():
+                continue
+            if schedule.last_triggered_date and schedule.last_triggered_date >= candidate_date:
+                continue
+
+        # Already triggered on this date
+        if schedule.last_triggered_date and candidate_date <= schedule.last_triggered_date:
+            continue
+
+        # Day of week match (in local timezone)
+        if candidate_local.isoweekday() != schedule.day_of_week:
+            continue
+
+        # Recurrence check
+        if schedule.recurrence == "biweekly":
+            week_number = candidate_local.isocalendar()[1]
+            if week_number % 2 != 0:
+                continue
+        elif schedule.recurrence == "monthly_last_workday":
+            if candidate_local.weekday() != 4:  # Friday
+                continue
+            next_friday = candidate_local + timedelta(days=7)
+            if next_friday.month == candidate_local.month:
+                continue
+
+        return candidate_date
+
+    return None
+
+
+def _enrich_response(schedule: MeetingSchedule) -> MeetingScheduleResponse:
+    """Build response with computed next_occurrence_date."""
+    resp = MeetingScheduleResponse.model_validate(schedule)
+    resp.next_occurrence_date = _calc_next_occurrence_date(schedule)
+    return resp
+
+
 @router.get("", response_model=list[MeetingScheduleResponse])
 async def get_all_schedules(
     _: TeamMember = Depends(get_current_user),
@@ -66,7 +117,7 @@ async def get_all_schedules(
 ):
     """Get all meeting schedules (active and inactive)."""
     schedules = await schedule_repo.get_all_active(session)
-    return schedules
+    return [_enrich_response(s) for s in schedules]
 
 
 @router.get("/{schedule_id}", response_model=MeetingScheduleResponse)
@@ -79,7 +130,7 @@ async def get_schedule(
     schedule = await schedule_repo.get_by_id(session, schedule_id)
     if not schedule:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Расписание не найдено")
-    return schedule
+    return _enrich_response(schedule)
 
 
 @router.post("", response_model=MeetingScheduleResponse, status_code=status.HTTP_201_CREATED)
@@ -173,7 +224,7 @@ async def create_schedule(
                 session.add(MeetingParticipant(meeting_id=meeting.id, member_id=pid))
 
     await session.commit()
-    return schedule
+    return _enrich_response(schedule)
 
 
 @router.patch("/{schedule_id}", response_model=MeetingScheduleResponse)
@@ -217,9 +268,28 @@ async def update_schedule(
     # Remove time_local from update_data if not already removed
     update_data.pop("time_local", None)
 
+    # Handle next_occurrence_time_local -> next_occurrence_time_override (UTC)
+    if "next_occurrence_time_local" in update_data:
+        time_local_str = update_data.pop("next_occurrence_time_local")
+        if time_local_str:
+            tz = update_data.get("timezone", schedule.timezone)
+            try:
+                update_data["next_occurrence_time_override"] = _local_to_utc(time_local_str, tz)
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Неверный формат времени переноса",
+                )
+        else:
+            update_data["next_occurrence_time_override"] = None
+
+    # Mutual exclusivity: skip=True clears time override
+    if update_data.get("next_occurrence_skip") is True:
+        update_data["next_occurrence_time_override"] = None
+
     schedule = await schedule_repo.update(session, schedule_id, **update_data)
     await session.commit()
-    return schedule
+    return _enrich_response(schedule)
 
 
 @router.delete("/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)

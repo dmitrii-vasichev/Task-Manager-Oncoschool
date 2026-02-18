@@ -120,6 +120,10 @@ class MeetingSchedule(Base):
     zoom_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     last_triggered_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    next_occurrence_skip: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    next_occurrence_time_override: Mapped[time | None] = mapped_column(Time, nullable=True)
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("team_members.id"), nullable=True
     )

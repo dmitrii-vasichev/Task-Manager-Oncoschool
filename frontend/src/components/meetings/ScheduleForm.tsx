@@ -7,6 +7,9 @@ import {
   Bell,
   Users,
   Link as LinkIcon,
+  CalendarClock,
+  SkipForward,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +45,8 @@ const DURATION_OPTIONS = [
   { value: "60", label: "1 час" },
   { value: "90", label: "1.5 часа" },
   { value: "120", label: "2 часа" },
+  { value: "150", label: "2.5 часа" },
+  { value: "180", label: "3 часа" },
 ];
 
 const REMINDER_OPTIONS = [
@@ -145,6 +150,16 @@ export function ScheduleForm({
       .map((t) => t.id);
   });
 
+  const [nextOccurrenceSkip, setNextOccurrenceSkip] = useState(
+    schedule?.next_occurrence_skip ?? false
+  );
+  const [nextOccurrenceTimeLocal, setNextOccurrenceTimeLocal] = useState<string>(() => {
+    if (schedule?.next_occurrence_time_override) {
+      return utcTimeToLocal(schedule.next_occurrence_time_override, schedule.timezone);
+    }
+    return "";
+  });
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -190,6 +205,10 @@ export function ScheduleForm({
         telegram_targets: tgTargets,
         participant_ids: participantIds,
         zoom_enabled: zoomEnabled,
+        ...(isEdit && {
+          next_occurrence_skip: nextOccurrenceSkip,
+          next_occurrence_time_local: nextOccurrenceTimeLocal || null,
+        }),
       };
 
       await onSave(data);
@@ -478,6 +497,76 @@ export function ScheduleForm({
               </div>
             )}
           </div>
+
+          {/* Next meeting override (edit mode only) */}
+          {isEdit && schedule?.next_occurrence_date && (
+            <div className="rounded-xl bg-amber-500/5 border border-amber-500/20 overflow-hidden">
+              <div className="p-3">
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                  <CalendarClock className="h-3 w-3" />
+                  Ближайшая встреча
+                </Label>
+                <p className="text-sm font-medium mt-1.5">
+                  {(() => {
+                    try {
+                      const d = new Date(schedule.next_occurrence_date + "T00:00:00");
+                      const formatted = d.toLocaleDateString("ru-RU", {
+                        weekday: "long",
+                        day: "numeric",
+                        month: "long",
+                      });
+                      return `${formatted.charAt(0).toUpperCase() + formatted.slice(1)}, ${timeLocal}`;
+                    } catch {
+                      return schedule.next_occurrence_date;
+                    }
+                  })()}
+                </p>
+              </div>
+
+              <div className="px-3 pb-3 space-y-3 border-t border-amber-500/10 pt-3">
+                {/* Skip toggle */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <SkipForward className="h-4 w-4 text-amber-500" />
+                    <span className="text-sm">Отменить ближайшую встречу</span>
+                  </div>
+                  <Switch
+                    checked={nextOccurrenceSkip}
+                    onCheckedChange={(checked) => {
+                      setNextOccurrenceSkip(checked);
+                      if (checked) setNextOccurrenceTimeLocal("");
+                    }}
+                  />
+                </div>
+
+                {/* Time override (hidden if skip is on) */}
+                {!nextOccurrenceSkip && (
+                  <div>
+                    <Label className="text-2xs text-muted-foreground">
+                      Перенести на другое время (только эта встреча)
+                    </Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Input
+                        type="time"
+                        value={nextOccurrenceTimeLocal}
+                        onChange={(e) => setNextOccurrenceTimeLocal(e.target.value)}
+                        className="rounded-lg h-8 text-sm flex-1"
+                      />
+                      {nextOccurrenceTimeLocal && (
+                        <button
+                          type="button"
+                          onClick={() => setNextOccurrenceTimeLocal("")}
+                          className="h-8 w-8 flex items-center justify-center rounded-lg border border-border/60 text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Error */}
           {error && (
