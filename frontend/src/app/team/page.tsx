@@ -12,6 +12,7 @@ import { MemberEditModal } from "./components/MemberEditModal";
 import { MemberCreateModal } from "./components/MemberCreateModal";
 import { DepartmentManager } from "./components/DepartmentManager";
 import { MemberCard } from "./components/MemberCard";
+import { UpcomingBirthdays } from "./components/UpcomingBirthdays";
 import { useTeamTree } from "@/hooks/useTeamTree";
 import { useDepartments } from "@/hooks/useDepartments";
 import { useTeam } from "@/hooks/useTeam";
@@ -146,8 +147,14 @@ export default function TeamPage() {
         )}
       </div>
 
+      {/* Upcoming Birthdays */}
+      <UpcomingBirthdays
+        members={allMembers}
+        onMemberClick={setSelectedMember}
+      />
+
       {/* Search */}
-      <div className="relative max-w-sm animate-fade-in-up stagger-2">
+      <div className="relative max-w-sm animate-fade-in-up stagger-3">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           value={search}
