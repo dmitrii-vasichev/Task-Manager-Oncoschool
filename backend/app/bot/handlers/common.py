@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.callbacks import TaskListCallback, TaskListFilter, TaskListScope
+from app.bot.menu import configure_chat_menu
 from app.db.models import TeamMember
 from app.db.repositories import TeamMemberRepository
 from app.services.permission_service import PermissionService
@@ -20,9 +21,27 @@ VALID_ROLES = ("admin", "moderator", "member")
 
 @router.message(Command("start"))
 async def cmd_start(message: Message, member: TeamMember) -> None:
-    if PermissionService.is_admin(member):
+    is_admin = PermissionService.is_admin(member)
+    is_moderator = PermissionService.is_moderator(member)
+
+    if message.chat.type == "private":
+        try:
+            await configure_chat_menu(
+                message.bot,
+                chat_id=message.chat.id,
+                is_moderator=is_moderator,
+                is_admin=is_admin,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to configure chat menu for chat_id=%s",
+                message.chat.id,
+                exc_info=True,
+            )
+
+    if is_admin:
         role_emoji, role_text = "\U0001f451", "Администратор"
-    elif PermissionService.is_moderator(member):
+    elif is_moderator:
         role_emoji, role_text = "\U0001f6e1\ufe0f", "Модератор"
     else:
         role_emoji, role_text = "\U0001f464", "Участник"
@@ -30,7 +49,8 @@ async def cmd_start(message: Message, member: TeamMember) -> None:
     text = (
         f"Привет, {member.full_name}! Я бот-задачник Онкошколы.\n"
         f"Твоя роль: {role_emoji} {role_text}\n\n"
-        "Выбери раздел ниже или используй /help для списка команд"
+        "Нажми кнопку «Меню» внизу чата: там быстрые команды\n"
+        "«Мои задачи», «Хелп» и остальные действия."
     )
 
     buttons = [[InlineKeyboardButton(
@@ -42,7 +62,7 @@ async def cmd_start(message: Message, member: TeamMember) -> None:
         ).pack(),
     )]]
 
-    if PermissionService.is_moderator(member):
+    if is_moderator:
         buttons.append([InlineKeyboardButton(
             text="\U0001f4ca Все задачи",
             callback_data=TaskListCallback(
@@ -67,12 +87,16 @@ async def cmd_help(message: Message, member: TeamMember) -> None:
         "/tasks — мои задачи\n"
         "/all — все задачи команды\n"
         "/new &lt;текст&gt; — создать задачу себе\n"
+        "/assign @username &lt;текст&gt; — назначить задачу (модератор)\n"
         "/done &lt;id&gt; — завершить задачу\n"
         "/update &lt;id&gt; &lt;текст&gt; — промежуточный апдейт\n"
+        "/updates &lt;id&gt; — история обновлений задачи\n"
+        "/blocker &lt;id&gt; &lt;текст&gt; — добавить блокер\n"
         "/status &lt;id&gt; &lt;статус&gt; — изменить статус\n"
         "\U0001f3a4 Голосовое сообщение — создать задачу голосом\n"
         "/nextmeeting — следующая встреча\n"
-        "/myreminder — мои настройки напоминаний"
+        "/myreminder — мои настройки напоминаний\n"
+        "/help — показать эту справку"
     )
 
     text = common_commands
@@ -80,11 +104,10 @@ async def cmd_help(message: Message, member: TeamMember) -> None:
     if is_mod:
         mod_commands = (
             "\n\n<b>\U0001f6e1\ufe0f Модератор:</b>\n\n"
-            "/assign @username &lt;текст&gt; — назначить задачу\n"
             "/meetings — предстоящие и прошедшие встречи\n"
-            "/team — управление командой\n"
             "/subscribe — подписки на уведомления\n"
             "/aimodel — текущая AI-модель\n"
+            "/summary — парсинг Zoom AI Summary\n"
             "/stats — статистика"
         )
         text += mod_commands

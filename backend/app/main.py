@@ -5,7 +5,6 @@ from urllib.parse import urlparse
 
 import uvicorn
 from aiogram import Bot, Dispatcher
-from aiogram.types import MenuButtonCommands
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -24,6 +23,7 @@ from app.bot.handlers.summary import router as summary_router
 from app.bot.handlers.task_updates import router as task_updates_router
 from app.bot.handlers.tasks import router as tasks_router
 from app.bot.handlers.voice import router as voice_router
+from app.bot.menu import configure_global_menu
 from app.bot.middlewares import AuthMiddleware
 from app.config import settings
 from app.db.database import async_session
@@ -185,9 +185,9 @@ async def main():
     meeting_scheduler.start()
     logger.info("Meeting scheduler started")
 
-    # Task UI in Telegram works via inline commands/buttons.
-    await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-    logger.info("Inline task UI mode enabled")
+    # Configure Telegram menu commands for private chats.
+    await configure_global_menu(bot)
+    logger.info("Telegram menu commands configured")
 
     try:
         await asyncio.gather(
