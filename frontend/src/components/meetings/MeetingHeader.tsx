@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { Meeting, MeetingStatus } from "@/lib/types";
 import { MEETING_STATUS_LABELS } from "@/lib/types";
+import { parseUTCDate } from "@/lib/dateUtils";
 
 const STATUS_STYLES: Record<MeetingStatus, string> = {
   scheduled: "bg-blue-500/10 text-blue-600 border-blue-500/20",
@@ -67,7 +68,7 @@ export function MeetingHeader({
   };
 
   const formatMeetingDate = (dateStr: string) => {
-    const date = new Date(dateStr);
+    const date = parseUTCDate(dateStr);
     const weekday = date.toLocaleDateString("ru-RU", { weekday: "long" });
     const day = date.toLocaleDateString("ru-RU", {
       day: "numeric",

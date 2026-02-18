@@ -14,3 +14,20 @@ export function parseLocalDate(dateStr: string): Date {
   }
   return new Date(dateStr);
 }
+
+/**
+ * Parse a datetime string from the API as UTC.
+ *
+ * The backend stores datetimes as naive UTC. Ideally the API sends them
+ * with "+00:00" suffix, but for safety: if the string has no timezone
+ * indicator (no Z, no +/-offset), append "Z" so JavaScript interprets
+ * it as UTC instead of the browser's local timezone.
+ */
+export function parseUTCDate(dateStr: string): Date {
+  // Already has timezone info (Z or +/-offset) — parse as-is
+  if (/Z|[+-]\d{2}:\d{2}$/.test(dateStr)) {
+    return new Date(dateStr);
+  }
+  // No timezone info — treat as UTC
+  return new Date(dateStr + "Z");
+}

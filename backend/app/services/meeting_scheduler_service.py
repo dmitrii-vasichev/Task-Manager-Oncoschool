@@ -304,8 +304,11 @@ class MeetingSchedulerService:
     def _default_reminder_text(schedule: MeetingSchedule, meeting: Meeting) -> str:
         """Default reminder text if reminder_text is not set."""
         try:
-            local_time = meeting.meeting_date.astimezone(ZoneInfo(schedule.timezone))
-            time_str = local_time.strftime("%H:%M")
+            # meeting_date is stored as naive UTC — explicitly localize to UTC first
+            meeting_utc = meeting.meeting_date.replace(tzinfo=ZoneInfo("UTC"))
+            # Always show Moscow time since the notification says "по МСК"
+            moscow_time = meeting_utc.astimezone(ZoneInfo("Europe/Moscow"))
+            time_str = moscow_time.strftime("%H:%M")
         except Exception:
             time_str = schedule.time_utc.strftime("%H:%M")
 

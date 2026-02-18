@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
@@ -92,6 +93,12 @@ def _meeting_response(meeting) -> MeetingResponse:
         meeting_date=meeting.meeting_date,
         duration_minutes=meeting.duration_minutes,
     )
+    # Ensure meeting_date is timezone-aware (UTC) so frontend receives "+00:00" suffix
+    # and JavaScript correctly interprets it as UTC, not browser-local time
+    if resp.meeting_date and resp.meeting_date.tzinfo is None:
+        resp.meeting_date = resp.meeting_date.replace(tzinfo=ZoneInfo("UTC"))
+    if resp.created_at and resp.created_at.tzinfo is None:
+        resp.created_at = resp.created_at.replace(tzinfo=ZoneInfo("UTC"))
     return resp
 
 

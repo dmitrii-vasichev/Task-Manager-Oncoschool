@@ -31,7 +31,7 @@ import type {
   Task,
   Meeting,
 } from "@/lib/types";
-import { parseLocalDate } from "@/lib/dateUtils";
+import { parseLocalDate, parseUTCDate } from "@/lib/dateUtils";
 
 // ────────────────────────────────────────────
 // Helpers
@@ -336,7 +336,7 @@ function UpcomingMeetingCard({
   staggerClass: string;
 }) {
   const meetingDate = meeting.meeting_date
-    ? new Date(meeting.meeting_date)
+    ? parseUTCDate(meeting.meeting_date)
     : null;
 
   const dateStr = meetingDate
@@ -402,11 +402,11 @@ function MeetingCard({
   staggerClass: string;
 }) {
   const meetingDate = meeting.meeting_date
-    ? new Date(meeting.meeting_date).toLocaleDateString("ru-RU", {
+    ? parseUTCDate(meeting.meeting_date).toLocaleDateString("ru-RU", {
         day: "numeric",
         month: "short",
       })
-    : new Date(meeting.created_at).toLocaleDateString("ru-RU", {
+    : parseUTCDate(meeting.created_at).toLocaleDateString("ru-RU", {
         day: "numeric",
         month: "short",
       });

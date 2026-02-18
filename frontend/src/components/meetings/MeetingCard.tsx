@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import type { Meeting, MeetingStatus } from "@/lib/types";
 import { MEETING_STATUS_LABELS } from "@/lib/types";
+import { parseUTCDate } from "@/lib/dateUtils";
 
 const STATUS_STYLES: Record<MeetingStatus, string> = {
   scheduled: "bg-blue-500/10 text-blue-600 border-blue-500/20",
@@ -32,7 +33,7 @@ const STATUS_STYLES: Record<MeetingStatus, string> = {
 };
 
 function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
+  const date = parseUTCDate(dateStr);
   const now = new Date();
   const diff = date.getTime() - now.getTime();
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -251,7 +252,7 @@ export function MeetingCard({ meeting, variant, isModerator, onDelete }: Meeting
 }
 
 function formatTimeRemaining(dateStr: string): string {
-  const date = new Date(dateStr);
+  const date = parseUTCDate(dateStr);
   const now = new Date();
   const diff = date.getTime() - now.getTime();
 
