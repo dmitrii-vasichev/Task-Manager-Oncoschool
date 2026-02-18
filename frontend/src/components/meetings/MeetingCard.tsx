@@ -35,8 +35,9 @@ const STATUS_STYLES: Record<MeetingStatus, string> = {
 function formatDate(dateStr: string): string {
   const date = parseUTCDate(dateStr);
   const now = new Date();
-  const diff = date.getTime() - now.getTime();
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const dateDay = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  const nowDay = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  const days = Math.round((dateDay - nowDay) / (1000 * 60 * 60 * 24));
 
   const dateFormatted = date.toLocaleDateString("ru-RU", {
     day: "numeric",
@@ -157,7 +158,7 @@ export function MeetingCard({ meeting, variant, isModerator, onDelete }: Meeting
             {variant === "upcoming" && meeting.meeting_date && (
               <div className="flex items-center gap-1 text-2xs text-muted-foreground ml-auto">
                 <Clock className="h-3 w-3" />
-                {formatTimeRemaining(meeting.meeting_date)}
+                {formatTimeRemaining(meeting.meeting_date, meeting.duration_minutes)}
               </div>
             )}
 
@@ -251,12 +252,15 @@ export function MeetingCard({ meeting, variant, isModerator, onDelete }: Meeting
   );
 }
 
-function formatTimeRemaining(dateStr: string): string {
-  const date = parseUTCDate(dateStr);
+function formatTimeRemaining(dateStr: string, durationMinutes = 60): string {
+  const startTime = parseUTCDate(dateStr);
   const now = new Date();
-  const diff = date.getTime() - now.getTime();
+  const endTime = new Date(startTime.getTime() + durationMinutes * 60 * 1000);
 
-  if (diff < 0) return "Прошла";
+  if (now >= endTime) return "Прошла";
+  if (now >= startTime) return "Идёт";
+
+  const diff = startTime.getTime() - now.getTime();
 
   const hours = Math.floor(diff / (1000 * 60 * 60));
   const days = Math.floor(hours / 24);
@@ -264,6 +268,6 @@ function formatTimeRemaining(dateStr: string): string {
   if (days > 0) return `через ${days} ${days === 1 ? "день" : days < 5 ? "дня" : "дней"}`;
   if (hours > 0) return `через ${hours} ч`;
 
-  const minutes = Math.floor(diff / (1000 * 60));
-  return `через ${minutes} мин`;
+  const minutes = Math.ceil(diff / (1000 * 60));
+  return `через ${Math.max(1, minutes)} мин`;
 }
