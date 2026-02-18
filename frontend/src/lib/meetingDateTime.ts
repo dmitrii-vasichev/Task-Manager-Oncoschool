@@ -191,14 +191,32 @@ export function formatMeetingHeaderDateTime(dateInput: string): string {
   return `${weekday}, ${day} · ${formatMoscowTimeWithLocal(date)}`;
 }
 
-export function formatUtcClockAsMoscowWithLocal(timeUtc: string): string {
+export function formatUtcClockForSchedule(timeUtc: string): {
+  moscow: string;
+  local: string;
+} {
   try {
     const { hour, minute, second } = parseUtcClock(timeUtc);
     const utcDate = new Date(Date.UTC(2024, 0, 1, hour, minute, second));
-    return formatMoscowTimeWithLocal(utcDate);
+    const moscowTime = formatTimeInZone(utcDate, PROJECT_TIMEZONE);
+    const localTime = formatTimeInZone(utcDate, getBrowserTimeZone());
+
+    return {
+      moscow: `${moscowTime} ${PROJECT_TIMEZONE_LABEL}`,
+      local: `${localTime} ${LOCAL_TIME_LABEL}`,
+    };
   } catch {
-    return `${timeUtc.slice(0, 5)} ${PROJECT_TIMEZONE_LABEL}`;
+    const fallback = timeUtc.slice(0, 5);
+    return {
+      moscow: `${fallback} ${PROJECT_TIMEZONE_LABEL}`,
+      local: `${fallback} ${LOCAL_TIME_LABEL}`,
+    };
   }
+}
+
+export function formatUtcClockAsMoscowWithLocal(timeUtc: string): string {
+  const { moscow, local } = formatUtcClockForSchedule(timeUtc);
+  return `${moscow} (${local})`;
 }
 
 export function zonedDateTimeToUtcIso(

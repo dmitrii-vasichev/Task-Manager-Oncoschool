@@ -18,7 +18,7 @@ import {
   DAY_OF_WEEK_SHORT,
   RECURRENCE_LABELS,
 } from "@/lib/types";
-import { formatUtcClockAsMoscowWithLocal } from "@/lib/meetingDateTime";
+import { formatUtcClockAsMoscowWithLocal, formatUtcClockForSchedule } from "@/lib/meetingDateTime";
 
 // Day-of-week badge colors (soft, distinct hues)
 const DAY_COLORS: Record<number, string> = {
@@ -46,7 +46,7 @@ export function ScheduleCard({
   onEdit,
   onDelete,
 }: ScheduleCardProps) {
-  const displayTime = formatUtcClockAsMoscowWithLocal(schedule.time_utc);
+  const displayTime = formatUtcClockForSchedule(schedule.time_utc);
   const dayColor = DAY_COLORS[schedule.day_of_week] || DAY_COLORS[1];
 
   // Resolve participant names from IDs
@@ -59,12 +59,12 @@ export function ScheduleCard({
       {/* Subtle decorative accent */}
       <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/3 to-transparent rounded-bl-3xl pointer-events-none" />
 
-      <div className="p-4 sm:p-5">
+      <div className="p-3 sm:p-5">
         {/* Top row: day badge + title + actions */}
-        <div className="flex items-start gap-3">
+        <div className="flex items-start gap-2.5 sm:gap-3">
           {/* Day badge */}
           <div
-            className={`shrink-0 flex items-center justify-center h-11 w-11 rounded-xl border font-heading font-bold text-sm ${dayColor}`}
+            className={`shrink-0 flex items-center justify-center h-10 w-10 sm:h-11 sm:w-11 rounded-xl border font-heading font-bold text-sm ${dayColor}`}
           >
             {DAY_OF_WEEK_SHORT[schedule.day_of_week]}
           </div>
@@ -75,15 +75,17 @@ export function ScheduleCard({
               {schedule.title}
             </h3>
 
-            {/* Time and recurrence row */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            {/* Time and recurrence block */}
+            <div className="mt-1 space-y-1">
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
                 <Clock className="h-3 w-3" />
-                {displayTime}
+                <span>{displayTime.moscow}</span>
                 <span className="text-border mx-0.5">·</span>
-                {schedule.duration_minutes} мин
-              </span>
-
+                <span>{schedule.duration_minutes} мин</span>
+              </div>
+              <div className="text-2xs text-muted-foreground pl-4">
+                {displayTime.local}
+              </div>
               <Badge
                 variant="secondary"
                 className="rounded-md text-2xs font-medium px-1.5 py-0 h-5"
@@ -100,7 +102,7 @@ export function ScheduleCard({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
+                className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg text-muted-foreground hover:text-foreground"
                 onClick={() => onEdit(schedule)}
               >
                 <Settings className="h-3.5 w-3.5" />
@@ -108,7 +110,7 @@ export function ScheduleCard({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-destructive"
+                className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg text-muted-foreground hover:text-destructive"
                 onClick={() => onDelete(schedule)}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -118,7 +120,7 @@ export function ScheduleCard({
         </div>
 
         {/* Bottom row: indicators + participants */}
-        <div className="flex items-center gap-3 mt-3 pt-3 border-t border-border/40">
+        <div className="flex items-center gap-2.5 sm:gap-3 mt-2.5 pt-2.5 sm:mt-3 sm:pt-3 border-t border-border/40">
           {/* Indicators */}
           <div className="flex items-center gap-2">
             {schedule.zoom_enabled && (
