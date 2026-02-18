@@ -42,6 +42,10 @@ import type {
   MeetingScheduleCreateRequest,
   TelegramNotificationTarget,
 } from "@/lib/types";
+import {
+  PROJECT_TIMEZONE_LABEL,
+  zonedDateTimeToUtcIso,
+} from "@/lib/meetingDateTime";
 
 const PER_PAGE = 6;
 
@@ -465,7 +469,7 @@ function CreateMeetingDialog({
     setError(null);
 
     try {
-      const meetingDate = new Date(`${date}T${time}:00`).toISOString();
+      const meetingDate = zonedDateTimeToUtcIso(date, time);
       await api.createMeetingManual({
         title: title.trim(),
         meeting_date: meetingDate,
@@ -517,7 +521,7 @@ function CreateMeetingDialog({
             </div>
             <div>
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Время
+                Время ({PROJECT_TIMEZONE_LABEL})
               </Label>
               <TimePicker
                 value={time}

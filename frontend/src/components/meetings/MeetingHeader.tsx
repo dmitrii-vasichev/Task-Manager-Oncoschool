@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { Meeting, MeetingStatus } from "@/lib/types";
 import { MEETING_STATUS_LABELS } from "@/lib/types";
-import { parseUTCDate } from "@/lib/dateUtils";
+import { formatMeetingHeaderDateTime } from "@/lib/meetingDateTime";
 
 const STATUS_STYLES: Record<MeetingStatus, string> = {
   scheduled: "bg-blue-500/10 text-blue-600 border-blue-500/20",
@@ -65,21 +65,6 @@ export function MeetingHeader({
       setTitleValue(meeting.title || "");
       setEditingTitle(false);
     }
-  };
-
-  const formatMeetingDate = (dateStr: string) => {
-    const date = parseUTCDate(dateStr);
-    const weekday = date.toLocaleDateString("ru-RU", { weekday: "long" });
-    const day = date.toLocaleDateString("ru-RU", {
-      day: "numeric",
-      month: "long",
-      year: "numeric",
-    });
-    const time = date.toLocaleTimeString("ru-RU", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-    return `${weekday.charAt(0).toUpperCase() + weekday.slice(1)}, ${day} · ${time} МСК`;
   };
 
   const effectiveStatus = meeting.effective_status || meeting.status;
@@ -174,7 +159,7 @@ export function MeetingHeader({
         {meeting.meeting_date && (
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
             <CalendarDays className="h-4 w-4" />
-            {formatMeetingDate(meeting.meeting_date)}
+            {formatMeetingHeaderDateTime(meeting.meeting_date)}
           </div>
         )}
         {meeting.schedule_id && (

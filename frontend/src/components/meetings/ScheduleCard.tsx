@@ -18,6 +18,7 @@ import {
   DAY_OF_WEEK_SHORT,
   RECURRENCE_LABELS,
 } from "@/lib/types";
+import { formatUtcClockAsMoscowWithLocal } from "@/lib/meetingDateTime";
 
 // Day-of-week badge colors (soft, distinct hues)
 const DAY_COLORS: Record<number, string> = {
@@ -29,22 +30,6 @@ const DAY_COLORS: Record<number, string> = {
   6: "bg-cyan-500/10 text-cyan-600 border-cyan-500/20",
   7: "bg-orange-500/10 text-orange-600 border-orange-500/20",
 };
-
-function utcTimeToLocal(timeUtc: string, timezone: string): string {
-  // timeUtc comes as "HH:MM:SS" — convert to display time in the schedule's timezone
-  try {
-    const [h, m] = timeUtc.split(":").map(Number);
-    // Create a UTC date and convert to the target timezone
-    const utcDate = new Date(Date.UTC(2024, 0, 1, h, m));
-    return utcDate.toLocaleTimeString("ru-RU", {
-      hour: "2-digit",
-      minute: "2-digit",
-      timeZone: timezone,
-    });
-  } catch {
-    return timeUtc.slice(0, 5);
-  }
-}
 
 interface ScheduleCardProps {
   schedule: MeetingSchedule;
@@ -61,7 +46,7 @@ export function ScheduleCard({
   onEdit,
   onDelete,
 }: ScheduleCardProps) {
-  const localTime = utcTimeToLocal(schedule.time_utc, schedule.timezone);
+  const displayTime = formatUtcClockAsMoscowWithLocal(schedule.time_utc);
   const dayColor = DAY_COLORS[schedule.day_of_week] || DAY_COLORS[1];
 
   // Resolve participant names from IDs
@@ -94,7 +79,7 @@ export function ScheduleCard({
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Clock className="h-3 w-3" />
-                {localTime}
+                {displayTime}
                 <span className="text-border mx-0.5">·</span>
                 {schedule.duration_minutes} мин
               </span>
@@ -158,7 +143,7 @@ export function ScheduleCard({
               <div className="flex items-center gap-1 text-2xs text-blue-600 font-medium">
                 <Clock className="h-3 w-3" />
                 <span>
-                  Перенос на {utcTimeToLocal(schedule.next_occurrence_time_override, schedule.timezone)}
+                  Перенос на {formatUtcClockAsMoscowWithLocal(schedule.next_occurrence_time_override)}
                 </span>
               </div>
             )}

@@ -24,6 +24,7 @@ import {
 import type { Meeting, MeetingStatus } from "@/lib/types";
 import { MEETING_STATUS_LABELS } from "@/lib/types";
 import { parseUTCDate } from "@/lib/dateUtils";
+import { formatMeetingListDateTime } from "@/lib/meetingDateTime";
 
 const STATUS_STYLES: Record<MeetingStatus, string> = {
   scheduled: "bg-blue-500/10 text-blue-600 border-blue-500/20",
@@ -33,28 +34,7 @@ const STATUS_STYLES: Record<MeetingStatus, string> = {
 };
 
 function formatDate(dateStr: string): string {
-  const date = parseUTCDate(dateStr);
-  const now = new Date();
-  const dateDay = Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
-  const nowDay = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-  const days = Math.round((dateDay - nowDay) / (1000 * 60 * 60 * 24));
-
-  const dateFormatted = date.toLocaleDateString("ru-RU", {
-    day: "numeric",
-    month: "long",
-    year: now.getFullYear() !== date.getFullYear() ? "numeric" : undefined,
-  });
-
-  const timeFormatted = date.toLocaleTimeString("ru-RU", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  if (days === 0) return `Сегодня, ${timeFormatted}`;
-  if (days === 1) return `Завтра, ${timeFormatted}`;
-  if (days === -1) return `Вчера, ${timeFormatted}`;
-
-  return `${dateFormatted}, ${timeFormatted}`;
+  return formatMeetingListDateTime(dateStr);
 }
 
 interface MeetingCardProps {
