@@ -56,15 +56,6 @@ STATUS_EMOJI = {
     "cancelled": "❌",
 }
 
-
-def _format_task_line(task) -> str:
-    """Format one task as a single line."""
-    prio = PRIORITY_EMOJI.get(task.priority, "")
-    source_icon = "🎤 " if task.source == "voice" else ""
-    deadline_str = f" · 📅 {task.deadline.strftime('%d.%m')}" if task.deadline else ""
-    return f"{source_icon}#{task.short_id} · {task.title} · {prio} {task.priority}{deadline_str}"
-
-
 def _format_task_detail(task) -> str:
     """Format task details."""
     prio = PRIORITY_EMOJI.get(task.priority, "")

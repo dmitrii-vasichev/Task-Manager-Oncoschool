@@ -1,7 +1,6 @@
 import logging
 import secrets
 import sys
-from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -63,10 +62,6 @@ class Settings(BaseSettings):
 
     # Frontend URL (for bot inline buttons linking to web UI)
     NEXT_PUBLIC_FRONTEND_URL: str = "http://localhost:3000"
-
-    # Telegram Mini App (legacy/decommissioned in backend runtime)
-    MINI_APP_URL: str = ""
-    TELEGRAM_TASK_UI_MODE: Literal["hybrid", "inline", "mini_app"] = "inline"
 
     @property
     def database_url_async(self) -> str:

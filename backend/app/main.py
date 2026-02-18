@@ -185,14 +185,9 @@ async def main():
     meeting_scheduler.start()
     logger.info("Meeting scheduler started")
 
-    # Mini App menu integration is decommissioned; keep inline commands only.
-    if settings.TELEGRAM_TASK_UI_MODE != "inline":
-        logger.warning(
-            "TELEGRAM_TASK_UI_MODE=%s is legacy; fallback to inline mode",
-            settings.TELEGRAM_TASK_UI_MODE,
-        )
+    # Task UI in Telegram works via inline commands/buttons.
     await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-    logger.info("Inline task UI mode enabled: Mini App menu button disabled")
+    logger.info("Inline task UI mode enabled")
 
     try:
         await asyncio.gather(
