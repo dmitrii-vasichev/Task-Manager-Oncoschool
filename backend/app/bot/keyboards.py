@@ -1,6 +1,30 @@
-import uuid
+from typing import Protocol, Sequence
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+from app.bot.callbacks import (
+    TaskBackToListCallback,
+    TaskCardCallback,
+    TaskListCallback,
+    TaskListFilter,
+    TaskListScope,
+    TaskRefreshListCallback,
+)
+
+
+class TaskListItem(Protocol):
+    short_id: int
+    title: str
+
+
+TASK_FILTER_LABELS: dict[TaskListFilter, str] = {
+    TaskListFilter.ACTIVE: "Активные",
+    TaskListFilter.NEW: "Новые",
+    TaskListFilter.IN_PROGRESS: "В работе",
+    TaskListFilter.REVIEW: "Ревью",
+    TaskListFilter.DONE: "Готово",
+    TaskListFilter.CANCELLED: "Отменено",
+}
 
 
 def task_actions_keyboard(task_id: int, is_moderator: bool) -> InlineKeyboardMarkup:
@@ -48,6 +72,165 @@ def pagination_keyboard(current_page: int, total_pages: int, prefix: str) -> Inl
             InlineKeyboardButton(text="➡️", callback_data=f"{prefix}:page:{current_page + 1}")
         )
     return InlineKeyboardMarkup(inline_keyboard=[buttons])
+
+
+def task_filters_keyboard(
+    scope: TaskListScope,
+    current_filter: TaskListFilter,
+    page: int = 1,
+) -> InlineKeyboardMarkup:
+    """Inline-фильтры списка задач для Telegram UI."""
+    buttons: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    filter_order = (
+        TaskListFilter.ACTIVE,
+        TaskListFilter.NEW,
+        TaskListFilter.IN_PROGRESS,
+        TaskListFilter.REVIEW,
+        TaskListFilter.DONE,
+        TaskListFilter.CANCELLED,
+    )
+
+    for filter_value in filter_order:
+        label = TASK_FILTER_LABELS[filter_value]
+        text = f"✅ {label}" if filter_value == current_filter else label
+        row.append(
+            InlineKeyboardButton(
+                text=text,
+                callback_data=TaskListCallback(
+                    scope=scope,
+                    task_filter=filter_value,
+                    page=1,
+                ).pack(),
+            )
+        )
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+
+    if row:
+        buttons.append(row)
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="🔄 Обновить",
+            callback_data=TaskRefreshListCallback(
+                scope=scope,
+                task_filter=current_filter,
+                page=page,
+            ).pack(),
+        )
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def task_pagination_keyboard(
+    scope: TaskListScope,
+    current_filter: TaskListFilter,
+    page: int,
+    total_pages: int,
+) -> InlineKeyboardMarkup:
+    """Пагинация списка задач с typed callback schema."""
+    safe_page = max(1, page)
+    safe_total = max(1, total_pages)
+
+    nav_row: list[InlineKeyboardButton] = []
+    if safe_page > 1:
+        nav_row.append(
+            InlineKeyboardButton(
+                text="⬅️",
+                callback_data=TaskListCallback(
+                    scope=scope,
+                    task_filter=current_filter,
+                    page=safe_page - 1,
+                ).pack(),
+            )
+        )
+
+    nav_row.append(InlineKeyboardButton(text=f"{safe_page}/{safe_total}", callback_data="noop"))
+
+    if safe_page < safe_total:
+        nav_row.append(
+            InlineKeyboardButton(
+                text="➡️",
+                callback_data=TaskListCallback(
+                    scope=scope,
+                    task_filter=current_filter,
+                    page=safe_page + 1,
+                ).pack(),
+            )
+        )
+
+    return InlineKeyboardMarkup(inline_keyboard=[nav_row])
+
+
+def task_list_keyboard(
+    tasks: Sequence[TaskListItem],
+    scope: TaskListScope,
+    current_filter: TaskListFilter,
+    page: int = 1,
+    total_pages: int = 1,
+) -> InlineKeyboardMarkup:
+    """Клавиатура списка задач: задачи + фильтры + пагинация."""
+    buttons: list[list[InlineKeyboardButton]] = []
+
+    for task in tasks:
+        title = task.title.strip()
+        short_title = title if len(title) <= 48 else f"{title[:45]}..."
+        buttons.append([
+            InlineKeyboardButton(
+                text=f"#{task.short_id} · {short_title}",
+                callback_data=TaskCardCallback(
+                    short_id=task.short_id,
+                    scope=scope,
+                    task_filter=current_filter,
+                    page=max(1, page),
+                ).pack(),
+            )
+        ])
+
+    buttons.extend(task_filters_keyboard(scope, current_filter, page=page).inline_keyboard)
+    buttons.extend(
+        task_pagination_keyboard(
+            scope=scope,
+            current_filter=current_filter,
+            page=page,
+            total_pages=total_pages,
+        ).inline_keyboard
+    )
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def task_card_keyboard(
+    task_id: int,
+    is_moderator: bool,
+    scope: TaskListScope,
+    current_filter: TaskListFilter,
+    page: int = 1,
+) -> InlineKeyboardMarkup:
+    """Клавиатура карточки задачи с существующими действиями + навигация."""
+    base_keyboard = task_actions_keyboard(task_id, is_moderator)
+    buttons = [list(row) for row in base_keyboard.inline_keyboard]
+    buttons.append([
+        InlineKeyboardButton(
+            text="↩️ К списку",
+            callback_data=TaskBackToListCallback(
+                scope=scope,
+                task_filter=current_filter,
+                page=max(1, page),
+            ).pack(),
+        ),
+        InlineKeyboardButton(
+            text="🔄 Обновить список",
+            callback_data=TaskRefreshListCallback(
+                scope=scope,
+                task_filter=current_filter,
+                page=max(1, page),
+            ).pack(),
+        ),
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def voice_task_confirm_keyboard() -> InlineKeyboardMarkup:

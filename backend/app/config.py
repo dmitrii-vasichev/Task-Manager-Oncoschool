@@ -1,6 +1,7 @@
 import logging
 import secrets
 import sys
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -65,6 +66,7 @@ class Settings(BaseSettings):
 
     # Telegram Mini App
     MINI_APP_URL: str = ""
+    TELEGRAM_TASK_UI_MODE: Literal["hybrid", "inline", "mini_app"] = "hybrid"
 
     @property
     def database_url_async(self) -> str:
