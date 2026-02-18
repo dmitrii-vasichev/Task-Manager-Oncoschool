@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 
 import uvicorn
 from aiogram import Bot, Dispatcher
-from aiogram.types import MenuButtonCommands, MenuButtonWebApp, WebAppInfo
+from aiogram.types import MenuButtonCommands
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -60,7 +60,7 @@ def _origin_from_url(value: str) -> str | None:
     return value.rstrip("/")
 
 
-for _value in (settings.MINI_APP_URL, settings.NEXT_PUBLIC_FRONTEND_URL):
+for _value in (settings.NEXT_PUBLIC_FRONTEND_URL,):
     _origin = _origin_from_url(_value)
     if _origin and _origin not in cors_origins:
         cors_origins.append(_origin)
@@ -83,12 +83,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        # Allow Telegram to embed Mini App in iframe
-        if settings.MINI_APP_URL:
-            mini_app_host = urlparse(settings.MINI_APP_URL).netloc
-            response.headers["X-Frame-Options"] = f"ALLOW-FROM https://{mini_app_host}"
-        else:
-            response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-Frame-Options"] = "DENY"
         if not settings.DEBUG:
             response.headers["Strict-Transport-Security"] = (
                 "max-age=31536000; includeSubDomains"
@@ -190,19 +185,14 @@ async def main():
     meeting_scheduler.start()
     logger.info("Meeting scheduler started")
 
-    # Task UI menu button depends on TELEGRAM_TASK_UI_MODE.
-    if settings.TELEGRAM_TASK_UI_MODE == "inline":
-        # Explicitly reset to standard commands so stale Mini App buttons disappear.
-        await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
-        logger.info("Inline task UI mode enabled: Mini App menu button disabled")
-    elif settings.MINI_APP_URL:
-        await bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(
-                text="\U0001f4cb Задачи",
-                web_app=WebAppInfo(url=settings.MINI_APP_URL),
-            )
+    # Mini App menu integration is decommissioned; keep inline commands only.
+    if settings.TELEGRAM_TASK_UI_MODE != "inline":
+        logger.warning(
+            "TELEGRAM_TASK_UI_MODE=%s is legacy; fallback to inline mode",
+            settings.TELEGRAM_TASK_UI_MODE,
         )
-        logger.info("Mini App menu button set: %s", settings.MINI_APP_URL)
+    await bot.set_chat_menu_button(menu_button=MenuButtonCommands())
+    logger.info("Inline task UI mode enabled: Mini App menu button disabled")
 
     try:
         await asyncio.gather(

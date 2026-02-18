@@ -9,7 +9,6 @@ from pathlib import Path
 
 import httpx
 import jwt
-from aiogram.utils.web_app import safe_parse_webapp_init_data
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
@@ -49,10 +48,6 @@ class TelegramAuthData(BaseModel):
     photo_url: str | None = None
     auth_date: int
     hash: str
-
-
-class MiniAppAuthData(BaseModel):
-    init_data: str
 
 
 class TokenResponse(BaseModel):
@@ -311,68 +306,20 @@ async def dev_login(
     )
 
 
-@router.post("/mini-app", response_model=TokenResponse)
+@router.post("/mini-app")
 @limiter.limit("10/minute")
 async def login_mini_app(
     request: Request,
-    data: MiniAppAuthData,
-    session: AsyncSession = Depends(get_session),
 ):
-    """Authenticate via Telegram Mini App initData."""
+    """Legacy endpoint kept for backward compatibility."""
     client_ip = request.client.host if request.client else "unknown"
-
-    # 1. Validate initData signature using aiogram utility
-    try:
-        web_app_data = safe_parse_webapp_init_data(
-            token=settings.BOT_TOKEN,
-            init_data=data.init_data,
-        )
-    except ValueError:
-        auth_logger.warning("mini_app_login FAIL: invalid signature, ip=%s", client_ip)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Невалидная подпись initData",
-        )
-
-    # 2. Check auth_date freshness (5 minutes)
-    if web_app_data.auth_date and time.time() - web_app_data.auth_date.timestamp() > 300:
-        auth_logger.warning("mini_app_login FAIL: expired auth_date, ip=%s", client_ip)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Авторизация устарела. Попробуйте снова",
-        )
-
-    # 3. Extract telegram user
-    if not web_app_data.user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Данные пользователя отсутствуют в initData",
-        )
-
-    telegram_id = web_app_data.user.id
-
-    # 4. Find member
-    member = await member_repo.get_by_telegram_id(session, telegram_id)
-    if not member or not member.is_active:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Доступ запрещён. Обратитесь к модератору для добавления в команду",
-        )
-
-    # 5. Update telegram_username if changed
-    tg_username = web_app_data.user.username
-    if tg_username and tg_username != member.telegram_username:
-        member.telegram_username = tg_username
-        session.add(member)
-        await session.commit()
-
-    # 6. Issue JWT
-    logger.info("Mini-app login: telegram_id=%s", telegram_id)
-    token = create_access_token(member.id)
-    return TokenResponse(
-        access_token=token,
-        member_id=str(member.id),
-        role=member.role,
+    auth_logger.info("mini_app_login GONE: ip=%s", client_ip)
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail=(
+            "Mini App авторизация отключена. "
+            "Используйте /api/auth/telegram или /api/auth/web-login."
+        ),
     )
 
 
