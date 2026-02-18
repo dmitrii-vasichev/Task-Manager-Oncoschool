@@ -31,6 +31,7 @@ import { PermissionService } from "@/lib/permissions";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/shared/Toast";
 import { DatePicker } from "@/components/shared/DatePicker";
+import { TimePicker } from "@/components/shared/TimePicker";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ScheduleCard } from "@/components/meetings/ScheduleCard";
 import { ScheduleForm } from "@/components/meetings/ScheduleForm";
@@ -514,10 +515,9 @@ function CreateMeetingDialog({
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Время
               </Label>
-              <Input
-                type="time"
+              <TimePicker
                 value={time}
-                onChange={(e) => setTime(e.target.value)}
+                onChange={setTime}
                 className="mt-1.5 rounded-xl"
               />
             </div>

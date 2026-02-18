@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { UserAvatar } from "@/components/shared/UserAvatar";
+import { TimePicker } from "@/components/shared/TimePicker";
 import type {
   MeetingSchedule,
   MeetingScheduleCreateRequest,
@@ -266,10 +267,9 @@ export function ScheduleForm({
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Время ({getTimezoneShortLabel(timezone)})
               </Label>
-              <Input
-                type="time"
+              <TimePicker
                 value={timeLocal}
-                onChange={(e) => setTimeLocal(e.target.value)}
+                onChange={setTimeLocal}
                 className="mt-1.5 rounded-xl"
               />
             </div>
@@ -546,10 +546,9 @@ export function ScheduleForm({
                       Перенести на другое время (только эта встреча)
                     </Label>
                     <div className="flex items-center gap-2 mt-1">
-                      <Input
-                        type="time"
+                      <TimePicker
                         value={nextOccurrenceTimeLocal}
-                        onChange={(e) => setNextOccurrenceTimeLocal(e.target.value)}
+                        onChange={setNextOccurrenceTimeLocal}
                         className="rounded-lg h-8 text-sm flex-1"
                       />
                       {nextOccurrenceTimeLocal && (

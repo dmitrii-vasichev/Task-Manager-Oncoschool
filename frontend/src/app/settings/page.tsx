@@ -48,6 +48,7 @@ import {
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { useToast } from "@/components/shared/Toast";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { TimePicker } from "@/components/shared/TimePicker";
 import { api } from "@/lib/api";
 import { useTeam } from "@/hooks/useTeam";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -1025,10 +1026,9 @@ function RemindersSection() {
               </span>
             </div>
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <Input
-                type="time"
+              <TimePicker
                 value={bulkTime}
-                onChange={(e) => setBulkTime(e.target.value)}
+                onChange={setBulkTime}
                 className="w-28 rounded-lg h-8 text-sm shrink-0"
               />
               <Button
@@ -1225,10 +1225,9 @@ function ReminderEditDialog({
             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Время отправки
             </Label>
-            <Input
-              type="time"
+            <TimePicker
               value={time}
-              onChange={(e) => setTime(e.target.value)}
+              onChange={setTime}
               className="mt-1.5 w-32 rounded-xl"
             />
           </div>
