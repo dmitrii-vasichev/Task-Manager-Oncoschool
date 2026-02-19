@@ -122,7 +122,7 @@ CREATE INDEX idx_meetings_zoom ON meetings(zoom_meeting_id);
 2. Develop → Build App → Server-to-Server OAuth
 3. Задать имя (например "Oncoschool Task Manager")
 4. Получить: Account ID, Client ID, Client Secret
-5. Scopes: `meeting:write:admin`, `meeting:read:admin`, `recording:read:admin`, `user:read:admin`
+5. Scopes: `meeting:create:meeting:admin`, `meeting:read:meeting:admin`, `meeting:update:meeting:admin`, `meeting:delete:meeting:admin`, `cloud_recording:read:list_recording_files:admin`
 
 **Проверить доступ:** Если зайти на https://marketplace.zoom.us/ под тем же аккаунтом, что используется для n8n OAuth — должна быть кнопка "Develop" → "Build App".
 
@@ -130,12 +130,12 @@ CREATE INDEX idx_meetings_zoom ON meetings(zoom_meeting_id);
 
 | Действие | Endpoint | Scope |
 |----------|----------|-------|
-| Создать встречу | `POST /users/me/meetings` | meeting:write:admin |
-| Обновить встречу | `PATCH /meetings/{id}` | meeting:write:admin |
-| Удалить встречу | `DELETE /meetings/{id}` | meeting:write:admin |
-| Получить встречу | `GET /meetings/{id}` | meeting:read:admin |
-| Список записей | `GET /meetings/{id}/recordings` | recording:read:admin |
-| Скачать транскрипцию | `GET /recordings/{id}/transcript` (из recording files) | recording:read:admin |
+| Создать встречу | `POST /users/me/meetings` | meeting:create:meeting:admin |
+| Обновить встречу | `PATCH /meetings/{id}` | meeting:update:meeting:admin |
+| Удалить встречу | `DELETE /meetings/{id}` | meeting:delete:meeting:admin |
+| Получить встречу | `GET /meetings/{id}` | meeting:read:meeting:admin |
+| Список записей | `GET /meetings/{id}/recordings` | cloud_recording:read:list_recording_files:admin |
+| Скачать транскрипцию | `download_url` из recording files | cloud_recording:read:list_recording_files:admin |
 
 ### Транскрипция Zoom:
 - Zoom Cloud Recording автоматически генерирует audio transcript если включено в настройках аккаунта
@@ -1326,7 +1326,7 @@ c) Нет summary, нет transcript:
 
 1. **Zoom App:** Создать Server-to-Server OAuth приложение на marketplace.zoom.us
    - Получить: ZOOM_ACCOUNT_ID, ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET
-   - Scopes: meeting:write:admin, meeting:read:admin, recording:read:admin
+   - Scopes: meeting:create:meeting:admin, meeting:read:meeting:admin, meeting:update:meeting:admin, meeting:delete:meeting:admin, cloud_recording:read:list_recording_files:admin
 
 2. **Telegram Chat IDs:** Подготовить chat_id и thread_id для групп
    - Основная группа: -1003693766132 (из n8n workflow)

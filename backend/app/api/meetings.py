@@ -284,6 +284,7 @@ async def create_meeting(
             zoom_data = await zoom_svc.create_meeting(
                 topic=data.title,
                 start_time=zoom_start_time,
+                duration=data.duration_minutes,
                 timezone=data.timezone,
             )
         except Exception as e:

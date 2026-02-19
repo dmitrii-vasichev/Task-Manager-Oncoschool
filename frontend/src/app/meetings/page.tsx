@@ -622,17 +622,21 @@ function CreateMeetingDialog({
             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Длительность
             </Label>
-            <select
-              value={durationMinutes}
-              onChange={(e) => setDurationMinutes(Number(e.target.value))}
-              className="mt-1.5 w-full h-10 rounded-xl border border-input bg-background px-3 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            <Select
+              value={String(durationMinutes)}
+              onValueChange={(value) => setDurationMinutes(Number(value))}
             >
-              <option value={30}>30 минут</option>
-              <option value={45}>45 минут</option>
-              <option value={60}>1 час</option>
-              <option value={90}>1.5 часа</option>
-              <option value={120}>2 часа</option>
-            </select>
+              <SelectTrigger className="mt-1.5 rounded-xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="30">30 минут</SelectItem>
+                <SelectItem value="45">45 минут</SelectItem>
+                <SelectItem value="60">1 час</SelectItem>
+                <SelectItem value="90">1.5 часа</SelectItem>
+                <SelectItem value="120">2 часа</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Participants */}
