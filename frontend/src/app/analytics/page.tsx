@@ -1,58 +1,53 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { RoleBadge } from "@/components/shared/RoleBadge";
 import { useToast } from "@/components/shared/Toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useDepartments } from "@/hooks/useDepartments";
 import { PermissionService } from "@/lib/permissions";
+import { getAccessibleDepartments } from "@/lib/departmentAccess";
 import { api } from "@/lib/api";
 import type {
-  OverviewAnalytics,
   MemberStats,
   MeetingAnalytics,
+  OverviewAnalytics,
 } from "@/lib/types";
 import {
-  CheckCircle2,
-  ListTodo,
-  Users,
-  Calendar,
   AlertTriangle,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  Layers3,
+  Lightbulb,
+  ListTodo,
   TrendingUp,
-  Zap,
-  AlertOctagon,
   Trophy,
 } from "lucide-react";
 import {
-  PieChart,
-  Pie,
-  Cell,
-  BarChart,
-  Bar,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  ResponsiveContainer,
 } from "recharts";
-
-// ────────────────────────────────────────────
-// Design system chart colors (matching CSS vars)
-// ────────────────────────────────────────────
 
 const CHART_TEAL = "hsl(174, 62%, 26%)";
 const CHART_CORAL = "hsl(16, 76%, 58%)";
 const CHART_VIOLET = "hsl(262, 52%, 55%)";
 const CHART_AMBER = "hsl(43, 82%, 58%)";
 const CHART_BLUE = "hsl(200, 65%, 48%)";
-
-const STATUS_CHART: Record<string, { label: string; color: string }> = {
-  new: { label: "Новые", color: "hsl(210, 30%, 60%)" },
-  in_progress: { label: "В работе", color: CHART_TEAL },
-  review: { label: "Ревью", color: CHART_AMBER },
-  done: { label: "Готово", color: "hsl(152, 55%, 38%)" },
-  cancelled: { label: "Отменено", color: "hsl(210, 10%, 60%)" },
-};
 
 const SOURCE_CHART: Record<string, { label: string; color: string }> = {
   text: { label: "Текст", color: CHART_BLUE },
@@ -68,61 +63,12 @@ const PRIORITY_CHART: Record<string, { label: string; color: string }> = {
   low: { label: "Низкий", color: "hsl(210, 10%, 60%)" },
 };
 
-// ────────────────────────────────────────────
-// Custom tooltip for recharts
-// ────────────────────────────────────────────
-
-function ChartTooltip({
-  active,
-  payload,
-}: {
-  active?: boolean;
-  payload?: Array<{ name: string; value: number; payload: { color: string } }>;
-}) {
-  if (!active || !payload?.length) return null;
-  const item = payload[0];
-  return (
-    <div className="rounded-lg border border-border/60 bg-card px-3 py-2 shadow-lg">
-      <p className="text-xs font-medium flex items-center gap-2">
-        <span
-          className="h-2.5 w-2.5 rounded-full shrink-0"
-          style={{ backgroundColor: item.payload.color }}
-        />
-        {item.name}: <span className="font-bold">{item.value}</span>
-      </p>
-    </div>
-  );
-}
-
-function ChartLegendItem({
-  color,
-  label,
-}: {
-  color: string;
-  label: string;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-2xs text-muted-foreground">
-      <span
-        className="h-2 w-2 rounded-full shrink-0"
-        style={{ backgroundColor: color }}
-      />
-      {label}
-    </span>
-  );
-}
-
-// ────────────────────────────────────────────
-// Helpers
-// ────────────────────────────────────────────
-
 function daysSince(dateStr: string | null): number | null {
   if (!dateStr) return null;
   const then = new Date(dateStr);
   const now = new Date();
-  return Math.floor(
-    (now.getTime() - then.getTime()) / (1000 * 60 * 60 * 24)
-  );
+  const days = Math.floor((now.getTime() - then.getTime()) / (1000 * 60 * 60 * 24));
+  return Math.max(0, days);
 }
 
 function daysSinceLabel(days: number): string {
@@ -131,37 +77,31 @@ function daysSinceLabel(days: number): string {
   return `${days} дн. назад`;
 }
 
-// ────────────────────────────────────────────
-// Metric Card (reusing dashboard pattern)
-// ────────────────────────────────────────────
-
-function MetricCard({
+function StatCard({
   label,
   value,
   subtitle,
   icon: Icon,
   accentColor,
-  isPulsing,
+  isAlert,
   stagger,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   subtitle: string;
   icon: React.ElementType;
   accentColor: string;
-  isPulsing?: boolean;
+  isAlert?: boolean;
   stagger: number;
 }) {
   return (
     <div
       className={`animate-fade-in-up stagger-${stagger} group relative overflow-hidden rounded-2xl border border-border/60 bg-card p-5 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-primary/5`}
     >
-      {/* Top accent bar */}
       <div
         className="absolute inset-x-0 top-0 h-1 opacity-80 group-hover:opacity-100"
         style={{ backgroundColor: accentColor }}
       />
-
       <div className="flex items-start justify-between">
         <div className="space-y-2">
           <p className="text-sm font-medium text-muted-foreground">{label}</p>
@@ -169,13 +109,12 @@ function MetricCard({
             <span className="animate-count-up text-3xl font-bold font-heading tracking-tight">
               {value}
             </span>
-            {isPulsing && value > 0 && (
+            {isAlert && (
               <span className="animate-pulse-glow inline-flex h-2.5 w-2.5 rounded-full bg-destructive" />
             )}
           </div>
           <p className="text-xs text-muted-foreground">{subtitle}</p>
         </div>
-
         <div
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl opacity-70 group-hover:opacity-100"
           style={{ backgroundColor: `${accentColor}18` }}
@@ -187,15 +126,84 @@ function MetricCard({
   );
 }
 
-// ────────────────────────────────────────────
-// Skeleton loading
-// ────────────────────────────────────────────
+function TrendTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean;
+  payload?: Array<{ name: string; value: number; color?: string }>;
+  label?: string;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+
+  return (
+    <div className="rounded-lg border border-border/60 bg-card px-3 py-2 shadow-lg">
+      <p className="mb-1 text-xs font-semibold text-foreground">{label}</p>
+      <div className="space-y-1">
+        {payload.map((item) => (
+          <p key={item.name} className="text-xs text-muted-foreground">
+            <span
+              className="mr-2 inline-block h-2.5 w-2.5 rounded-full align-middle"
+              style={{ backgroundColor: item.color || "hsl(var(--muted-foreground))" }}
+            />
+            {item.name}: <span className="font-semibold text-foreground">{item.value}</span>
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DistributionBars({
+  title,
+  rows,
+}: {
+  title: string;
+  rows: Array<{ label: string; value: number; color: string }>;
+}) {
+  const total = rows.reduce((sum, row) => sum + row.value, 0);
+
+  return (
+    <div className="rounded-xl border border-border/50 bg-background/40 p-4">
+      <h4 className="text-sm font-semibold font-heading">{title}</h4>
+      {rows.length === 0 ? (
+        <p className="mt-3 text-xs text-muted-foreground">Нет данных</p>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {rows.map((row) => {
+            const percent = total > 0 ? Math.round((row.value / total) * 100) : 0;
+            return (
+              <div key={row.label} className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">{row.label}</span>
+                  <span className="font-medium text-foreground">
+                    {row.value} ({percent}%)
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-muted/70">
+                  <div
+                    className="h-2 rounded-full transition-all"
+                    style={{
+                      width: `${Math.max(percent, row.value > 0 ? 6 : 0)}%`,
+                      backgroundColor: row.color,
+                    }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function AnalyticsSkeleton() {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        {[...Array(4)].map((_, i) => (
+      <div className="grid gap-4 grid-cols-2 xl:grid-cols-5">
+        {[...Array(5)].map((_, i) => (
           <div key={i} className="rounded-2xl border bg-card p-5 space-y-3">
             <Skeleton className="h-4 w-24" />
             <Skeleton className="h-9 w-16" />
@@ -203,259 +211,414 @@ function AnalyticsSkeleton() {
           </div>
         ))}
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Skeleton className="h-80 rounded-2xl" />
+        <Skeleton className="h-80 rounded-2xl" />
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
         <Skeleton className="h-72 rounded-2xl" />
         <Skeleton className="h-72 rounded-2xl" />
       </div>
-      <Skeleton className="h-64 rounded-2xl" />
     </div>
   );
 }
 
-// ────────────────────────────────────────────
-// Main Analytics Page
-// ────────────────────────────────────────────
+function EmptyPanel({
+  title = "Нет данных",
+  description = "Для этого блока пока недостаточно данных.",
+}: {
+  title?: string;
+  description?: string;
+}) {
+  return (
+    <div className="flex h-full min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-border/70 bg-background/30 px-4 text-center">
+      <p className="text-sm font-medium text-foreground">{title}</p>
+      <p className="mt-1 text-xs text-muted-foreground">{description}</p>
+    </div>
+  );
+}
 
 export default function AnalyticsPage() {
   const { user } = useCurrentUser();
+  const { departments, loading: departmentsLoading } = useDepartments();
   const { toastError } = useToast();
+
   const [overview, setOverview] = useState<OverviewAnalytics | null>(null);
   const [members, setMembers] = useState<MemberStats[]>([]);
-  const [meetingStats, setMeetingStats] = useState<MeetingAnalytics | null>(
-    null
-  );
+  const [meetingStats, setMeetingStats] = useState<MeetingAnalytics | null>(null);
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
   const [loading, setLoading] = useState(true);
+
   const isModerator = user ? PermissionService.isModerator(user) : false;
+  const userId = user?.id || "";
+  const userRole = user?.role || "";
+  const userDepartmentId = user?.department_id || "";
+
+  const accessibleDepartments = useMemo(
+    () =>
+      getAccessibleDepartments({
+        departments,
+        userId,
+        userRole,
+        userDepartmentId: userDepartmentId || null,
+      }),
+    [departments, userId, userRole, userDepartmentId]
+  );
+
+  const selectedDepartment = useMemo(
+    () =>
+      departments.find((department) => department.id === selectedDepartmentId) || null,
+    [departments, selectedDepartmentId]
+  );
 
   useEffect(() => {
+    if (!userId || departmentsLoading) return;
+
+    setSelectedDepartmentId((current) => {
+      const availableIds = new Set(accessibleDepartments.map((d) => d.id));
+
+      if (isModerator) {
+        if (!current) return "";
+        return availableIds.has(current) ? current : "";
+      }
+
+      if (current && availableIds.has(current)) {
+        return current;
+      }
+      if (userDepartmentId && availableIds.has(userDepartmentId)) {
+        return userDepartmentId;
+      }
+      return accessibleDepartments[0]?.id || "";
+    });
+  }, [
+    accessibleDepartments,
+    departmentsLoading,
+    isModerator,
+    userDepartmentId,
+    userId,
+  ]);
+
+  useEffect(() => {
+    if (!userId || departmentsLoading) return;
+    if (!isModerator && accessibleDepartments.length > 0 && !selectedDepartmentId) return;
+
+    let cancelled = false;
+
     async function fetchData() {
+      setLoading(true);
       try {
+        const departmentParam = selectedDepartmentId || undefined;
         const [overviewData, membersData, meetingsData] = await Promise.all([
-          api.getOverview(),
+          api.getOverview(departmentParam),
           isModerator
-            ? api.getMembersAnalytics()
+            ? api.getMembersAnalytics(departmentParam)
             : Promise.resolve({ members: [] }),
           api.getMeetingsAnalytics(),
         ]);
+
+        if (cancelled) return;
         setOverview(overviewData);
         setMembers(membersData.members);
         setMeetingStats(meetingsData);
       } catch {
-        toastError("Не удалось загрузить аналитику");
+        if (!cancelled) {
+          toastError("Не удалось загрузить аналитику");
+        }
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
+
     fetchData();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accessibleDepartments.length,
+    departmentsLoading,
+    isModerator,
+    selectedDepartmentId,
+    toastError,
+    userId,
+  ]);
 
-  if (loading) return <AnalyticsSkeleton />;
+  const boardColumns = useMemo(() => overview?.board_columns ?? [], [overview]);
+  const monthlyFlow = useMemo(() => overview?.monthly_flow ?? [], [overview]);
+  const departmentRows = useMemo(() => overview?.departments ?? [], [overview]);
 
-  // Prepare chart data
-  const statusData = overview
-    ? Object.entries(STATUS_CHART)
-        .map(([key, config]) => {
-          const countMap: Record<string, number> = {
-            new: overview.tasks_new,
-            in_progress: overview.tasks_in_progress,
-            review: overview.tasks_review,
-            done: overview.tasks_done,
-            cancelled: overview.tasks_cancelled,
-          };
-          return {
-            name: config.label,
-            value: countMap[key] || 0,
-            color: config.color,
-          };
-        })
-        .filter((d) => d.value > 0)
-    : [];
+  const completionRate = overview?.completion_rate ?? 0;
+  const activeTasks = overview?.active_tasks ?? 0;
+  const doneWeek = overview?.tasks_done_week ?? 0;
+  const overdueTasks = overview?.tasks_overdue ?? 0;
 
-  const sourceData = overview?.tasks_by_source
-    ? Object.entries(overview.tasks_by_source)
-        .map(([key, value]) => ({
-          name: SOURCE_CHART[key]?.label || key,
-          value,
-          color: SOURCE_CHART[key]?.color || "hsl(210, 10%, 60%)",
-        }))
-        .filter((d) => d.value > 0)
-    : [];
-
-  const priorityData = overview?.tasks_by_priority
-    ? Object.entries(overview.tasks_by_priority)
-        .map(([key, value]) => ({
-          name: PRIORITY_CHART[key]?.label || key,
-          value,
-          color: PRIORITY_CHART[key]?.color || "hsl(210, 10%, 60%)",
-        }))
-        .filter((d) => d.value > 0)
-    : [];
-
-  const completionRate =
-    overview && overview.total_tasks > 0
-      ? Math.round((overview.tasks_done / overview.total_tasks) * 100)
-      : 0;
-
-  // Inactive members (>3 days without update)
-  const inactiveMembers = members.filter((m) => {
-    const days = daysSince(m.last_update);
-    return days === null || days > 3;
-  });
-
-  // Members sorted by tasks_done desc (leaderboard)
-  const sortedMembers = [...members].sort(
-    (a, b) => b.tasks_done - a.tasks_done
+  const sourceRows = useMemo(
+    () =>
+      overview?.tasks_by_source
+        ? Object.entries(overview.tasks_by_source)
+            .map(([key, value]) => ({
+              label: SOURCE_CHART[key]?.label || key,
+              value,
+              color: SOURCE_CHART[key]?.color || "hsl(210, 10%, 60%)",
+            }))
+            .filter((row) => row.value > 0)
+            .sort((a, b) => b.value - a.value)
+        : [],
+    [overview]
   );
+
+  const priorityRows = useMemo(
+    () =>
+      overview?.tasks_by_priority
+        ? Object.entries(overview.tasks_by_priority)
+            .map(([key, value]) => ({
+              label: PRIORITY_CHART[key]?.label || key,
+              value,
+              color: PRIORITY_CHART[key]?.color || "hsl(210, 10%, 60%)",
+            }))
+            .filter((row) => row.value > 0)
+            .sort((a, b) => b.value - a.value)
+        : [],
+    [overview]
+  );
+
+  const sortedMembers = useMemo(
+    () =>
+      [...members].sort((a, b) => {
+        if (b.tasks_done !== a.tasks_done) return b.tasks_done - a.tasks_done;
+        return b.total_tasks - a.total_tasks;
+      }),
+    [members]
+  );
+
+  const insights = useMemo(() => {
+    if (!overview) return [] as Array<{ title: string; description: string; action: string }>;
+
+    const result: Array<{ title: string; description: string; action: string }> = [];
+
+    if (overview.tasks_overdue > 0) {
+      result.push({
+        title: "Зона риска по срокам",
+        description: `Просрочено ${overview.tasks_overdue} задач в текущем срезе.`,
+        action:
+          "Соберите отдельный weekly-спринт по просрочкам и зафиксируйте owner на каждую задачу.",
+      });
+    }
+
+    if (overview.tasks_review >= overview.tasks_in_progress && overview.tasks_review > 0) {
+      result.push({
+        title: "Узкое место на этапе ревью",
+        description: `В ревью ${overview.tasks_review}, в работе ${overview.tasks_in_progress}.`,
+        action:
+          "Выделите отдельные ревью-слоты и ограничьте входящий поток задач до разгрузки очереди.",
+      });
+    }
+
+    const topDepartment = departmentRows[0];
+    if (topDepartment) {
+      result.push({
+        title: "Лидер нагрузки по отделам",
+        description: `${topDepartment.department_name}: ${topDepartment.active_tasks} активных задач.`,
+        action:
+          "Проверьте баланс между отделами и перераспределите высокоприоритетные задачи.",
+      });
+    }
+
+    const topSource = sourceRows[0];
+    if (topSource) {
+      result.push({
+        title: "Основной канал поступления",
+        description: `Больше всего задач приходит через «${topSource.label}».`,
+        action:
+          "Добавьте quality-check для этого канала, чтобы снизить шум и дубли в backlog.",
+      });
+    }
+
+    return result.slice(0, 4);
+  }, [departmentRows, overview, sourceRows]);
+
+  const blockInventory = [
+    {
+      title: "Контур борда",
+      description:
+        "Блок «Статусы борда» показывает, где копится очередь внутри Kanban-цикла (new → in_progress → review → done).",
+      usage:
+        "Используйте его ежедневно на standup для оперативного управления потоком задач.",
+      extension:
+        "Новое объединение: добавить связку «статус + приоритет», чтобы видеть, где зависают критичные задачи.",
+    },
+    {
+      title: "Контур отделов",
+      description:
+        "Сводка по отделам даёт быстрый снимок загрузки, просрочек и результата за неделю по каждой функции.",
+      usage:
+        "Используйте его еженедельно для балансировки ресурсов и выбора фокуса руководителей.",
+      extension:
+        "Новое объединение: добавить связку «отдел + источник», чтобы понять, откуда в отдел приходит перегруз.",
+    },
+    {
+      title: "Контур потока",
+      description:
+        "График динамики «создано/завершено» показывает сезонность и разрыв между входом и выходом задач.",
+      usage:
+        "Используйте его для ретроспективы и планирования нагрузки на следующий цикл.",
+      extension:
+        "Новое изучение: добавить 30-дневный rolling коэффициент завершения для раннего сигнала перегрева.",
+    },
+  ];
+
+  const scopeLabel = selectedDepartment
+    ? `Срез по отделу: ${selectedDepartment.name}`
+    : isModerator
+      ? "Срез по всем отделам"
+      : "Срез по моим задачам";
+
+  const canSelectDepartment = isModerator || accessibleDepartments.length > 1;
+
+  if (!user) return null;
+  if (loading || departmentsLoading) return <AnalyticsSkeleton />;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      {/* ═══════════ Metric Cards ═══════════ */}
-      <section className="grid gap-4 grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          label="Всего задач"
-          value={overview?.total_tasks ?? 0}
-          subtitle={`Активных: ${(overview?.total_tasks ?? 0) - (overview?.tasks_done ?? 0) - (overview?.tasks_cancelled ?? 0)}`}
+      <section className="animate-fade-in-up stagger-1 rounded-2xl border border-border/60 bg-card p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="text-xl font-bold font-heading tracking-tight md:text-2xl">
+              Аналитика задач
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">{scopeLabel}</p>
+          </div>
+
+          {canSelectDepartment && (
+            <div className="w-full md:w-[320px]">
+              <p className="mb-1 text-xs font-medium text-muted-foreground">Отдел</p>
+              <Select
+                value={selectedDepartmentId || "__all__"}
+                onValueChange={(value) => {
+                  if (value === "__all__") {
+                    setSelectedDepartmentId("");
+                    return;
+                  }
+                  setSelectedDepartmentId(value);
+                }}
+              >
+                <SelectTrigger className="h-10 border-border/60 bg-background/70">
+                  <SelectValue placeholder="Выберите отдел" />
+                </SelectTrigger>
+                <SelectContent>
+                  {isModerator && <SelectItem value="__all__">Все отделы</SelectItem>}
+                  {accessibleDepartments.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {department.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="grid gap-4 grid-cols-2 xl:grid-cols-5">
+        <StatCard
+          label="Активные задачи"
+          value={activeTasks}
+          subtitle={`Всего в срезе: ${overview?.total_tasks ?? 0}`}
           icon={ListTodo}
           accentColor={CHART_TEAL}
-          stagger={1}
-        />
-        <MetricCard
-          label="Выполнено"
-          value={overview?.tasks_done ?? 0}
-          subtitle={`${completionRate}% от всех задач`}
-          icon={CheckCircle2}
-          accentColor="hsl(152, 55%, 28%)"
           stagger={2}
         />
-        <MetricCard
-          label="Просрочено"
-          value={overview?.tasks_overdue ?? 0}
-          subtitle="Требуют внимания"
-          icon={AlertTriangle}
-          accentColor="hsl(0, 72%, 51%)"
-          isPulsing
+        <StatCard
+          label="Сделано за 7 дней"
+          value={doneWeek}
+          subtitle="Недельная продуктивность"
+          icon={CheckCircle2}
+          accentColor="hsl(152, 55%, 35%)"
           stagger={3}
         />
-        <MetricCard
-          label="Встречи"
-          value={meetingStats?.total_meetings ?? 0}
-          subtitle={`В этом месяце: ${meetingStats?.meetings_this_month ?? 0}`}
-          icon={Calendar}
+        <StatCard
+          label="Процент завершения"
+          value={`${completionRate}%`}
+          subtitle="Done от общего числа задач"
+          icon={TrendingUp}
           accentColor={CHART_BLUE}
           stagger={4}
         />
+        <StatCard
+          label="Просроченные"
+          value={overdueTasks}
+          subtitle="Требуют приоритезации"
+          icon={AlertTriangle}
+          accentColor="hsl(0, 72%, 51%)"
+          isAlert={overdueTasks > 0}
+          stagger={5}
+        />
+        <StatCard
+          label="Встречи (месяц)"
+          value={meetingStats?.meetings_this_month ?? 0}
+          subtitle={`Всего встреч: ${meetingStats?.total_meetings ?? 0}`}
+          icon={Calendar}
+          accentColor={CHART_VIOLET}
+          stagger={6}
+        />
       </section>
 
-      {/* ═══════════ Charts Row ═══════════ */}
-      <section className="grid gap-4 md:grid-cols-2">
-        {/* Status Pie Chart */}
-        <div className="animate-fade-in-up stagger-5 rounded-2xl border border-border/60 bg-card overflow-hidden">
-          <div className="flex items-center gap-2 p-5 pb-0">
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="animate-fade-in-up stagger-7 rounded-2xl border border-border/60 bg-card p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <Layers3 className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-heading font-semibold text-sm">Статусы борда</h3>
+          </div>
+          {boardColumns.length === 0 ? (
+            <EmptyPanel />
+          ) : (
+            <div className="space-y-3">
+              {boardColumns.map((column) => (
+                <div key={column.key} className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">{column.label}</span>
+                    <span className="font-medium text-foreground">
+                      {column.count} ({column.share_percent}%)
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted/70">
+                    <div
+                      className="h-2 rounded-full transition-all"
+                      style={{
+                        width: `${Math.max(column.share_percent, column.count > 0 ? 6 : 0)}%`,
+                        backgroundColor:
+                          column.key === "new"
+                            ? "hsl(210, 20%, 62%)"
+                            : column.key === "in_progress"
+                              ? CHART_TEAL
+                              : column.key === "review"
+                                ? CHART_AMBER
+                                : "hsl(152, 55%, 38%)",
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="animate-fade-in-up stagger-8 rounded-2xl border border-border/60 bg-card p-5">
+          <div className="mb-4 flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
             <h3 className="font-heading font-semibold text-sm">
-              Задачи по статусам
+              Динамика потока (6 месяцев)
             </h3>
           </div>
-          <div className="p-5">
-            {statusData.length > 0 ? (
-              <>
-                <ResponsiveContainer width="100%" height={220}>
-                  <PieChart>
-                    <Pie
-                      data={statusData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={55}
-                      outerRadius={85}
-                      dataKey="value"
-                      strokeWidth={2}
-                      stroke="hsl(var(--card))"
-                    >
-                      {statusData.map((entry, index) => (
-                        <Cell key={index} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<ChartTooltip />} />
-                  </PieChart>
-                </ResponsiveContainer>
-                {/* Legend */}
-                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-2">
-                  {statusData.map((d) => (
-                    <ChartLegendItem
-                      key={d.name}
-                      color={d.color}
-                      label={`${d.name}: ${d.value}`}
-                    />
-                  ))}
-                </div>
-              </>
-            ) : (
-              <EmptyChart />
-            )}
-          </div>
-        </div>
-
-        {/* Source Donut Chart */}
-        <div className="animate-fade-in-up stagger-6 rounded-2xl border border-border/60 bg-card overflow-hidden">
-          <div className="flex items-center gap-2 p-5 pb-0">
-            <Zap className="h-4 w-4 text-muted-foreground" />
-            <h3 className="font-heading font-semibold text-sm">
-              По источникам
-            </h3>
-          </div>
-          <div className="p-5">
-            {sourceData.length > 0 ? (
-              <>
-                <ResponsiveContainer width="100%" height={220}>
-                  <PieChart>
-                    <Pie
-                      data={sourceData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={55}
-                      outerRadius={85}
-                      dataKey="value"
-                      strokeWidth={2}
-                      stroke="hsl(var(--card))"
-                    >
-                      {sourceData.map((entry, index) => (
-                        <Cell key={index} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip content={<ChartTooltip />} />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-2">
-                  {sourceData.map((d) => (
-                    <ChartLegendItem
-                      key={d.name}
-                      color={d.color}
-                      label={`${d.name}: ${d.value}`}
-                    />
-                  ))}
-                </div>
-              </>
-            ) : (
-              <EmptyChart />
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* ═══════════ Priority Bar Chart ═══════════ */}
-      <section className="animate-fade-in-up stagger-7 rounded-2xl border border-border/60 bg-card overflow-hidden">
-        <div className="flex items-center gap-2 p-5 pb-0">
-          <AlertTriangle className="h-4 w-4 text-muted-foreground" />
-          <h3 className="font-heading font-semibold text-sm">
-            По приоритетам
-          </h3>
-        </div>
-        <div className="p-5">
-          {priorityData.length > 0 ? (
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={priorityData} barCategoryGap="25%">
+          {monthlyFlow.length === 0 ? (
+            <EmptyPanel />
+          ) : (
+            <ResponsiveContainer width="100%" height={250}>
+              <LineChart data={monthlyFlow} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
                 <XAxis
-                  dataKey="name"
+                  dataKey="label"
                   tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }}
                   axisLine={false}
                   tickLine={false}
@@ -466,198 +629,102 @@ export default function AnalyticsPage() {
                   axisLine={false}
                   tickLine={false}
                 />
-                <Tooltip content={<ChartTooltip />} />
-                <Bar dataKey="value" name="Задач" radius={[6, 6, 0, 0]}>
-                  {priorityData.map((entry, index) => (
-                    <Cell key={index} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
+                <Tooltip content={<TrendTooltip />} />
+                <Line
+                  type="monotone"
+                  dataKey="created"
+                  name="Создано"
+                  stroke={CHART_BLUE}
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="completed"
+                  name="Завершено"
+                  stroke="hsl(152, 55%, 38%)"
+                  strokeWidth={2}
+                  dot={{ r: 3 }}
+                  activeDot={{ r: 5 }}
+                />
+              </LineChart>
             </ResponsiveContainer>
-          ) : (
-            <EmptyChart />
           )}
         </div>
       </section>
 
-      {/* ═══════════ Moderator: Attention Block ═══════════ */}
-      {isModerator && inactiveMembers.length > 0 && (
-        <section className="animate-fade-in-up stagger-8 rounded-2xl border border-amber-500/30 bg-amber-500/[0.03] overflow-hidden">
-          <div className="flex items-center gap-3 p-5 pb-0">
-            <div className="h-9 w-9 rounded-xl bg-amber-500/10 flex items-center justify-center">
-              <AlertOctagon className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div>
-              <h3 className="font-heading font-semibold text-sm">
-                Требуют внимания
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                Участники без обновлений более 3 дней
-              </p>
-            </div>
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="animate-fade-in-up stagger-8 rounded-2xl border border-border/60 bg-card p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-heading font-semibold text-sm">Срез по отделам</h3>
           </div>
-          <div className="p-5 pt-4">
-            <div className="grid gap-2 sm:grid-cols-2">
-              {inactiveMembers.map((m) => {
-                const days = daysSince(m.last_update);
-                return (
-                  <div
-                    key={m.id}
-                    className="flex items-center gap-3 p-3 rounded-xl border border-amber-500/20 bg-card"
-                  >
-                    <UserAvatar name={m.full_name} avatarUrl={m.avatar_url} size="sm" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">
-                        {m.full_name}
-                      </p>
-                      <p className="text-2xs text-amber-600 dark:text-amber-400">
-                        {days !== null
-                          ? `Посл. апдейт: ${daysSinceLabel(days)}`
-                          : "Нет обновлений"}
-                      </p>
-                    </div>
-                    {m.tasks_in_progress > 0 && (
-                      <span className="text-2xs text-muted-foreground">
-                        {m.tasks_in_progress} в работе
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ═══════════ Members Leaderboard ═══════════ */}
-      <section className="animate-fade-in-up stagger-8 rounded-2xl border border-border/60 bg-card overflow-hidden">
-        <div className="flex items-center gap-3 p-5 pb-0">
-          <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center">
-            <Trophy className="h-5 w-5 text-primary" />
-          </div>
-          <div>
-            <h3 className="font-heading font-semibold text-sm">
-              Рейтинг участников
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              По количеству выполненных задач
-            </p>
-          </div>
-        </div>
-
-        <div className="p-5 pt-4">
-          {sortedMembers.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="h-14 w-14 rounded-2xl bg-muted/60 flex items-center justify-center mb-3">
-                <Users className="h-6 w-6 text-muted-foreground/50" />
-              </div>
-              <p className="text-sm text-muted-foreground">Нет данных</p>
-            </div>
+          {departmentRows.length === 0 ? (
+            <EmptyPanel
+              title="Нет данных по отделам"
+              description="Проверьте доступ к отделам или измените фильтр."
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border/60">
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      #
+                    <th className="px-2 py-2 text-left text-xs font-medium uppercase text-muted-foreground">
+                      Отдел
                     </th>
-                    <th className="px-3 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Участник
+                    <th className="px-2 py-2 text-center text-xs font-medium uppercase text-muted-foreground">
+                      Активные
                     </th>
-                    <th className="px-3 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    <th className="px-2 py-2 text-center text-xs font-medium uppercase text-muted-foreground">
+                      Просроч.
+                    </th>
+                    <th className="px-2 py-2 text-center text-xs font-medium uppercase text-muted-foreground">
+                      Done 7д
+                    </th>
+                    <th className="px-2 py-2 text-center text-xs font-medium uppercase text-muted-foreground">
                       Всего
                     </th>
-                    <th className="px-3 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Выполнено
-                    </th>
-                    <th className="px-3 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      В работе
-                    </th>
-                    <th className="px-3 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      Просрочено
-                    </th>
-                    {isModerator && (
-                      <th className="px-3 py-3 text-center text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                        Посл. апдейт
-                      </th>
-                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/40">
-                  {sortedMembers.map((m, i) => {
-                    const days = daysSince(m.last_update);
-                    const isInactive = days !== null && days > 3;
-                    const rank = i + 1;
+                  {departmentRows.map((row) => {
+                    const isSelected = selectedDepartmentId === row.department_id;
                     return (
-                      <tr key={m.id} className="hover:bg-muted/30">
-                        <td className="px-3 py-3">
-                          <span
-                            className={`
-                            inline-flex h-6 w-6 items-center justify-center rounded-lg text-xs font-bold
-                            ${
-                              rank === 1
-                                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
-                                : rank === 2
-                                  ? "bg-border/60 text-muted-foreground"
-                                  : rank === 3
-                                    ? "bg-orange-500/10 text-orange-500"
-                                    : "text-muted-foreground/50"
-                            }
-                          `}
-                          >
-                            {rank}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3">
+                      <tr
+                        key={row.department_id}
+                        className={isSelected ? "bg-primary/5" : "hover:bg-muted/30"}
+                      >
+                        <td className="px-2 py-2">
                           <div className="flex items-center gap-2">
-                            <UserAvatar name={m.full_name} avatarUrl={m.avatar_url} size="sm" />
-                            <span className="font-medium text-sm truncate">
-                              {m.full_name}
-                            </span>
-                            <RoleBadge role={m.role} />
+                            <span
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{
+                                backgroundColor:
+                                  row.department_color || "hsl(var(--muted-foreground))",
+                              }}
+                            />
+                            <span className="font-medium">{row.department_name}</span>
                           </div>
                         </td>
-                        <td className="px-3 py-3 text-center font-mono text-xs">
-                          {m.total_tasks}
+                        <td className="px-2 py-2 text-center font-mono text-xs">
+                          {row.active_tasks}
                         </td>
-                        <td className="px-3 py-3 text-center">
-                          <span className="font-mono text-xs text-status-done-fg font-medium">
-                            {m.tasks_done}
-                          </span>
-                        </td>
-                        <td className="px-3 py-3 text-center font-mono text-xs">
-                          {m.tasks_in_progress}
-                        </td>
-                        <td className="px-3 py-3 text-center">
-                          {m.tasks_overdue > 0 ? (
-                            <span className="font-mono text-xs text-destructive font-medium">
-                              {m.tasks_overdue}
+                        <td className="px-2 py-2 text-center font-mono text-xs">
+                          {row.overdue_tasks > 0 ? (
+                            <span className="font-medium text-destructive">
+                              {row.overdue_tasks}
                             </span>
                           ) : (
-                            <span className="font-mono text-xs text-muted-foreground/40">
-                              0
-                            </span>
+                            <span className="text-muted-foreground/50">0</span>
                           )}
                         </td>
-                        {isModerator && (
-                          <td className="px-3 py-3 text-center">
-                            {m.last_update ? (
-                              <span
-                                className={`text-xs ${
-                                  isInactive
-                                    ? "text-amber-600 dark:text-amber-400 font-medium"
-                                    : "text-muted-foreground"
-                                }`}
-                              >
-                                {daysSinceLabel(days!)}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-muted-foreground/40">
-                                —
-                              </span>
-                            )}
-                          </td>
-                        )}
+                        <td className="px-2 py-2 text-center font-mono text-xs">
+                          {row.done_week}
+                        </td>
+                        <td className="px-2 py-2 text-center font-mono text-xs">
+                          {row.total_tasks}
+                        </td>
                       </tr>
                     );
                   })}
@@ -666,58 +733,158 @@ export default function AnalyticsPage() {
             </div>
           )}
         </div>
-      </section>
 
-      {/* ═══════════ Meeting Stats ═══════════ */}
-      {meetingStats && (
-        <section className="animate-fade-in-up stagger-8 rounded-2xl border border-border/60 bg-card overflow-hidden">
-          <div className="flex items-center gap-2 p-5 pb-0">
-            <Calendar className="h-4 w-4 text-muted-foreground" />
+        <div className="animate-fade-in-up stagger-9 rounded-2xl border border-border/60 bg-card p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
             <h3 className="font-heading font-semibold text-sm">
-              Встречи и задачи
+              Источники и приоритеты
             </h3>
           </div>
-          <div className="p-5 pt-4">
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
-              <div className="text-center p-4 rounded-xl bg-muted/30">
-                <div className="text-2xl font-bold font-heading">
-                  {meetingStats.total_meetings}
-                </div>
-                <p className="text-2xs text-muted-foreground mt-1">
-                  Всего встреч
-                </p>
-              </div>
-              <div className="text-center p-4 rounded-xl bg-muted/30">
-                <div className="text-2xl font-bold font-heading">
-                  {meetingStats.tasks_from_meetings}
-                </div>
-                <p className="text-2xs text-muted-foreground mt-1">
-                  Задач из встреч
-                </p>
-              </div>
-              <div className="text-center p-4 rounded-xl bg-muted/30">
-                <div className="text-2xl font-bold font-heading">
-                  {meetingStats.meetings_this_month}
-                </div>
-                <p className="text-2xs text-muted-foreground mt-1">
-                  В этом месяце
-                </p>
-              </div>
-            </div>
+          <div className="space-y-4">
+            <DistributionBars title="По источникам" rows={sourceRows} />
+            <DistributionBars title="По приоритетам" rows={priorityRows} />
           </div>
+        </div>
+      </section>
+
+      {isModerator && (
+        <section className="animate-fade-in-up stagger-9 rounded-2xl border border-border/60 bg-card p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-heading font-semibold text-sm">
+              Рейтинг участников
+            </h3>
+          </div>
+          {sortedMembers.length === 0 ? (
+            <EmptyPanel title="Нет данных по участникам" />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border/60">
+                    <th className="px-2 py-2 text-left text-xs font-medium uppercase text-muted-foreground">
+                      Участник
+                    </th>
+                    <th className="px-2 py-2 text-center text-xs font-medium uppercase text-muted-foreground">
+                      Done
+                    </th>
+                    <th className="px-2 py-2 text-center text-xs font-medium uppercase text-muted-foreground">
+                      В работе
+                    </th>
+                    <th className="px-2 py-2 text-center text-xs font-medium uppercase text-muted-foreground">
+                      Просроч.
+                    </th>
+                    <th className="px-2 py-2 text-center text-xs font-medium uppercase text-muted-foreground">
+                      Посл. апдейт
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/40">
+                  {sortedMembers.map((member) => {
+                    const days = daysSince(member.last_update);
+                    return (
+                      <tr key={member.id} className="hover:bg-muted/30">
+                        <td className="px-2 py-2">
+                          <div className="flex items-center gap-2">
+                            <UserAvatar
+                              name={member.full_name}
+                              avatarUrl={member.avatar_url}
+                              size="sm"
+                            />
+                            <span className="font-medium">{member.full_name}</span>
+                            <RoleBadge role={member.role} />
+                          </div>
+                        </td>
+                        <td className="px-2 py-2 text-center font-mono text-xs text-status-done-fg">
+                          {member.tasks_done}
+                        </td>
+                        <td className="px-2 py-2 text-center font-mono text-xs">
+                          {member.tasks_in_progress}
+                        </td>
+                        <td className="px-2 py-2 text-center font-mono text-xs">
+                          {member.tasks_overdue > 0 ? (
+                            <span className="font-medium text-destructive">
+                              {member.tasks_overdue}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/50">0</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-2 text-center text-xs">
+                          {days === null ? (
+                            <span className="text-muted-foreground/50">—</span>
+                          ) : (
+                            <span
+                              className={
+                                days > 3
+                                  ? "font-medium text-amber-600 dark:text-amber-400"
+                                  : "text-muted-foreground"
+                              }
+                            >
+                              {daysSinceLabel(days)}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </section>
       )}
-    </div>
-  );
-}
 
-function EmptyChart() {
-  return (
-    <div className="flex flex-col items-center justify-center py-12 text-center">
-      <div className="h-12 w-12 rounded-xl bg-muted/60 flex items-center justify-center mb-2">
-        <TrendingUp className="h-5 w-5 text-muted-foreground/40" />
-      </div>
-      <p className="text-xs text-muted-foreground">Нет данных</p>
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="animate-fade-in-up stagger-10 rounded-2xl border border-border/60 bg-card p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <Lightbulb className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-heading font-semibold text-sm">Инсайты по текущему срезу</h3>
+          </div>
+          {insights.length === 0 ? (
+            <EmptyPanel
+              title="Недостаточно сигналов"
+              description="Когда накопятся данные, здесь появятся управленческие подсказки."
+            />
+          ) : (
+            <div className="space-y-3">
+              {insights.map((insight) => (
+                <div
+                  key={insight.title}
+                  className="rounded-xl border border-border/60 bg-background/40 p-3"
+                >
+                  <p className="text-sm font-semibold">{insight.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {insight.description}
+                  </p>
+                  <p className="mt-1.5 text-xs text-foreground/80">{insight.action}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="animate-fade-in-up stagger-10 rounded-2xl border border-border/60 bg-card p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <Building2 className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-heading font-semibold text-sm">Инвентаризация блоков</h3>
+          </div>
+          <div className="space-y-3">
+            {blockInventory.map((item) => (
+              <div
+                key={item.title}
+                className="rounded-xl border border-border/60 bg-background/40 p-3"
+              >
+                <p className="text-sm font-semibold">{item.title}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
+                <p className="mt-1.5 text-xs text-foreground/80">{item.usage}</p>
+                <p className="mt-1.5 text-xs text-primary/90">{item.extension}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

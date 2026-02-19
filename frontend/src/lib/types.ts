@@ -375,8 +375,35 @@ export interface PaginatedResponse<T> {
   pages: number;
 }
 
+export interface BoardColumnStat {
+  key: string;
+  label: string;
+  count: number;
+  share_percent: number;
+}
+
+export interface MonthlyFlowPoint {
+  month: string;
+  label: string;
+  created: number;
+  completed: number;
+}
+
+export interface DepartmentBreakdownItem {
+  department_id: string;
+  department_name: string;
+  department_color: string | null;
+  total_tasks: number;
+  active_tasks: number;
+  overdue_tasks: number;
+  done_week: number;
+}
+
 export interface OverviewAnalytics {
   total_tasks: number;
+  active_tasks: number;
+  completion_rate: number;
+  tasks_done_week: number;
   tasks_new: number;
   tasks_in_progress: number;
   tasks_review: number;
@@ -385,6 +412,10 @@ export interface OverviewAnalytics {
   tasks_overdue: number;
   total_meetings: number;
   total_members: number;
+  selected_department_id: string | null;
+  board_columns: BoardColumnStat[];
+  monthly_flow: MonthlyFlowPoint[];
+  departments: DepartmentBreakdownItem[];
   tasks_by_source: Record<string, number>;
   tasks_by_priority: Record<string, number>;
 }

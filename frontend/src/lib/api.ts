@@ -463,8 +463,13 @@ class ApiClient {
 
   // ==================== Analytics ====================
 
-  async getOverview(): Promise<OverviewAnalytics> {
-    return this.request<OverviewAnalytics>("/api/analytics/overview");
+  async getOverview(departmentId?: string): Promise<OverviewAnalytics> {
+    const params = new URLSearchParams();
+    if (departmentId) {
+      params.set("department_id", departmentId);
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<OverviewAnalytics>(`/api/analytics/overview${query}`);
   }
 
   async getDashboardTasksAnalytics(departmentId?: string): Promise<DashboardTasksAnalytics> {
@@ -476,8 +481,13 @@ class ApiClient {
     return this.request<DashboardTasksAnalytics>(`/api/analytics/dashboard-tasks${query}`);
   }
 
-  async getMembersAnalytics(): Promise<{ members: MemberStats[] }> {
-    return this.request<{ members: MemberStats[] }>("/api/analytics/members");
+  async getMembersAnalytics(departmentId?: string): Promise<{ members: MemberStats[] }> {
+    const params = new URLSearchParams();
+    if (departmentId) {
+      params.set("department_id", departmentId);
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<{ members: MemberStats[] }>(`/api/analytics/members${query}`);
   }
 
   async getMeetingsAnalytics(): Promise<MeetingAnalytics> {
