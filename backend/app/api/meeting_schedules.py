@@ -128,11 +128,12 @@ def _enrich_response(schedule: MeetingSchedule) -> MeetingScheduleResponse:
 
 @router.get("", response_model=list[MeetingScheduleResponse])
 async def get_all_schedules(
+    include_inactive: bool = False,
     _: TeamMember = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """Get all meeting schedules (active and inactive)."""
-    schedules = await schedule_repo.get_all_active(session)
+    """Get meeting schedules (active by default)."""
+    schedules = await schedule_repo.get_all(session, include_inactive=include_inactive)
     return [_enrich_response(s) for s in schedules]
 
 
