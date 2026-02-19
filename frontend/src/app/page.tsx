@@ -853,7 +853,7 @@ export default function DashboardPage() {
     teamLoadMap.set(task.assignee_id, existing);
   }
 
-  const teamLoadRows = [...teamLoadMap.values()]
+  const teamLoadRows = Array.from(teamLoadMap.values())
     .sort((a, b) => {
       if (b.overdue !== a.overdue) return b.overdue - a.overdue;
       if (b.total !== a.total) return b.total - a.total;
