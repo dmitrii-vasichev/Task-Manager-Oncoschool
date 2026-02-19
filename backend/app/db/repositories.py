@@ -45,6 +45,15 @@ class TeamMemberRepository:
         result = await session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_all(self, session: AsyncSession) -> list[TeamMember]:
+        stmt = (
+            select(TeamMember)
+            .options(selectinload(TeamMember.department))
+            .order_by(TeamMember.full_name)
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
     async def get_by_telegram_username(self, session: AsyncSession, username: str) -> TeamMember | None:
         stmt = select(TeamMember).where(
             func.lower(TeamMember.telegram_username) == username.lower()
@@ -393,9 +402,11 @@ class NotificationSubscriptionRepository:
         stmt = (
             select(NotificationSubscription)
             .options(selectinload(NotificationSubscription.member))
+            .join(NotificationSubscription.member)
             .where(
                 NotificationSubscription.event_type == event_type,
                 NotificationSubscription.is_active.is_(True),
+                TeamMember.is_active.is_(True),
             )
         )
         result = await session.execute(stmt)

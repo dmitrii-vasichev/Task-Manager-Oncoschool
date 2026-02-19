@@ -4,15 +4,16 @@ from pathlib import Path
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Query
 from PIL import Image
-from sqlalchemy import select
+from pydantic import BaseModel
+from sqlalchemy import func, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.auth import get_current_user, require_moderator
 from app.db.database import get_session
-from app.db.models import Department, TeamMember
+from app.db.models import Department, Task, TeamMember
 from app.db.repositories import DepartmentRepository, TeamMemberRepository
 from app.db.schemas import TeamMemberCreate, TeamMemberResponse, TeamMemberUpdate
 from app.services.permission_service import PermissionService
@@ -27,8 +28,19 @@ ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_AVATAR_SIZE = 2 * 1024 * 1024  # 2 MB
 
 
+class MemberDeactivationPreviewTaskItem(BaseModel):
+    short_id: int
+    title: str
+
+
+class MemberDeactivationPreviewResponse(BaseModel):
+    open_tasks_count: int
+    open_tasks_preview: list[MemberDeactivationPreviewTaskItem]
+
+
 @router.get("/tree")
 async def get_team_tree(
+    include_inactive: bool = Query(False),
     member: TeamMember = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
@@ -43,12 +55,16 @@ async def get_team_tree(
     result = await session.execute(stmt)
     departments = list(result.scalars().all())
 
-    # Fetch all active members
-    all_members = await member_repo.get_all_active(session)
+    # Fetch members according to requested visibility mode
+    all_members = (
+        await member_repo.get_all(session)
+        if include_inactive
+        else await member_repo.get_all_active(session)
+    )
     assigned_ids = set()
     for dept in departments:
         for m in dept.members:
-            if m.is_active:
+            if include_inactive or m.is_active:
                 assigned_ids.add(m.id)
 
     unassigned = [m for m in all_members if m.id not in assigned_ids]
@@ -72,9 +88,9 @@ async def get_team_tree(
         }
 
     def dept_to_dict(d: Department) -> dict:
-        active_members = sorted(
-            [m for m in d.members if m.is_active],
-            key=lambda m: m.full_name,
+        dept_members = sorted(
+            [m for m in d.members if include_inactive or m.is_active],
+            key=lambda m: (not m.is_active, m.full_name.lower()),
         )
         return {
             "id": str(d.id),
@@ -85,7 +101,7 @@ async def get_team_tree(
             "sort_order": d.sort_order,
             "is_active": d.is_active,
             "created_at": d.created_at.isoformat() if d.created_at else None,
-            "members": [member_to_dict(m) for m in active_members],
+            "members": [member_to_dict(m) for m in dept_members],
         }
 
     return {
@@ -99,11 +115,16 @@ async def get_team_tree(
 
 @router.get("", response_model=list[TeamMemberResponse])
 async def list_team(
+    include_inactive: bool = Query(False),
     member: TeamMember = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
-    """List all active team members."""
-    members = await member_repo.get_all_active(session)
+    """List team members."""
+    members = (
+        await member_repo.get_all(session)
+        if include_inactive
+        else await member_repo.get_all_active(session)
+    )
     return members
 
 
@@ -150,6 +171,47 @@ async def get_team_member(
     return target
 
 
+@router.get(
+    "/{member_id}/deactivation-preview",
+    response_model=MemberDeactivationPreviewResponse,
+)
+async def get_member_deactivation_preview(
+    member_id: uuid.UUID,
+    member: TeamMember = Depends(require_moderator),
+    session: AsyncSession = Depends(get_session),
+):
+    target = await member_repo.get_by_id(session, member_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="Участник не найден")
+
+    open_tasks_stmt = select(func.count(Task.id)).where(
+        Task.assignee_id == target.id,
+        Task.status.notin_(["done", "cancelled"]),
+    )
+    open_tasks_count = (await session.execute(open_tasks_stmt)).scalar_one()
+
+    preview_limit = 8
+    preview_stmt = (
+        select(Task.short_id, Task.title)
+        .where(
+            Task.assignee_id == target.id,
+            Task.status.notin_(["done", "cancelled"]),
+        )
+        .order_by(Task.deadline.asc().nullslast(), Task.created_at.desc())
+        .limit(preview_limit)
+    )
+    preview_rows = (await session.execute(preview_stmt)).all()
+    preview_tasks = [
+        MemberDeactivationPreviewTaskItem(short_id=row.short_id, title=row.title)
+        for row in preview_rows
+    ]
+
+    return MemberDeactivationPreviewResponse(
+        open_tasks_count=open_tasks_count,
+        open_tasks_preview=preview_tasks,
+    )
+
+
 @router.patch("/{member_id}", response_model=TeamMemberResponse)
 async def update_team_member(
     member_id: uuid.UUID,
@@ -166,6 +228,9 @@ async def update_team_member(
     if not update_data:
         raise HTTPException(status_code=400, detail="Нет данных для обновления")
 
+    deactivation_strategy = update_data.pop("deactivation_strategy", None)
+    reassign_to_member_id = update_data.pop("reassign_to_member_id", None)
+
     # Role change requires admin
     if "role" in update_data and update_data["role"] != target.role:
         if not PermissionService.can_manage_roles(member):
@@ -173,6 +238,89 @@ async def update_team_member(
                 status_code=403,
                 detail="Только администратор может менять роли",
             )
+
+    # Deactivation workflow:
+    # - block self-deactivation to avoid accidental lockout
+    # - unassign all open tasks so they appear in "Не назначен"
+    # - remove as department head
+    is_deactivating = (
+        "is_active" in update_data
+        and update_data["is_active"] is False
+        and target.is_active
+    )
+    if is_deactivating:
+        if target.id == member.id:
+            raise HTTPException(
+                status_code=400,
+                detail="Нельзя деактивировать самого себя",
+            )
+        strategy = (
+            deactivation_strategy
+            if deactivation_strategy is not None
+            else ("reassign" if reassign_to_member_id else "unassign")
+        )
+
+        if strategy == "reassign":
+            if not reassign_to_member_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Выберите участника для переназначения задач",
+                )
+            if reassign_to_member_id == target.id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Нельзя переназначить задачи на деактивируемого участника",
+                )
+            reassign_member = await member_repo.get_by_id(session, reassign_to_member_id)
+            if not reassign_member or not reassign_member.is_active:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Выбранный участник для переназначения не найден или деактивирован",
+                )
+
+            reassign_result = await session.execute(
+                sa_update(Task)
+                .where(
+                    Task.assignee_id == target.id,
+                    Task.status.notin_(["done", "cancelled"]),
+                )
+                .values(assignee_id=reassign_to_member_id)
+            )
+            reassigned_count = reassign_result.rowcount or 0
+            if reassigned_count:
+                logger.info(
+                    "Member %s deactivated: %s open tasks reassigned to %s",
+                    target.id,
+                    reassigned_count,
+                    reassign_to_member_id,
+                )
+        elif strategy == "unassign":
+            unassign_result = await session.execute(
+                sa_update(Task)
+                .where(
+                    Task.assignee_id == target.id,
+                    Task.status.notin_(["done", "cancelled"]),
+                )
+                .values(assignee_id=None)
+            )
+            unassigned_count = unassign_result.rowcount or 0
+            if unassigned_count:
+                logger.info(
+                    "Member %s deactivated: %s open tasks moved to unassigned",
+                    target.id,
+                    unassigned_count,
+                )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Некорректная стратегия деактивации",
+            )
+
+        await session.execute(
+            sa_update(Department)
+            .where(Department.head_id == target.id)
+            .values(head_id=None)
+        )
 
     updated = await member_repo.update(session, member_id, **update_data)
     await session.commit()

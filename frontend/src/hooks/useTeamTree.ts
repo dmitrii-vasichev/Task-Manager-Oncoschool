@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import type { TeamTreeResponse } from "@/lib/types";
 
-export function useTeamTree() {
+export function useTeamTree(options?: { includeInactive?: boolean }) {
+  const includeInactive = options?.includeInactive ?? false;
   const [tree, setTree] = useState<TeamTreeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -13,14 +14,14 @@ export function useTeamTree() {
     try {
       setLoading(true);
       setError(null);
-      const result = await api.getTeamTree();
+      const result = await api.getTeamTree({ includeInactive });
       setTree(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [includeInactive]);
 
   useEffect(() => {
     fetch();

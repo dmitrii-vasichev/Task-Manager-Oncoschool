@@ -23,9 +23,9 @@ import type { TeamMember, MemberStats } from "@/lib/types";
 
 export default function TeamPage() {
   const { user } = useCurrentUser();
-  const { tree, loading: treeLoading, refetch: refetchTree } = useTeamTree();
+  const { tree, loading: treeLoading, refetch: refetchTree } = useTeamTree({ includeInactive: true });
   const { departments, refetch: refetchDepts } = useDepartments();
-  const { members, refetch: refetchMembers } = useTeam();
+  const { members, refetch: refetchMembers } = useTeam({ includeInactive: true });
   const [memberStats, setMemberStats] = useState<Record<string, MemberStats>>({});
   const [search, setSearch] = useState("");
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
@@ -80,6 +80,8 @@ export default function TeamPage() {
   const isSearching = search.trim().length > 0;
   const totalMembers = allMembers.length;
   const activeMembers = allMembers.filter((m) => m.is_active).length;
+  const inactiveMembers = totalMembers - activeMembers;
+  const activeOnlyMembers = allMembers.filter((m) => m.is_active);
   const totalDepts = departments.length;
 
   if (treeLoading) {
@@ -117,6 +119,14 @@ export default function TeamPage() {
         <span className="text-xs text-muted-foreground">
           Активных: {activeMembers}
         </span>
+        {inactiveMembers > 0 && (
+          <>
+            <div className="h-4 w-px bg-border/60" />
+            <span className="text-xs text-muted-foreground">
+              Неактивных: {inactiveMembers}
+            </span>
+          </>
+        )}
         <div className="h-4 w-px bg-border/60" />
         <span className="text-xs text-muted-foreground flex items-center gap-1">
           <Building2 className="h-3 w-3" />
@@ -149,7 +159,7 @@ export default function TeamPage() {
 
       {/* Upcoming Birthdays */}
       <UpcomingBirthdays
-        members={allMembers}
+        members={activeOnlyMembers}
         onMemberClick={setSelectedMember}
       />
 
@@ -213,6 +223,7 @@ export default function TeamPage() {
       {user && (
         <MemberEditModal
           member={editMember}
+          members={allMembers}
           departments={departments}
           currentUser={user}
           onSave={handleRefresh}
@@ -235,7 +246,7 @@ export default function TeamPage() {
       <DepartmentManager
         open={showDeptManager}
         departments={departments}
-        members={allMembers}
+        members={activeOnlyMembers}
         onUpdate={() => {
           refetchDepts();
           refetchTree();

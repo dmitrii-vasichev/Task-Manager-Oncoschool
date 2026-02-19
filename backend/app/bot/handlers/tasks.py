@@ -1075,7 +1075,11 @@ async def cb_do_reassign(callback: CallbackQuery, member: TeamMember, session_ma
                 await callback.answer(f"Задача #{short_id} не найдена", show_alert=True)
                 return
 
-            task = await task_service.assign_task(session, task, member, new_assignee_id)
+            try:
+                task = await task_service.assign_task(session, task, member, new_assignee_id)
+            except ValueError as e:
+                await callback.answer(str(e), show_alert=True)
+                return
 
             new_assignee = await member_repo.get_by_id(session, new_assignee_id)
             notification_service = NotificationService(bot)

@@ -49,6 +49,13 @@ export function MemberCard({ member, isHead, onClick, onEdit }: MemberCardProps)
           <div className="mt-1">
             <RoleBadge role={member.role} />
           </div>
+          {!member.is_active && (
+            <div className="mt-1">
+              <span className="inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-medium bg-muted text-muted-foreground ring-1 ring-inset ring-border/60">
+                Неактивен
+              </span>
+            </div>
+          )}
         </div>
 
         {onEdit && (

@@ -154,21 +154,33 @@ class AuthMiddleware(BaseMiddleware):
                             "Обратитесь к администратору для добавления в команду."
                         )
                     return
-                else:
-                    # Обновляем username если изменился
-                    updated = False
-                    if member.telegram_username != user.username:
-                        member.telegram_username = user.username
-                        updated = True
-                    # Проверяем: если в ADMIN_TELEGRAM_IDS, но роль не admin — повысить
-                    if (
-                        user.id in settings.ADMIN_TELEGRAM_IDS
-                        and member.role != "admin"
-                    ):
-                        member.role = "admin"
-                        updated = True
-                    if updated:
-                        await session.flush()
+
+                if not member.is_active:
+                    if isinstance(update, Update) and update.callback_query:
+                        await update.callback_query.answer(
+                            "⛔ Ваш доступ к системе отключён. Обратитесь к администратору.",
+                            show_alert=True,
+                        )
+                    elif hasattr(event, "answer"):
+                        await event.answer(
+                            "⛔ Ваш доступ к системе отключён. Обратитесь к администратору."
+                        )
+                    return
+
+                # Обновляем username если изменился
+                updated = False
+                if member.telegram_username != user.username:
+                    member.telegram_username = user.username
+                    updated = True
+                # Проверяем: если в ADMIN_TELEGRAM_IDS, но роль не admin — повысить
+                if (
+                    user.id in settings.ADMIN_TELEGRAM_IDS
+                    and member.role != "admin"
+                ):
+                    member.role = "admin"
+                    updated = True
+                if updated:
+                    await session.flush()
 
             data["member"] = member
             data["session_maker"] = async_session

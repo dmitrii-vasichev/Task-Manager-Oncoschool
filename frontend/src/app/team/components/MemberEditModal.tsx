@@ -19,24 +19,51 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { AvatarUpload } from "./AvatarUpload";
 import { DatePicker } from "@/components/shared/DatePicker";
 import { PermissionService } from "@/lib/permissions";
 import { api } from "@/lib/api";
-import type { TeamMember, Department, MemberRole } from "@/lib/types";
+import type {
+  TeamMember,
+  Department,
+  MemberRole,
+  MemberDeactivationStrategy,
+  MemberDeactivationPreviewTaskItem,
+  TeamMemberUpdateRequest,
+} from "@/lib/types";
 
 interface MemberEditModalProps {
   member: TeamMember | null;
+  members: TeamMember[];
   departments: Department[];
   currentUser: TeamMember;
   onSave: () => void;
   onClose: () => void;
 }
 
-export function MemberEditModal({ member, departments, currentUser, onSave, onClose }: MemberEditModalProps) {
+export function MemberEditModal({
+  member,
+  members,
+  departments,
+  currentUser,
+  onSave,
+  onClose,
+}: MemberEditModalProps) {
   const [fullName, setFullName] = useState("");
   const [role, setRole] = useState<MemberRole>("member");
   const [isActive, setIsActive] = useState(true);
+  const [deactivationStrategy, setDeactivationStrategy] =
+    useState<MemberDeactivationStrategy>("unassign");
+  const [reassignToMemberId, setReassignToMemberId] = useState("__none__");
   const [departmentId, setDepartmentId] = useState<string>("__none__");
   const [telegramId, setTelegramId] = useState("");
   const [telegramUsername, setTelegramUsername] = useState("");
@@ -47,6 +74,14 @@ export function MemberEditModal({ member, departments, currentUser, onSave, onCl
   const [newVariant, setNewVariant] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingPayload, setPendingPayload] =
+    useState<TeamMemberUpdateRequest | null>(null);
+  const [previewTasksCount, setPreviewTasksCount] = useState<number | null>(null);
+  const [previewTasks, setPreviewTasks] = useState<
+    MemberDeactivationPreviewTaskItem[]
+  >([]);
   const [error, setError] = useState<string | null>(null);
 
   const canChangeRole = PermissionService.canManageRoles(currentUser);
@@ -66,39 +101,68 @@ export function MemberEditModal({ member, departments, currentUser, onSave, onCl
       setAvatarUrl(member.avatar_url);
       setError(null);
       setNewVariant("");
+      setDeactivationStrategy("unassign");
+      setReassignToMemberId("__none__");
+      setPreviewLoading(false);
+      setConfirmOpen(false);
+      setPendingPayload(null);
+      setPreviewTasksCount(null);
+      setPreviewTasks([]);
     }
   }, [member]);
 
-  const handleSave = async () => {
+  const buildPayload = (): TeamMemberUpdateRequest | null => {
+    if (!member) return null;
+    setError(null);
+    const data: TeamMemberUpdateRequest = {
+      full_name: fullName,
+      is_active: isActive,
+      department_id: departmentId === "__none__" ? null : departmentId,
+      position: position || null,
+      email: email || null,
+      birthday: birthday || null,
+      name_variants: nameVariants,
+    };
+
+    if (telegramId.trim()) {
+      const parsed = parseInt(telegramId.trim(), 10);
+      if (isNaN(parsed)) {
+        setError("Telegram ID должен быть числом");
+        return null;
+      }
+      data.telegram_id = parsed;
+    } else {
+      data.telegram_id = null;
+    }
+
+    data.telegram_username = telegramUsername.trim().replace(/^@/, "") || null;
+    if (canChangeRole) {
+      data.role = role;
+    }
+
+    const isSwitchingToInactive = member.is_active && !isActive;
+    if (isSwitchingToInactive) {
+      data.deactivation_strategy = deactivationStrategy;
+      if (deactivationStrategy === "reassign") {
+        if (reassignToMemberId === "__none__") {
+          setError("Выберите участника для переназначения задач");
+          return null;
+        }
+        data.reassign_to_member_id = reassignToMemberId;
+      } else {
+        data.reassign_to_member_id = null;
+      }
+    }
+
+    return data;
+  };
+
+  const submitPayload = async (payload: TeamMemberUpdateRequest) => {
     if (!member) return;
     setSaving(true);
     setError(null);
     try {
-      const data: Record<string, unknown> = {
-        full_name: fullName,
-        is_active: isActive,
-        department_id: departmentId === "__none__" ? null : departmentId,
-        position: position || null,
-        email: email || null,
-        birthday: birthday || null,
-        name_variants: nameVariants,
-      };
-      if (telegramId.trim()) {
-        const parsed = parseInt(telegramId.trim(), 10);
-        if (isNaN(parsed)) {
-          setError("Telegram ID должен быть числом");
-          setSaving(false);
-          return;
-        }
-        data.telegram_id = parsed;
-      } else {
-        data.telegram_id = null;
-      }
-      data.telegram_username = telegramUsername.trim().replace(/^@/, "") || null;
-      if (canChangeRole) {
-        data.role = role;
-      }
-      await api.updateTeamMember(member.id, data as Partial<TeamMember>);
+      await api.updateTeamMember(member.id, payload);
       onSave();
       onClose();
     } catch (e) {
@@ -106,6 +170,44 @@ export function MemberEditModal({ member, departments, currentUser, onSave, onCl
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = async () => {
+    if (!member) return;
+    const payload = buildPayload();
+    if (!payload) return;
+
+    const isSwitchingToInactive = member.is_active && !isActive;
+    if (!isSwitchingToInactive) {
+      await submitPayload(payload);
+      return;
+    }
+
+    setPreviewLoading(true);
+    setError(null);
+    try {
+      const preview = await api.getTeamMemberDeactivationPreview(member.id);
+      setPreviewTasksCount(preview.open_tasks_count);
+      setPreviewTasks(preview.open_tasks_preview || []);
+      setPendingPayload(payload);
+      setConfirmOpen(true);
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : "Не удалось получить данные по задачам для деактивации"
+      );
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleConfirmDeactivation = async () => {
+    if (!pendingPayload) return;
+    const payload = pendingPayload;
+    setConfirmOpen(false);
+    setPendingPayload(null);
+    await submitPayload(payload);
   };
 
   const addVariant = () => {
@@ -121,6 +223,24 @@ export function MemberEditModal({ member, departments, currentUser, onSave, onCl
   };
 
   if (!member) return null;
+
+  const isDeactivationFlow = member.is_active && !isActive;
+  const reassignCandidates = members.filter(
+    (m) => m.id !== member.id && m.is_active
+  );
+  const selectedReassignMember = reassignCandidates.find(
+    (m) => m.id === reassignToMemberId
+  );
+  const deactivationResultLabel =
+    deactivationStrategy === "reassign"
+      ? selectedReassignMember
+        ? `будут переназначены на ${selectedReassignMember.full_name}`
+        : "будут переназначены на выбранного участника"
+      : "станут «Не назначен»";
+  const deactivationOutcomeText =
+    (previewTasksCount ?? 0) > 0
+      ? `После деактивации эти задачи ${deactivationResultLabel}.`
+      : "Незавершённых задач нет, перенос не потребуется.";
 
   return (
     <Dialog open={!!member} onOpenChange={(open) => !open && onClose()}>
@@ -191,12 +311,81 @@ export function MemberEditModal({ member, departments, currentUser, onSave, onCl
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="active">Активен</SelectItem>
-                  <SelectItem value="inactive">Неактивен</SelectItem>
+                  <SelectItem value="active">Активен (доступ открыт)</SelectItem>
+                  <SelectItem value="inactive">Деактивирован (доступ закрыт)</SelectItem>
                 </SelectContent>
               </Select>
+              {isDeactivationFlow && (
+                <p className="text-2xs text-muted-foreground mt-1">
+                  Участник потеряет доступ к порталу и боту сразу после сохранения.
+                </p>
+              )}
+              {!isActive && !isDeactivationFlow && (
+                <p className="text-2xs text-muted-foreground mt-1">
+                  Участник уже деактивирован. Включите статус «Активен», чтобы вернуть доступ.
+                </p>
+              )}
             </div>
           </div>
+
+          {isDeactivationFlow && (
+            <div className="rounded-xl border border-amber-300/50 bg-amber-50/50 p-3 space-y-3">
+              <div>
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Что сделать с незавершёнными задачами
+                </Label>
+                <Select
+                  value={deactivationStrategy}
+                  onValueChange={(v) => setDeactivationStrategy(v as MemberDeactivationStrategy)}
+                >
+                  <SelectTrigger className="mt-1.5 rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassign">
+                      Снять исполнителя (в «Не назначен»)
+                    </SelectItem>
+                    <SelectItem
+                      value="reassign"
+                      disabled={reassignCandidates.length === 0}
+                    >
+                      Переназначить другому участнику
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {deactivationStrategy === "reassign" && (
+                <div>
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Новый исполнитель
+                  </Label>
+                  <Select
+                    value={reassignToMemberId}
+                    onValueChange={setReassignToMemberId}
+                  >
+                    <SelectTrigger className="mt-1.5 rounded-xl">
+                      <SelectValue placeholder="Выберите участника" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">Выберите участника</SelectItem>
+                      {reassignCandidates.map((candidate) => (
+                        <SelectItem key={candidate.id} value={candidate.id}>
+                          {candidate.full_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {deactivationStrategy === "unassign" && (
+                <p className="text-2xs text-muted-foreground">
+                  Все незавершённые задачи участника станут «Не назначен», их можно будет отдельно отфильтровать и переназначить позже.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Department */}
           <div>
@@ -363,12 +552,17 @@ export function MemberEditModal({ member, departments, currentUser, onSave, onCl
             <Button
               className="rounded-xl"
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || previewLoading}
             >
               {saving ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                   Сохранение...
+                </>
+              ) : previewLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Подготовка...
                 </>
               ) : (
                 "Сохранить"
@@ -377,6 +571,74 @@ export function MemberEditModal({ member, departments, currentUser, onSave, onCl
           </div>
         </div>
       </DialogContent>
+
+      <AlertDialog
+        open={confirmOpen}
+        onOpenChange={(open) => {
+          setConfirmOpen(open);
+          if (!open) {
+            setPendingPayload(null);
+            setPreviewTasksCount(null);
+            setPreviewTasks([]);
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Подтвердить деактивацию?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <div className="space-y-2">
+                <p>
+                  У участника <span className="font-medium text-foreground">{previewTasksCount ?? 0}</span>{" "}
+                  незавершённых задач.
+                </p>
+                {previewTasks.length > 0 ? (
+                  <div className="rounded-md border border-border/70 bg-muted/30 p-2.5">
+                    <p className="text-xs font-medium text-foreground mb-1.5">
+                      Задачи:
+                    </p>
+                    <ul className="space-y-1 text-xs text-muted-foreground">
+                      {previewTasks.map((task) => (
+                        <li key={task.short_id}>
+                          #{task.short_id} · {task.title}
+                        </li>
+                      ))}
+                    </ul>
+                    {(previewTasksCount ?? 0) > previewTasks.length && (
+                      <p className="text-xs text-muted-foreground mt-1.5">
+                        и ещё {Math.max(0, (previewTasksCount ?? 0) - previewTasks.length)}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p>Незавершённых задач нет.</p>
+                )}
+                <p>{deactivationOutcomeText}</p>
+                <p>
+                  Доступ к порталу и Telegram-боту будет отключён.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={saving}>Отмена</AlertDialogCancel>
+            <Button
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleConfirmDeactivation}
+              disabled={saving}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Выполняю...
+                </>
+              ) : (
+                "Деактивировать"
+              )}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

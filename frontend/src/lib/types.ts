@@ -7,6 +7,7 @@ export type TaskPriority = "urgent" | "high" | "medium" | "low";
 export type TaskSource = "text" | "voice" | "summary" | "web";
 export type UpdateType = "progress" | "status_change" | "comment" | "blocker" | "completion";
 export type MemberRole = "admin" | "moderator" | "member";
+export type MemberDeactivationStrategy = "unassign" | "reassign";
 export type MeetingRecurrence = "weekly" | "biweekly" | "monthly_last_workday";
 export type MeetingStatus = "scheduled" | "in_progress" | "completed" | "cancelled";
 
@@ -304,6 +305,31 @@ export interface TaskUpdateCreateRequest {
   update_type?: UpdateType;
   progress_percent?: number | null;
   source?: string;
+}
+
+export interface TeamMemberUpdateRequest {
+  telegram_id?: number | null;
+  telegram_username?: string | null;
+  full_name?: string;
+  name_variants?: string[];
+  role?: MemberRole;
+  is_active?: boolean;
+  department_id?: string | null;
+  position?: string | null;
+  email?: string | null;
+  birthday?: string | null;
+  deactivation_strategy?: MemberDeactivationStrategy;
+  reassign_to_member_id?: string | null;
+}
+
+export interface MemberDeactivationPreviewTaskItem {
+  short_id: number;
+  title: string;
+}
+
+export interface MemberDeactivationPreviewResponse {
+  open_tasks_count: number;
+  open_tasks_preview: MemberDeactivationPreviewTaskItem[];
 }
 
 export interface PaginatedResponse<T> {

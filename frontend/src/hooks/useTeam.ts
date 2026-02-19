@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/api";
 import type { TeamMember } from "@/lib/types";
 
-export function useTeam() {
+export function useTeam(options?: { includeInactive?: boolean }) {
+  const includeInactive = options?.includeInactive ?? false;
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -13,14 +14,14 @@ export function useTeam() {
     try {
       setLoading(true);
       setError(null);
-      const result = await api.getTeam();
+      const result = await api.getTeam({ includeInactive });
       setMembers(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [includeInactive]);
 
   useEffect(() => {
     fetch();

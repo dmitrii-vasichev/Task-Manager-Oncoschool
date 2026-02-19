@@ -12,11 +12,13 @@ from app.api.auth import get_current_user, require_moderator
 from app.db.database import get_session
 from app.db.models import Task, TaskUpdate, TeamMember
 from app.db.schemas import TaskCreate, TaskEdit, TaskResponse
+from app.db.repositories import TeamMemberRepository
 from app.services.permission_service import PermissionService
 from app.services.task_service import TaskService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 task_service = TaskService()
+member_repo = TeamMemberRepository()
 
 
 class PaginatedTasksResponse(BaseModel):
@@ -136,6 +138,8 @@ async def create_task(
         return task
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.patch("/{short_id}", response_model=TaskResponse)
@@ -176,6 +180,13 @@ async def update_task(
         # Handle other field updates
         update_fields = data.model_dump(exclude_unset=True, exclude={"status"})
         if update_fields:
+            if update_fields.get("assignee_id") is not None:
+                assignee = await member_repo.get_by_id(session, update_fields["assignee_id"])
+                if not assignee or not assignee.is_active:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Исполнитель не найден или деактивирован",
+                    )
             from app.db.repositories import TaskRepository
             task_repo = TaskRepository()
             task = await task_repo.update(session, task.id, **update_fields)

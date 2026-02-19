@@ -24,6 +24,8 @@ import type {
   MeetingScheduleCreateRequest,
   TelegramNotificationTarget,
   ZoomStatusResponse,
+  TeamMemberUpdateRequest,
+  MemberDeactivationPreviewResponse,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -353,8 +355,13 @@ class ApiClient {
 
   // ==================== Team ====================
 
-  async getTeam(): Promise<TeamMember[]> {
-    return this.request<TeamMember[]>("/api/team");
+  async getTeam(options?: { includeInactive?: boolean }): Promise<TeamMember[]> {
+    const params = new URLSearchParams();
+    if (options?.includeInactive) {
+      params.set("include_inactive", "true");
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<TeamMember[]>(`/api/team${query}`);
   }
 
   async createTeamMember(data: {
@@ -374,18 +381,31 @@ class ApiClient {
     });
   }
 
-  async getTeamTree(): Promise<TeamTreeResponse> {
-    return this.request<TeamTreeResponse>("/api/team/tree");
+  async getTeamTree(options?: { includeInactive?: boolean }): Promise<TeamTreeResponse> {
+    const params = new URLSearchParams();
+    if (options?.includeInactive) {
+      params.set("include_inactive", "true");
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<TeamTreeResponse>(`/api/team/tree${query}`);
   }
 
   async updateTeamMember(
     id: string,
-    data: Partial<TeamMember>
+    data: TeamMemberUpdateRequest
   ): Promise<TeamMember> {
     return this.request<TeamMember>(`/api/team/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     });
+  }
+
+  async getTeamMemberDeactivationPreview(
+    memberId: string
+  ): Promise<MemberDeactivationPreviewResponse> {
+    return this.request<MemberDeactivationPreviewResponse>(
+      `/api/team/${memberId}/deactivation-preview`
+    );
   }
 
   async uploadAvatar(memberId: string, file: File): Promise<{ avatar_url: string }> {

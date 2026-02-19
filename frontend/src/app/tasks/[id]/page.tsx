@@ -462,6 +462,11 @@ export default function TaskDetailPage() {
                   <span className="text-sm font-medium">
                     {task.assignee.full_name}
                   </span>
+                  {!task.assignee.is_active && (
+                    <span className="text-2xs rounded-full px-1.5 py-0.5 bg-muted text-muted-foreground ring-1 ring-inset ring-border/60">
+                      Неактивен
+                    </span>
+                  )}
                 </div>
               ) : (
                 <span className="text-sm text-muted-foreground">

@@ -9,6 +9,7 @@ TaskStatusType = Literal["new", "in_progress", "review", "done", "cancelled"]
 TaskPriorityType = Literal["low", "medium", "high", "urgent"]
 TaskSourceType = Literal["text", "voice", "summary", "web"]
 MemberRoleType = Literal["admin", "moderator", "member"]
+MemberDeactivationStrategyType = Literal["unassign", "reassign"]
 UpdateTypeType = Literal["progress", "status_change", "comment", "blocker", "completion"]
 
 
@@ -37,6 +38,8 @@ class TeamMemberUpdate(BaseModel):
     position: str | None = None
     email: str | None = None
     birthday: date | None = None
+    deactivation_strategy: MemberDeactivationStrategyType | None = None
+    reassign_to_member_id: uuid.UUID | None = None
 
 
 class TeamMemberResponse(BaseModel):

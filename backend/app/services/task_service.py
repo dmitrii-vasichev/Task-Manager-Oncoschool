@@ -39,6 +39,11 @@ class TaskService:
         if not assignee_id:
             assignee_id = creator.id
 
+        if assignee_id != creator.id:
+            assignee = await self.member_repo.get_by_id(session, assignee_id)
+            if not assignee or not assignee.is_active:
+                raise ValueError("Исполнитель не найден или деактивирован")
+
         task = await self.task_repo.create(
             session,
             title=title,
@@ -142,6 +147,10 @@ class TaskService:
         """Reassign task. Moderator only."""
         if not PermissionService.can_assign_task(member):
             raise PermissionError("Только модератор может переназначать задачи")
+
+        assignee = await self.member_repo.get_by_id(session, new_assignee_id)
+        if not assignee or not assignee.is_active:
+            raise ValueError("Исполнитель не найден или деактивирован")
 
         task = await self.task_repo.update(session, task.id, assignee_id=new_assignee_id)
         return task
