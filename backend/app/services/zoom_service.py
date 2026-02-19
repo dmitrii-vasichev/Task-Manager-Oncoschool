@@ -7,7 +7,7 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-HOST_ONLY_QUERY_KEYS = {"zak", "zpk"}
+HOST_ONLY_QUERY_KEYS = {"zak", "zpk", "role"}
 
 
 def _extract_meeting_id_from_path(path: str) -> str | None:
@@ -41,14 +41,14 @@ def sanitize_zoom_join_url(raw_url: str | None, zoom_meeting_id: str | None = No
         return raw_url
 
     query_items = parse_qsl(parsed.query, keep_blank_values=True)
-    query = {k: v for k, v in query_items if k not in HOST_ONLY_QUERY_KEYS}
+    safe_query_items = [
+        (key, value) for key, value in query_items if key.lower() not in HOST_ONLY_QUERY_KEYS
+    ]
 
-    path_parts = [segment for segment in parsed.path.split("/") if segment]
-    path_head = path_parts[0] if path_parts else ""
     meeting_id = (zoom_meeting_id or _extract_meeting_id_from_path(parsed.path) or "").strip()
 
     path = parsed.path or ""
-    if path_head == "s" and meeting_id:
+    if meeting_id:
         path = f"/j/{meeting_id}"
 
     return urlunparse(
@@ -57,7 +57,7 @@ def sanitize_zoom_join_url(raw_url: str | None, zoom_meeting_id: str | None = No
             parsed.netloc,
             path,
             "",
-            urlencode(query),
+            urlencode(safe_query_items, doseq=True),
             "",
         )
     )
@@ -70,7 +70,12 @@ def extract_zoom_join_url(zoom_data: dict | None) -> str | None:
 
     zoom_meeting_id = str(zoom_data["id"]) if zoom_data.get("id") else None
     raw_url = zoom_data.get("join_url") or zoom_data.get("start_url")
-    return sanitize_zoom_join_url(raw_url, zoom_meeting_id=zoom_meeting_id)
+    safe_url = sanitize_zoom_join_url(raw_url, zoom_meeting_id=zoom_meeting_id)
+    if safe_url:
+        return safe_url
+    if zoom_meeting_id:
+        return f"https://zoom.us/j/{zoom_meeting_id}"
+    return None
 
 
 class ZoomService:

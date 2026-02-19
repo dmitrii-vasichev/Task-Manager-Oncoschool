@@ -34,6 +34,7 @@ import { useDepartments } from "@/hooks/useDepartments";
 import { PermissionService } from "@/lib/permissions";
 import { getAccessibleDepartments } from "@/lib/departmentAccess";
 import { api } from "@/lib/api";
+import { sanitizeZoomJoinUrl } from "@/lib/zoomLink";
 import { UpcomingBirthdays } from "./team/components/UpcomingBirthdays";
 import type {
   DashboardTasksAnalytics,
@@ -324,6 +325,10 @@ function UpcomingMeetingCard({
   meeting: Meeting;
   staggerClass: string;
 }) {
+  const safeJoinUrl = sanitizeZoomJoinUrl(
+    meeting.zoom_join_url,
+    meeting.zoom_meeting_id
+  );
   const meetingDate = meeting.meeting_date
     ? parseUTCDate(meeting.meeting_date)
     : null;
@@ -364,9 +369,9 @@ function UpcomingMeetingCard({
           <Video className="h-4 w-4" />
         </div>
       </div>
-      {meeting.zoom_join_url && (
+      {safeJoinUrl && (
         <a
-          href={meeting.zoom_join_url}
+          href={safeJoinUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="mt-2.5 flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"

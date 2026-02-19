@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { Meeting, ZoomStatusResponse } from "@/lib/types";
+import { sanitizeZoomJoinUrl } from "@/lib/zoomLink";
 
 interface ZoomBlockProps {
   meeting: Meeting;
@@ -62,6 +63,10 @@ export function ZoomBlock({ meeting }: ZoomBlockProps) {
   };
 
   const recordingUrl = meeting.zoom_recording_url || zoomStatus?.recording_url || null;
+  const safeJoinUrl = sanitizeZoomJoinUrl(
+    meeting.zoom_join_url,
+    meeting.zoom_meeting_id
+  );
 
   const renderZoomStatus = () => {
     if (!meeting.zoom_meeting_id) return null;
@@ -118,7 +123,7 @@ export function ZoomBlock({ meeting }: ZoomBlockProps) {
   };
 
   if (
-    !meeting.zoom_join_url &&
+    !safeJoinUrl &&
     !meeting.zoom_meeting_id &&
     !meeting.zoom_recording_url
   ) {
@@ -166,9 +171,9 @@ export function ZoomBlock({ meeting }: ZoomBlockProps) {
 
       <div className="flex items-center gap-2 flex-wrap">
         {/* Join link */}
-        {meeting.zoom_join_url && meeting.status !== "completed" && (
+        {safeJoinUrl && meeting.status !== "completed" && (
           <a
-            href={meeting.zoom_join_url}
+            href={safeJoinUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:text-blue-700 bg-blue-500/10 rounded-xl px-3 py-2 hover:bg-blue-500/15 transition-colors"

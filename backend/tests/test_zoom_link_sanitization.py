@@ -31,3 +31,16 @@ class ZoomLinkSanitizationTests(unittest.TestCase):
 
         self.assertEqual(safe_url, "https://zoom.us/j/9988776655?pwd=abc123")
 
+    def test_sanitize_forces_join_path_for_wc_start_urls(self) -> None:
+        raw_url = "https://us06web.zoom.us/wc/1122334455/start?role=1&zak=secret-token&pwd=pwd123"
+
+        safe_url = sanitize_zoom_join_url(raw_url)
+
+        self.assertEqual(safe_url, "https://us06web.zoom.us/j/1122334455?pwd=pwd123")
+
+    def test_extract_fallback_to_canonical_join_url_when_missing_urls(self) -> None:
+        zoom_data = {"id": "5566778899"}
+
+        safe_url = extract_zoom_join_url(zoom_data)
+
+        self.assertEqual(safe_url, "https://zoom.us/j/5566778899")

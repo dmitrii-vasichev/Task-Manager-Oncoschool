@@ -25,6 +25,7 @@ import type { Meeting, MeetingStatus } from "@/lib/types";
 import { MEETING_STATUS_LABELS } from "@/lib/types";
 import { parseUTCDate } from "@/lib/dateUtils";
 import { formatMeetingListDateTime } from "@/lib/meetingDateTime";
+import { sanitizeZoomJoinUrl } from "@/lib/zoomLink";
 
 const STATUS_STYLES: Record<MeetingStatus, string> = {
   scheduled: "bg-blue-500/10 text-blue-600 border-blue-500/20",
@@ -49,6 +50,10 @@ export function MeetingCard({ meeting, variant, isModerator, onDelete }: Meeting
   const statusStyle = STATUS_STYLES[effectiveStatus] || STATUS_STYLES.scheduled;
   const [deleting, setDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const safeJoinUrl = sanitizeZoomJoinUrl(
+    meeting.zoom_join_url,
+    meeting.zoom_meeting_id
+  );
 
   return (
     <>
@@ -91,9 +96,9 @@ export function MeetingCard({ meeting, variant, isModerator, onDelete }: Meeting
           {/* Footer */}
           <div className="flex items-center gap-2 mt-auto pt-3 border-t border-border/40">
             {/* Zoom link for upcoming */}
-            {variant === "upcoming" && meeting.zoom_join_url && (
+            {variant === "upcoming" && safeJoinUrl && (
               <a
-                href={meeting.zoom_join_url}
+                href={safeJoinUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
