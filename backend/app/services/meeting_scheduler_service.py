@@ -16,8 +16,9 @@ logger = logging.getLogger(__name__)
 class MeetingSchedulerService:
     """
     Replaces n8n workflow. Uses APScheduler.
-    Every minute checks if any schedule needs to be triggered:
-    create Zoom meeting + Meeting record + send Telegram reminders.
+    - Every minute checks if any schedule needs to be triggered:
+      create Zoom meeting + Meeting record + send Telegram reminders.
+    - Periodically syncs Zoom transcripts for finished meetings.
     """
 
     def __init__(
@@ -38,6 +39,13 @@ class MeetingSchedulerService:
             "interval",
             minutes=1,
             id="meeting_scheduler",
+            replace_existing=True,
+        )
+        self.scheduler.add_job(
+            self._sync_zoom_transcripts,
+            "interval",
+            minutes=1,
+            id="meeting_transcript_sync",
             replace_existing=True,
         )
         self.scheduler.start()
@@ -80,6 +88,80 @@ class MeetingSchedulerService:
                         )
         except Exception as e:
             logger.error(f"Error in _check_schedules: {e}", exc_info=True)
+
+    @staticmethod
+    def _has_meeting_finished(
+        meeting_date: datetime | None,
+        duration_minutes: int | None,
+        now_utc_naive: datetime,
+    ) -> bool:
+        """Check if a meeting has ended (all datetimes are naive UTC)."""
+        if not meeting_date:
+            return False
+        duration = duration_minutes or 60
+        end_time = meeting_date + timedelta(minutes=duration)
+        return now_utc_naive >= end_time
+
+    async def _sync_zoom_transcripts(self) -> None:
+        """Try to auto-fetch Zoom transcripts for recently finished meetings."""
+        if not self.zoom_service:
+            return
+
+        now_utc_naive = datetime.now(ZoneInfo("UTC")).replace(tzinfo=None)
+        lookback_start = now_utc_naive - timedelta(days=30)
+
+        try:
+            async with self.session_maker() as session:
+                stmt = (
+                    select(Meeting)
+                    .where(
+                        Meeting.zoom_meeting_id.is_not(None),
+                        Meeting.transcript.is_(None),
+                        Meeting.meeting_date.is_not(None),
+                        Meeting.meeting_date >= lookback_start,
+                        Meeting.meeting_date <= now_utc_naive,
+                    )
+                    .order_by(Meeting.meeting_date.desc())
+                    .limit(100)
+                )
+                result = await session.execute(stmt)
+                meetings = list(result.scalars().all())
+
+                updated = 0
+                for meeting in meetings:
+                    if not self._has_meeting_finished(
+                        meeting.meeting_date,
+                        meeting.duration_minutes,
+                        now_utc_naive,
+                    ):
+                        continue
+
+                    try:
+                        transcript_text = await self.zoom_service.get_transcript(
+                            meeting.zoom_meeting_id
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Zoom transcript fetch failed for meeting %s (zoom_id=%s): %s",
+                            meeting.id,
+                            meeting.zoom_meeting_id,
+                            e,
+                        )
+                        continue
+
+                    if not transcript_text:
+                        continue
+
+                    meeting.transcript = transcript_text
+                    meeting.transcript_source = "zoom_api"
+                    updated += 1
+                    logger.info("Transcript synced from Zoom for meeting %s", meeting.id)
+
+                if updated:
+                    await session.commit()
+                    logger.info("Zoom transcript sync updated %s meeting(s)", updated)
+        except Exception as e:
+            logger.error(f"Error in _sync_zoom_transcripts: {e}", exc_info=True)
 
     def _should_trigger(self, schedule: MeetingSchedule, now_utc: datetime) -> bool:
         """Check all conditions for triggering a schedule."""

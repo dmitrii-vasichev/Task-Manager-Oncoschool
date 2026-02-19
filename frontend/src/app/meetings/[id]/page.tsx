@@ -81,6 +81,34 @@ export default function MeetingDetailPage() {
     fetchData();
   }, [fetchData]);
 
+  // Background refresh while waiting for Zoom transcript
+  useEffect(() => {
+    if (!meeting?.zoom_meeting_id || meeting.transcript) return;
+
+    const intervalId = window.setInterval(async () => {
+      try {
+        const updated = await api.getMeeting(id);
+        setMeeting((prev) => {
+          if (!prev) return updated;
+          if (
+            prev.transcript === updated.transcript &&
+            prev.transcript_source === updated.transcript_source &&
+            prev.zoom_recording_url === updated.zoom_recording_url &&
+            prev.status === updated.status &&
+            prev.effective_status === updated.effective_status
+          ) {
+            return prev;
+          }
+          return updated;
+        });
+      } catch {
+        // Ignore polling errors, user still has manual refresh/actions.
+      }
+    }, 30000);
+
+    return () => window.clearInterval(intervalId);
+  }, [id, meeting?.zoom_meeting_id, meeting?.transcript]);
+
   // Set breadcrumb title, clear on unmount
   useEffect(() => {
     if (meeting?.title) setPageTitle(meeting.title);
