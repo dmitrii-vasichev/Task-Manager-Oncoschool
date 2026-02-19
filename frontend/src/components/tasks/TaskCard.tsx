@@ -21,7 +21,9 @@ function formatDate(dateStr: string): string {
 function isOverdue(task: Task): boolean {
   if (!task.deadline) return false;
   if (task.status === "done" || task.status === "cancelled") return false;
-  return parseLocalDate(task.deadline) < new Date(new Date().toDateString());
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  return parseLocalDate(task.deadline) < todayStart;
 }
 
 const PRIORITY_STRIP_COLORS: Record<TaskPriority, string> = {
@@ -33,13 +35,16 @@ const PRIORITY_STRIP_COLORS: Record<TaskPriority, string> = {
 
 export function TaskCard({ task }: { task: Task }) {
   const overdue = isOverdue(task);
+  const cardClass = overdue
+    ? "border-destructive/35 bg-destructive/[0.05] shadow-[0_0_0_1px_hsl(var(--destructive)/0.12)_inset] hover:bg-destructive/[0.08] hover:border-destructive/45"
+    : "bg-card border-border/50 hover:border-primary/20";
 
   return (
     <div
       className={`
-        group rounded-xl bg-card border overflow-hidden
-        shadow-sm hover:shadow-md hover:-translate-y-0.5 hover:border-primary/20
-        ${overdue ? "border-destructive/40 animate-pulse-glow" : "border-border/50"}
+        group rounded-xl border overflow-hidden shadow-sm
+        transition-all duration-150 hover:shadow-md hover:-translate-y-0.5
+        ${cardClass}
       `}
     >
       <Link
@@ -69,14 +74,20 @@ export function TaskCard({ task }: { task: Task }) {
               </span>
             )}
             {overdue && (
-              <span className="ml-auto text-2xs font-medium text-destructive bg-destructive/10 rounded-full px-1.5 py-0.5">
+              <span className="ml-auto rounded-full bg-destructive/12 px-2 py-0.5 text-2xs font-medium text-destructive">
                 Просрочено
               </span>
             )}
           </div>
 
           {/* Title */}
-          <p className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-primary">
+          <p
+            className={`text-sm font-semibold leading-snug line-clamp-2 ${
+              overdue
+                ? "text-destructive group-hover:text-destructive"
+                : "group-hover:text-primary"
+            }`}
+          >
             {task.title}
           </p>
 
@@ -87,7 +98,7 @@ export function TaskCard({ task }: { task: Task }) {
               <span
                 className={`inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5 ${
                   overdue
-                    ? "text-destructive bg-destructive/10 font-medium"
+                    ? "text-destructive bg-destructive/12 font-medium"
                     : "text-muted-foreground bg-muted"
                 }`}
               >
