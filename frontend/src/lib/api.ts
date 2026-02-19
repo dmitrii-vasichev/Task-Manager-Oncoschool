@@ -26,6 +26,7 @@ import type {
   ZoomStatusResponse,
   TeamMemberUpdateRequest,
   MemberDeactivationPreviewResponse,
+  InAppNotificationListResponse,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -273,6 +274,31 @@ class ApiClient {
 
   async getZoomStatus(meetingId: string): Promise<ZoomStatusResponse> {
     return this.request<ZoomStatusResponse>(`/api/meetings/${meetingId}/zoom-status`);
+  }
+
+  // ==================== In-app Notifications ====================
+
+  async getNotifications(params?: {
+    unread_only?: boolean;
+    limit?: number;
+  }): Promise<InAppNotificationListResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.unread_only) searchParams.set("unread_only", "true");
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return this.request<InAppNotificationListResponse>(`/api/notifications${query}`);
+  }
+
+  async markNotificationRead(notificationId: string): Promise<void> {
+    await this.request(`/api/notifications/${notificationId}/read`, {
+      method: "POST",
+    });
+  }
+
+  async markAllNotificationsRead(): Promise<{ updated: number }> {
+    return this.request<{ updated: number }>("/api/notifications/read-all", {
+      method: "POST",
+    });
   }
 
   // ==================== Meeting Schedules ====================

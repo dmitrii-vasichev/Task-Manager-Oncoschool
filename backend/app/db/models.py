@@ -7,6 +7,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -90,6 +91,14 @@ class TeamMember(Base):
     task_updates: Mapped[list["TaskUpdate"]] = relationship(back_populates="author")
     notification_subscriptions: Mapped[list["NotificationSubscription"]] = relationship(
         back_populates="member"
+    )
+    notifications_received: Mapped[list["InAppNotification"]] = relationship(
+        back_populates="recipient",
+        foreign_keys="InAppNotification.recipient_id",
+    )
+    notifications_authored: Mapped[list["InAppNotification"]] = relationship(
+        back_populates="actor",
+        foreign_keys="InAppNotification.actor_id",
     )
     reminder_settings: Mapped["ReminderSettings | None"] = relationship(
         back_populates="member", foreign_keys="ReminderSettings.member_id", uselist=False
@@ -278,6 +287,48 @@ class MeetingParticipant(Base):
     # Relationships
     meeting: Mapped["Meeting"] = relationship(back_populates="participants")
     member: Mapped["TeamMember"] = relationship()
+
+
+class InAppNotification(Base):
+    __tablename__ = "in_app_notifications"
+    __table_args__ = (
+        UniqueConstraint("recipient_id", "dedupe_key"),
+        Index("idx_inapp_notifications_recipient_created", "recipient_id", "created_at"),
+        Index("idx_inapp_notifications_recipient_unread", "recipient_id", "is_read", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    recipient_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team_members.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_members.id", ondelete="SET NULL"), nullable=True
+    )
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    priority: Mapped[str] = mapped_column(
+        String(20), default="normal", server_default="normal"
+    )
+    action_url: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    task_short_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    dedupe_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    is_read: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    read_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    recipient: Mapped["TeamMember"] = relationship(
+        back_populates="notifications_received",
+        foreign_keys=[recipient_id],
+    )
+    actor: Mapped["TeamMember | None"] = relationship(
+        back_populates="notifications_authored",
+        foreign_keys=[actor_id],
+    )
 
 
 class NotificationSubscription(Base):

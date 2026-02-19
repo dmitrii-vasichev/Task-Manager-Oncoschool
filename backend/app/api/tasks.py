@@ -12,13 +12,13 @@ from app.api.auth import get_current_user, require_moderator
 from app.db.database import get_session
 from app.db.models import Task, TaskUpdate, TeamMember
 from app.db.schemas import TaskCreate, TaskEdit, TaskResponse
-from app.db.repositories import TeamMemberRepository
+from app.services.in_app_notification_service import InAppNotificationService
 from app.services.permission_service import PermissionService
 from app.services.task_service import TaskService
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 task_service = TaskService()
-member_repo = TeamMemberRepository()
+in_app_notification_service = InAppNotificationService()
 
 
 class PaginatedTasksResponse(BaseModel):
@@ -179,14 +179,27 @@ async def update_task(
 
         # Handle other field updates
         update_fields = data.model_dump(exclude_unset=True, exclude={"status"})
-        if update_fields:
-            if update_fields.get("assignee_id") is not None:
-                assignee = await member_repo.get_by_id(session, update_fields["assignee_id"])
-                if not assignee or not assignee.is_active:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Исполнитель не найден или деактивирован",
+        assignee_present = "assignee_id" in update_fields
+        new_assignee_id = update_fields.pop("assignee_id", None) if assignee_present else None
+
+        if assignee_present:
+            if new_assignee_id is None:
+                if not is_moderator:
+                    raise HTTPException(status_code=403, detail="Нет прав на снятие исполнителя")
+                old_assignee_id = task.assignee_id
+                from app.db.repositories import TaskRepository
+                task_repo = TaskRepository()
+                task = await task_repo.update(session, task.id, assignee_id=None)
+                if old_assignee_id is not None:
+                    await in_app_notification_service.notify_task_created_unassigned(
+                        session, task, member
                     )
+            else:
+                task = await task_service.assign_task(
+                    session, task, member, new_assignee_id
+                )
+
+        if update_fields:
             from app.db.repositories import TaskRepository
             task_repo = TaskRepository()
             task = await task_repo.update(session, task.id, **update_fields)

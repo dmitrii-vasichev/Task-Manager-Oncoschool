@@ -203,6 +203,41 @@ export interface NotificationSubscription {
   created_at: string;
 }
 
+export type InAppNotificationEventType =
+  | "task_assigned"
+  | "task_blocker_added"
+  | "task_deadline_tomorrow"
+  | "task_deadline_today"
+  | "task_overdue_started"
+  | "task_status_changed_by_other"
+  | "task_review_requested"
+  | "task_created_unassigned"
+  | "meeting_created";
+
+export type InAppNotificationPriority = "normal" | "high";
+
+export interface InAppNotification {
+  id: string;
+  recipient_id: string;
+  actor_id: string | null;
+  event_type: InAppNotificationEventType | string;
+  title: string;
+  body: string | null;
+  priority: InAppNotificationPriority | string;
+  action_url: string | null;
+  task_short_id: number | null;
+  dedupe_key: string | null;
+  is_read: boolean;
+  read_at: string | null;
+  created_at: string;
+  actor: TeamMember | null;
+}
+
+export interface InAppNotificationListResponse {
+  items: InAppNotification[];
+  unread_count: number;
+}
+
 export interface ReminderSettings {
   id: string;
   member_id: string;

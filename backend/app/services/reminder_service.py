@@ -16,6 +16,7 @@ from app.db.repositories import (
     ReminderSettingsRepository,
     TaskRepository,
 )
+from app.services.in_app_notification_service import InAppNotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class ReminderService:
         self.reminder_repo = ReminderSettingsRepository()
         self.task_repo = TaskRepository()
         self.sub_repo = NotificationSubscriptionRepository()
+        self.in_app_notifications = InAppNotificationService()
         # Track which members got digest today (member_id -> date)
         self._sent_today: dict[str, date] = {}
 
@@ -51,6 +53,14 @@ class ReminderService:
             "interval",
             hours=1,
             id="check_overdue",
+            replace_existing=True,
+        )
+        # Create in-app alerts for deadline today/tomorrow and overdue transitions
+        self.scheduler.add_job(
+            self._check_in_app_deadlines,
+            "interval",
+            hours=1,
+            id="check_in_app_deadlines",
             replace_existing=True,
         )
         # Cleanup orphan avatar files daily at 3 AM
@@ -269,6 +279,15 @@ class ReminderService:
 
         except Exception as e:
             logger.error(f"Error in _check_overdue_tasks: {e}")
+
+    async def _check_in_app_deadlines(self) -> None:
+        """Create in-app notifications for deadline-related task events."""
+        try:
+            async with self.session_maker() as session:
+                await self.in_app_notifications.create_deadline_notifications(session)
+                await session.commit()
+        except Exception as e:
+            logger.error(f"Error in _check_in_app_deadlines: {e}")
 
     async def _cleanup_orphan_avatars(self) -> None:
         """Remove avatar files that don't belong to any active member (daily)."""

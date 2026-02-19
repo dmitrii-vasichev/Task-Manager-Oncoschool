@@ -14,6 +14,7 @@ from datetime import datetime
 from app.db.models import (
     AppSettings,
     Department,
+    InAppNotification,
     Meeting,
     MeetingParticipant,
     MeetingSchedule,
@@ -430,6 +431,103 @@ class NotificationSubscriptionRepository:
             session.add(sub)
         await session.flush()
         return sub
+
+
+class InAppNotificationRepository:
+    async def list_for_member(
+        self,
+        session: AsyncSession,
+        member_id: uuid.UUID,
+        *,
+        unread_only: bool = False,
+        limit: int = 30,
+    ) -> list[InAppNotification]:
+        stmt = (
+            select(InAppNotification)
+            .options(selectinload(InAppNotification.actor))
+            .where(InAppNotification.recipient_id == member_id)
+            .order_by(InAppNotification.created_at.desc())
+            .limit(limit)
+        )
+        if unread_only:
+            stmt = stmt.where(InAppNotification.is_read.is_(False))
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_unread_count(
+        self, session: AsyncSession, member_id: uuid.UUID
+    ) -> int:
+        stmt = (
+            select(func.count())
+            .select_from(InAppNotification)
+            .where(
+                InAppNotification.recipient_id == member_id,
+                InAppNotification.is_read.is_(False),
+            )
+        )
+        result = await session.execute(stmt)
+        return int(result.scalar_one() or 0)
+
+    async def create(self, session: AsyncSession, **kwargs) -> InAppNotification:
+        notification = InAppNotification(**kwargs)
+        session.add(notification)
+        await session.flush()
+        return notification
+
+    async def create_if_not_exists(
+        self,
+        session: AsyncSession,
+        *,
+        recipient_id: uuid.UUID,
+        dedupe_key: str | None,
+        **kwargs,
+    ) -> InAppNotification | None:
+        if dedupe_key:
+            stmt = select(InAppNotification).where(
+                InAppNotification.recipient_id == recipient_id,
+                InAppNotification.dedupe_key == dedupe_key,
+            )
+            result = await session.execute(stmt)
+            existing = result.scalar_one_or_none()
+            if existing:
+                return None
+
+        notification = InAppNotification(
+            recipient_id=recipient_id,
+            dedupe_key=dedupe_key,
+            **kwargs,
+        )
+        session.add(notification)
+        await session.flush()
+        return notification
+
+    async def mark_read(
+        self,
+        session: AsyncSession,
+        member_id: uuid.UUID,
+        notification_id: uuid.UUID,
+    ) -> InAppNotification | None:
+        notification = await session.get(InAppNotification, notification_id)
+        if not notification or notification.recipient_id != member_id:
+            return None
+        if not notification.is_read:
+            notification.is_read = True
+            notification.read_at = datetime.utcnow()
+            await session.flush()
+        return notification
+
+    async def mark_all_read(self, session: AsyncSession, member_id: uuid.UUID) -> int:
+        stmt = (
+            update(InAppNotification)
+            .where(
+                InAppNotification.recipient_id == member_id,
+                InAppNotification.is_read.is_(False),
+            )
+            .values(is_read=True, read_at=datetime.utcnow())
+        )
+        result = await session.execute(stmt)
+        await session.flush()
+        return int(result.rowcount or 0)
 
 
 class ReminderSettingsRepository:

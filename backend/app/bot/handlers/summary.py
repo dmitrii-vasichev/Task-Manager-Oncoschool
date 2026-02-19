@@ -12,6 +12,7 @@ from app.db.repositories import TeamMemberRepository
 from app.bot.filters import IsModeratorFilter
 from app.services.ai_service import AIService
 from app.services.meeting_service import MeetingService
+from app.services.in_app_notification_service import InAppNotificationService
 from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
@@ -236,6 +237,10 @@ async def cb_summary_confirm(
                 # Notify subscribers
                 notification_service = NotificationService(bot)
                 await notification_service.notify_meeting_created(
+                    session, meeting, member, len(tasks)
+                )
+                in_app_service = InAppNotificationService()
+                await in_app_service.notify_meeting_created(
                     session, meeting, member, len(tasks)
                 )
 

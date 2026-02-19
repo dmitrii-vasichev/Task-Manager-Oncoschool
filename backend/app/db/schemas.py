@@ -301,6 +301,33 @@ class NotificationSubscriptionResponse(BaseModel):
     created_at: datetime
 
 
+# ── InAppNotification ──
+
+
+class InAppNotificationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    recipient_id: uuid.UUID
+    actor_id: uuid.UUID | None
+    event_type: str
+    title: str
+    body: str | None
+    priority: str
+    action_url: str | None
+    task_short_id: int | None
+    dedupe_key: str | None
+    is_read: bool
+    read_at: datetime | None
+    created_at: datetime
+    actor: TeamMemberResponse | None = None
+
+
+class InAppNotificationListResponse(BaseModel):
+    items: list[InAppNotificationResponse]
+    unread_count: int
+
+
 # ── ReminderSettings ──
 
 

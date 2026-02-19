@@ -13,6 +13,7 @@ from app.db.models import TeamMember
 from app.db.schemas import MeetingResponse, TaskResponse
 from app.db.repositories import MeetingRepository, TeamMemberRepository
 from app.services.ai_service import AIService
+from app.services.in_app_notification_service import InAppNotificationService
 from app.services.meeting_service import MeetingService
 from app.services.meeting_status import compute_effective_status
 from app.services.task_service import TaskService
@@ -23,6 +24,7 @@ ai_service = AIService()
 member_repo = TeamMemberRepository()
 meeting_repo = MeetingRepository()
 task_service = TaskService()
+in_app_notification_service = InAppNotificationService()
 
 
 # ── Request / Response models ──
@@ -377,6 +379,9 @@ async def apply_summary(
             participant_names=data.participants,
             tasks_data=data.tasks,
             creator=member,
+        )
+        await in_app_notification_service.notify_meeting_created(
+            session, meeting, member, len(tasks)
         )
         await session.commit()
 

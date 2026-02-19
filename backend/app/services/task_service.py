@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Task, TaskUpdate, TeamMember
 from app.db.repositories import TaskRepository, TaskUpdateRepository, TeamMemberRepository
+from app.services.in_app_notification_service import InAppNotificationService
 from app.services.permission_service import PermissionService
 
 
@@ -14,6 +15,7 @@ class TaskService:
         self.task_repo = TaskRepository()
         self.update_repo = TaskUpdateRepository()
         self.member_repo = TeamMemberRepository()
+        self.in_app_notifications = InAppNotificationService()
 
     async def create_task(
         self,
@@ -55,6 +57,12 @@ class TaskService:
             deadline=deadline,
             meeting_id=meeting_id,
         )
+        if task.assignee_id and task.assignee_id != creator.id:
+            await self.in_app_notifications.notify_task_assigned(session, task, creator)
+        elif task.assignee_id is None:
+            await self.in_app_notifications.notify_task_created_unassigned(
+                session, task, creator
+            )
         return task
 
     async def get_my_tasks(self, session: AsyncSession, member_id: uuid.UUID) -> list[Task]:
@@ -97,6 +105,9 @@ class TaskService:
             old_status=old_status,
             new_status="done",
         )
+        await self.in_app_notifications.notify_task_status_changed(
+            session, task, member, old_status, "done"
+        )
         return task
 
     async def update_status(
@@ -135,6 +146,9 @@ class TaskService:
             old_status=old_status,
             new_status=new_status,
         )
+        await self.in_app_notifications.notify_task_status_changed(
+            session, task, member, old_status, new_status
+        )
         return task
 
     async def assign_task(
@@ -152,7 +166,13 @@ class TaskService:
         if not assignee or not assignee.is_active:
             raise ValueError("Исполнитель не найден или деактивирован")
 
+        if task.assignee_id == new_assignee_id:
+            return task
+
         task = await self.task_repo.update(session, task.id, assignee_id=new_assignee_id)
+        await self.in_app_notifications.notify_task_assigned(
+            session, task, member, assignee
+        )
         return task
 
     async def delete_task(
@@ -193,6 +213,10 @@ class TaskService:
             progress_percent=progress_percent,
             source=source,
         )
+        if update_type == "blocker":
+            await self.in_app_notifications.notify_task_blocker_added(
+                session, task, task_update, member
+            )
         return task_update
 
     async def get_task_updates(
