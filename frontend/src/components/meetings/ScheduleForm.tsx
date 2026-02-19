@@ -48,6 +48,7 @@ import {
 } from "@/lib/timezones";
 
 const DURATION_OPTIONS = [
+  { value: "15", label: "15 мин" },
   { value: "30", label: "30 мин" },
   { value: "45", label: "45 мин" },
   { value: "60", label: "1 час" },

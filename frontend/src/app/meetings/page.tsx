@@ -630,6 +630,7 @@ function CreateMeetingDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="15">15 минут</SelectItem>
                 <SelectItem value="30">30 минут</SelectItem>
                 <SelectItem value="45">45 минут</SelectItem>
                 <SelectItem value="60">1 час</SelectItem>
