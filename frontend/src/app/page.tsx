@@ -39,6 +39,7 @@ import { UpcomingBirthdays } from "./team/components/UpcomingBirthdays";
 import type {
   DashboardTasksAnalytics,
   MeetingAnalytics,
+  OverviewAnalytics,
   Task,
   Meeting,
   TeamMember,
@@ -85,6 +86,57 @@ function isStale(task: Task): boolean {
   const threeDaysAgo = new Date();
   threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
   return new Date(task.updated_at) < threeDaysAgo;
+}
+
+function getDaysUntil(dateStr: string): number {
+  const target = parseLocalDate(dateStr);
+  target.setHours(0, 0, 0, 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function isDueSoon(task: Task, days: number = 2): boolean {
+  if (!task.deadline || task.status === "done" || task.status === "cancelled") {
+    return false;
+  }
+  const daysUntil = getDaysUntil(task.deadline);
+  return daysUntil >= 0 && daysUntil <= days;
+}
+
+function getTaskPriorityWeight(priority: Task["priority"]): number {
+  switch (priority) {
+    case "urgent":
+      return 400;
+    case "high":
+      return 240;
+    case "medium":
+      return 120;
+    case "low":
+    default:
+      return 40;
+  }
+}
+
+function getTaskFocusScore(task: Task): number {
+  let score = getTaskPriorityWeight(task.priority);
+
+  if (isOverdue(task)) {
+    score += 1000;
+  } else if (task.deadline) {
+    const daysUntil = getDaysUntil(task.deadline);
+    if (daysUntil === 0) score += 500;
+    else if (daysUntil === 1) score += 380;
+    else if (daysUntil <= 3) score += 240;
+  }
+
+  if (task.status === "review") score += 220;
+  if (!task.assignee_id) score += 180;
+  if (isStale(task)) score += 140;
+
+  return score;
 }
 
 function firstName(fullName: string): string {
@@ -330,6 +382,34 @@ function TaskListItem({
   );
 }
 
+function CompactTaskLink({
+  task,
+  tone = "default",
+}: {
+  task: Task;
+  tone?: "default" | "danger" | "warning";
+}) {
+  const toneClass =
+    tone === "danger"
+      ? "border-destructive/25 bg-destructive/[0.04] hover:bg-destructive/[0.08]"
+      : tone === "warning"
+        ? "border-amber-500/25 bg-amber-500/[0.03] hover:bg-amber-500/[0.06]"
+        : "border-border/70 hover:bg-secondary/45";
+
+  return (
+    <Link
+      href={`/tasks/${task.short_id}`}
+      className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 transition-colors ${toneClass}`}
+    >
+      <div className="min-w-0">
+        <p className="text-[11px] font-mono text-muted-foreground">#{task.short_id}</p>
+        <p className="truncate text-sm font-medium">{task.title}</p>
+      </div>
+      <ArrowRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+    </Link>
+  );
+}
+
 // ────────────────────────────────────────────
 // Section header
 // ────────────────────────────────────────────
@@ -508,14 +588,10 @@ export default function DashboardPage() {
     useState<DashboardTasksAnalytics | null>(null);
   const [meetingAnalytics, setMeetingAnalytics] =
     useState<MeetingAnalytics | null>(null);
+  const [overview, setOverview] = useState<OverviewAnalytics | null>(null);
   const [myTasks, setMyTasks] = useState<Task[]>([]);
-  const [myOverdueTasks, setMyOverdueTasks] = useState<Task[]>([]);
   const [departmentTasks, setDepartmentTasks] = useState<Task[]>([]);
-  const [departmentOverdueTasks, setDepartmentOverdueTasks] = useState<Task[]>(
-    []
-  );
   const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
-  const [taskScope, setTaskScope] = useState<"my" | "department">("my");
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [upcomingMeetings, setUpcomingMeetings] = useState<Meeting[]>([]);
   const [unassignedTasks, setUnassignedTasks] = useState<Task[]>([]);
@@ -537,13 +613,19 @@ export default function DashboardPage() {
       }),
     [departments, userDepartmentId, userId, userRole]
   );
-  const canSwitchDepartment = accessibleDepartments.length > 1;
+  const canSwitchDepartment = isModerator || accessibleDepartments.length > 1;
 
   useEffect(() => {
     if (!userId || departmentsLoading) return;
 
     setSelectedDepartmentId((current) => {
       const availableIds = new Set(accessibleDepartments.map((d) => d.id));
+
+      if (isModerator) {
+        if (!current) return "";
+        return availableIds.has(current) ? current : "";
+      }
+
       if (current && availableIds.has(current)) {
         return current;
       }
@@ -552,7 +634,7 @@ export default function DashboardPage() {
       }
       return accessibleDepartments[0]?.id || "";
     });
-  }, [accessibleDepartments, departmentsLoading, userDepartmentId, userId]);
+  }, [accessibleDepartments, departmentsLoading, isModerator, userDepartmentId, userId]);
 
   const selectedDepartment = useMemo(
     () =>
@@ -562,14 +644,11 @@ export default function DashboardPage() {
 
   const isDepartmentHead =
     Boolean(userId && selectedDepartment && selectedDepartment.head_id === userId);
-  const canUseDepartmentView =
-    Boolean(selectedDepartmentId) && (isModerator || isDepartmentHead);
-
-  useEffect(() => {
-    if (!canUseDepartmentView && taskScope === "department") {
-      setTaskScope("my");
-    }
-  }, [canUseDepartmentView, taskScope]);
+  const dashboardRole: "employee" | "lead" | "moderator" = isModerator
+    ? "moderator"
+    : isDepartmentHead
+      ? "lead"
+      : "employee";
 
   useEffect(() => {
     if (!userId || departmentsLoading) return;
@@ -587,6 +666,7 @@ export default function DashboardPage() {
 
         const openStatuses = "new,in_progress,review";
         const selectedDepartmentParam = selectedDepartmentId || undefined;
+        const shouldLoadDepartmentTasks = Boolean(selectedDepartmentParam) || isModerator;
         const emptyTasksPage = {
           items: [] as Task[],
           total: 0,
@@ -600,6 +680,7 @@ export default function DashboardPage() {
             .getDashboardTasksAnalytics(selectedDepartmentParam)
             .catch(catchLog("getDashboardTasksAnalytics")),
           api.getMeetingsAnalytics().catch(catchLog("getMeetingsAnalytics")),
+          api.getOverview(selectedDepartmentParam).catch(catchLog("getOverview")),
           api
             .getTasks({
               assignee_id: userId,
@@ -611,10 +692,12 @@ export default function DashboardPage() {
               sort: "created_at_desc",
             })
             .catch(catchLog("getMyTasks")),
-          selectedDepartmentParam
+          shouldLoadDepartmentTasks
             ? api
                 .getTasks({
-                  department_id: selectedDepartmentParam,
+                  ...(selectedDepartmentParam
+                    ? { department_id: selectedDepartmentParam }
+                    : {}),
                   status: openStatuses,
                   per_page: "50",
                   sort: "created_at_desc",
@@ -628,7 +711,7 @@ export default function DashboardPage() {
             ? api
                 .getTasks({
                   status: "new",
-                  per_page: "20",
+                  per_page: "100",
                   sort: "created_at_desc",
                 })
                 .catch(catchLog("getUnassignedTasks"))
@@ -637,7 +720,7 @@ export default function DashboardPage() {
             ? api
                 .getTasks({
                   status: "in_progress,review",
-                  per_page: "50",
+                  per_page: "100",
                   sort: "created_at_asc",
                 })
                 .catch(catchLog("getStaleTasks"))
@@ -648,37 +731,24 @@ export default function DashboardPage() {
 
         const dashboardData = results[0] as DashboardTasksAnalytics | null;
         const meetingData = results[1] as MeetingAnalytics | null;
-        const myTasksData = results[2] as { items: Task[] } | null;
-        const departmentTasksData = results[3] as { items: Task[] } | null;
-        const upcomingData = results[4] as Meeting[] | null;
-        const pastData = results[5] as Meeting[] | null;
-        const teamData = results[6] as TeamMember[] | null;
-        const unassignedData = results[7] as { items: Task[] } | null;
-        const staleData = results[8] as { items: Task[] } | null;
+        const overviewData = results[2] as OverviewAnalytics | null;
+        const myTasksData = results[3] as { items: Task[] } | null;
+        const departmentTasksData = results[4] as { items: Task[] } | null;
+        const upcomingData = results[5] as Meeting[] | null;
+        const pastData = results[6] as Meeting[] | null;
+        const teamData = results[7] as TeamMember[] | null;
+        const unassignedData = results[8] as { items: Task[] } | null;
+        const staleData = results[9] as { items: Task[] } | null;
 
         const hasError = results.some((r) => r === null);
 
         setDashboardTasksAnalytics(dashboardData);
         setMeetingAnalytics(meetingData);
+        setOverview(overviewData);
         setTeamMembers(teamData ?? []);
 
-        // My tasks — first 5 for display
-        if (myTasksData) {
-          setMyTasks(myTasksData.items.slice(0, 5));
-          setMyOverdueTasks(myTasksData.items.filter(isOverdue));
-        } else {
-          setMyTasks([]);
-          setMyOverdueTasks([]);
-        }
-
-        // Department tasks — first 5 for display
-        if (departmentTasksData) {
-          setDepartmentTasks(departmentTasksData.items.slice(0, 5));
-          setDepartmentOverdueTasks(departmentTasksData.items.filter(isOverdue));
-        } else {
-          setDepartmentTasks([]);
-          setDepartmentOverdueTasks([]);
-        }
+        setMyTasks(myTasksData?.items ?? []);
+        setDepartmentTasks(departmentTasksData?.items ?? []);
 
         // Upcoming meetings (top 3)
         setUpcomingMeetings(upcomingData ? upcomingData.slice(0, 3) : []);
@@ -690,10 +760,10 @@ export default function DashboardPage() {
         if (isModerator) {
           setUnassignedTasks(
             unassignedData
-              ? unassignedData.items.filter((t) => !t.assignee_id).slice(0, 5)
+              ? unassignedData.items.filter((t) => !t.assignee_id)
               : []
           );
-          setStaleTasks(staleData ? staleData.items.filter(isStale).slice(0, 5) : []);
+          setStaleTasks(staleData ? staleData.items.filter(isStale) : []);
         } else {
           setUnassignedTasks([]);
           setStaleTasks([]);
@@ -722,32 +792,81 @@ export default function DashboardPage() {
   const myMetrics = dashboardTasksAnalytics?.my;
   const departmentMetrics = dashboardTasksAnalytics?.department;
 
-  const activeTasks = myMetrics?.active ?? 0;
-  const completedThisWeek = myMetrics?.done_week ?? 0;
-  const overdueCount = myMetrics?.overdue ?? 0;
+  const departmentOverdueTasks = departmentTasks.filter(isOverdue);
 
-  const currentScope =
-    canUseDepartmentView && taskScope === "department" ? "department" : "my";
-  const scopedTasks = currentScope === "department" ? departmentTasks : myTasks;
-  const scopedOverdueTasks =
-    currentScope === "department" ? departmentOverdueTasks : myOverdueTasks;
+  const dueSoonMyCount = myTasks.filter((task) => isDueSoon(task)).length;
+  const dueSoonDepartmentCount = departmentTasks.filter((task) => isDueSoon(task)).length;
+  const unassignedDepartmentCount = departmentTasks.filter((task) => !task.assignee_id)
+    .length;
 
-  const taskListTitle = currentScope === "department" ? "Задачи отдела" : "Мои задачи";
-  const overdueListTitle =
-    currentScope === "department"
-      ? "Просроченные задачи отдела"
-      : "Мои просроченные задачи";
-  const emptyTaskTitle =
-    currentScope === "department"
-      ? "В отделе нет активных задач"
-      : "Нет активных задач";
-  const emptyTaskDescription =
-    currentScope === "department"
-      ? "По выбранному отделу сейчас нет активных задач."
-      : "Все задачи выполнены — отличная работа!";
+  const employeeFocusTasks = [...myTasks]
+    .sort((a, b) => getTaskFocusScore(b) - getTaskFocusScore(a))
+    .slice(0, 5);
 
-  const departmentSubtitle = (value: number): string =>
-    selectedDepartment ? `Всего в отделе: ${value}` : "Отдел не выбран";
+  const leadFocusTasks = [...departmentTasks]
+    .filter(
+      (task) =>
+        isOverdue(task) ||
+        isDueSoon(task, 1) ||
+        task.status === "review" ||
+        !task.assignee_id ||
+        isStale(task)
+    )
+    .sort((a, b) => getTaskFocusScore(b) - getTaskFocusScore(a))
+    .slice(0, 5);
+
+  const moderatorFocusDepartments = [...(overview?.departments ?? [])]
+    .filter((row) => row.active_tasks > 0 || row.overdue_tasks > 0)
+    .sort((a, b) => {
+      if (b.overdue_tasks !== a.overdue_tasks) {
+        return b.overdue_tasks - a.overdue_tasks;
+      }
+      return b.active_tasks - a.active_tasks;
+    })
+    .slice(0, 3);
+
+  const teamLoadMap = new Map<
+    string,
+    {
+      id: string;
+      fullName: string;
+      avatarUrl: string | null;
+      total: number;
+      overdue: number;
+      review: number;
+    }
+  >();
+
+  for (const task of departmentTasks) {
+    if (!task.assignee_id || !task.assignee) continue;
+    const existing = teamLoadMap.get(task.assignee_id) ?? {
+      id: task.assignee_id,
+      fullName: task.assignee.full_name,
+      avatarUrl: task.assignee.avatar_url,
+      total: 0,
+      overdue: 0,
+      review: 0,
+    };
+    existing.total += 1;
+    if (isOverdue(task)) existing.overdue += 1;
+    if (task.status === "review") existing.review += 1;
+    teamLoadMap.set(task.assignee_id, existing);
+  }
+
+  const teamLoadRows = [...teamLoadMap.values()]
+    .sort((a, b) => {
+      if (b.overdue !== a.overdue) return b.overdue - a.overdue;
+      if (b.total !== a.total) return b.total - a.total;
+      return b.review - a.review;
+    })
+    .slice(0, 4);
+
+  const primaryMetrics = dashboardRole === "employee" ? myMetrics : departmentMetrics;
+  const activeTasks = primaryMetrics?.active ?? 0;
+  const overdueCount = primaryMetrics?.overdue ?? 0;
+  const reviewCount = primaryMetrics?.review ?? 0;
+  const doneWeekCount = primaryMetrics?.done_week ?? 0;
+  const inProgressCount = primaryMetrics?.in_progress ?? 0;
 
   const todayStr = formatFullDate(new Date());
   const greeting = getGreetingMessage(activeTasks, overdueCount);
@@ -770,10 +889,162 @@ export default function DashboardPage() {
   const ACCENT_DONE = "hsl(152, 55%, 28%)";
   const ACCENT_DESTRUCTIVE = "hsl(0, 72%, 51%)";
   const ACCENT_BLUE = "hsl(200, 65%, 48%)";
+  const ACCENT_AMBER = "hsl(38, 80%, 52%)";
+
+  const roleTitle =
+    dashboardRole === "moderator"
+      ? "Операционный дашборд модератора"
+      : dashboardRole === "lead"
+        ? "Операционный дашборд руководителя"
+        : "Личный операционный дашборд";
+  const scopeLabel = selectedDepartment
+    ? `Срез по отделу: ${selectedDepartment.name}`
+    : isModerator
+      ? "Срез по всем отделам"
+      : "Личный срез";
+  const roleHint =
+    dashboardRole === "moderator"
+      ? "Сначала очереди риска, затем распределение нагрузки между отделами."
+      : dashboardRole === "lead"
+        ? "Приоритет: просрочки и задачи без owner внутри отдела."
+        : "Приоритет: закрыть просрочки и задачи с ближайшим дедлайном.";
+
+  const riskCards: Array<{
+    label: string;
+    value: number;
+    subtitle: string;
+    icon: React.ElementType;
+    accentColor: string;
+    isPulsing?: boolean;
+  }> =
+    dashboardRole === "employee"
+      ? [
+          {
+            label: "Просрочено",
+            value: myMetrics?.overdue ?? 0,
+            subtitle: `${myMetrics?.active ?? 0} активных`,
+            icon: AlertTriangle,
+            accentColor: ACCENT_DESTRUCTIVE,
+            isPulsing: true,
+          },
+          {
+            label: "Дедлайн ≤2 дней",
+            value: dueSoonMyCount,
+            subtitle: "Личный контур",
+            icon: Clock,
+            accentColor: ACCENT_AMBER,
+          },
+          {
+            label: "На ревью",
+            value: myMetrics?.review ?? 0,
+            subtitle: "Требуют завершения",
+            icon: FileText,
+            accentColor: ACCENT_PRIMARY,
+          },
+          {
+            label: "Done за неделю",
+            value: myMetrics?.done_week ?? 0,
+            subtitle: `Всего done: ${myMetrics?.done_total ?? 0}`,
+            icon: CheckCircle2,
+            accentColor: ACCENT_DONE,
+          },
+        ]
+      : dashboardRole === "lead"
+        ? [
+            {
+              label: "Просрочено в отделе",
+              value: departmentMetrics?.overdue ?? 0,
+              subtitle: `${departmentMetrics?.active ?? 0} активных`,
+              icon: AlertTriangle,
+              accentColor: ACCENT_DESTRUCTIVE,
+              isPulsing: true,
+            },
+            {
+              label: "Без исполнителя",
+              value: unassignedDepartmentCount,
+              subtitle: "Требуют owner",
+              icon: UserX,
+              accentColor: ACCENT_AMBER,
+            },
+            {
+              label: "Очередь ревью",
+              value: departmentMetrics?.review ?? 0,
+              subtitle: `${dueSoonDepartmentCount} дедлайн ≤2 дней`,
+              icon: FileText,
+              accentColor: ACCENT_PRIMARY,
+            },
+            {
+              label: "Done за неделю",
+              value: departmentMetrics?.done_week ?? 0,
+              subtitle: `Всего done: ${departmentMetrics?.done_total ?? 0}`,
+              icon: CheckCircle2,
+              accentColor: ACCENT_DONE,
+            },
+          ]
+        : [
+            {
+              label: "Просрочено",
+              value: departmentMetrics?.overdue ?? 0,
+              subtitle: `${departmentMetrics?.active ?? 0} активных`,
+              icon: AlertTriangle,
+              accentColor: ACCENT_DESTRUCTIVE,
+              isPulsing: true,
+            },
+            {
+              label: "Без исполнителя",
+              value: unassignedTasks.length,
+              subtitle: "Новые задачи без owner",
+              icon: UserX,
+              accentColor: ACCENT_AMBER,
+            },
+            {
+              label: "Не обновлялись >3 дней",
+              value: staleTasks.length,
+              subtitle: "В работе и ревью",
+              icon: AlertOctagon,
+              accentColor: ACCENT_PRIMARY,
+            },
+            {
+              label: "Встреч за месяц",
+              value: meetingAnalytics?.meetings_this_month ?? 0,
+              subtitle: `Всего встреч: ${meetingAnalytics?.total_meetings ?? 0}`,
+              icon: CalendarDays,
+              accentColor: ACCENT_BLUE,
+            },
+          ];
+
+  const focusTasks = dashboardRole === "employee" ? employeeFocusTasks : leadFocusTasks;
+  const focusTitle =
+    dashboardRole === "employee" ? "Фокус: мои задачи" : "Проблемные задачи отдела";
+  const focusEmptyTitle =
+    dashboardRole === "employee"
+      ? "Нет задач в фокусе"
+      : "Сильных рисков по отделу сейчас нет";
+  const focusEmptyDescription =
+    dashboardRole === "employee"
+      ? "Все текущие задачи в стабильной зоне."
+      : "Просрочки и очереди ревью под контролем.";
+
+  const nextMeeting = upcomingMeetings[0] ?? null;
+  const nextMeetingDateLabel =
+    nextMeeting?.meeting_date
+      ? parseUTCDate(nextMeeting.meeting_date).toLocaleDateString("ru-RU", {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+        })
+      : null;
+  const nextMeetingTimeLabel =
+    nextMeeting?.meeting_date
+      ? parseUTCDate(nextMeeting.meeting_date).toLocaleTimeString("ru-RU", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null;
 
   return (
-    <div className="space-y-8">
-      {/* ═══════════ Greeting ═══════════ */}
+    <div className="space-y-6">
+      {/* ═══════════ Header / Scope ═══════════ */}
       <section className="animate-fade-in-up stagger-1">
         <div
           className={`rounded-2xl border p-4 md:p-5 ${
@@ -787,9 +1058,13 @@ export default function DashboardPage() {
               <h1 className="text-xl font-bold font-heading tracking-tight md:text-2xl">
                 Привет, {firstName(user.full_name)}!
               </h1>
-              <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground md:text-sm">
+              <p className="mt-1 text-sm font-medium text-foreground">{roleTitle}</p>
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                 <span className="capitalize">{todayStr}</span>
                 <span className="text-border">•</span>
+                <span>{scopeLabel}</span>
+              </p>
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground md:text-sm">
                 {hasOverdueTasks ? (
                   <span className="inline-flex items-center gap-1 font-medium text-destructive">
                     <AlertTriangle className="h-3.5 w-3.5" />
@@ -799,9 +1074,8 @@ export default function DashboardPage() {
                   <span>{greeting}</span>
                 )}
               </p>
-              {!hasOverdueTasks && (
-                <p className="mt-1 text-xs text-muted-foreground">{activeSummary}</p>
-              )}
+              <p className="mt-1 text-xs text-muted-foreground">{activeSummary}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{roleHint}</p>
             </div>
 
             <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:justify-end">
@@ -836,13 +1110,19 @@ export default function DashboardPage() {
                   </span>
                   <Select
                     value={
-                      selectedDepartmentId ||
-                      (accessibleDepartments[0]?.id
-                        ? accessibleDepartments[0].id
-                        : "__none__")
+                      isModerator
+                        ? selectedDepartmentId || "__all__"
+                        : selectedDepartmentId ||
+                          (accessibleDepartments[0]?.id
+                            ? accessibleDepartments[0].id
+                            : "__none__")
                     }
                     onValueChange={(value) => {
                       if (value === "__none__") return;
+                      if (value === "__all__") {
+                        setSelectedDepartmentId("");
+                        return;
+                      }
                       setSelectedDepartmentId(value);
                     }}
                   >
@@ -850,16 +1130,21 @@ export default function DashboardPage() {
                       <SelectValue placeholder="Выберите отдел" />
                     </SelectTrigger>
                     <SelectContent>
-                      {accessibleDepartments.length === 0 ? (
+                      {accessibleDepartments.length === 0 && !isModerator ? (
                         <SelectItem value="__none__" disabled>
                           Нет доступных отделов
                         </SelectItem>
                       ) : (
-                        accessibleDepartments.map((department) => (
-                          <SelectItem key={department.id} value={department.id}>
-                            {department.name}
-                          </SelectItem>
-                        ))
+                        <>
+                          {isModerator && (
+                            <SelectItem value="__all__">Все отделы</SelectItem>
+                          )}
+                          {accessibleDepartments.map((department) => (
+                            <SelectItem key={department.id} value={department.id}>
+                              {department.name}
+                            </SelectItem>
+                          ))}
+                        </>
                       )}
                     </SelectContent>
                   </Select>
@@ -867,265 +1152,374 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
-
-          {hasOverdueTasks && (
-            <div className="mt-3 flex flex-col gap-3 rounded-xl border border-destructive/20 bg-background/80 p-3 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-sm text-foreground">
-                <span className="font-semibold">Фокус дня:</span>{" "}
-                сначала закройте минимум 1 просроченную задачу, затем переходите к активным.
-              </p>
-              <Button asChild size="sm" variant="secondary" className="sm:shrink-0">
-                <Link href={backlogHref}>
-                  Весь бэклог
-                  <ArrowRight className="h-3.5 w-3.5" />
-                </Link>
-              </Button>
-            </div>
-          )}
         </div>
       </section>
 
-      {/* ═══════════ Metric Cards ═══════════ */}
+      {/* ═══════════ Risk Metrics ═══════════ */}
       <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <MetricCard
-          label="Активных задач"
-          value={activeTasks}
-          subtitle={departmentSubtitle(departmentMetrics?.active ?? 0)}
-          icon={Zap}
-          accentColor={ACCENT_PRIMARY}
-          staggerClass="stagger-2"
-        />
-        <MetricCard
-          label="Выполнено за неделю"
-          value={completedThisWeek}
-          subtitle={departmentSubtitle(departmentMetrics?.done_total ?? 0)}
-          icon={CheckCircle2}
-          accentColor={ACCENT_DONE}
-          staggerClass="stagger-3"
-        />
-        <MetricCard
-          label="Просроченных"
-          value={overdueCount}
-          subtitle={departmentSubtitle(departmentMetrics?.overdue ?? 0)}
-          icon={AlertTriangle}
-          accentColor={ACCENT_DESTRUCTIVE}
-          isPulsing
-          staggerClass="stagger-4"
-        />
-        <MetricCard
-          label="Встреч за месяц"
-          value={meetingAnalytics?.meetings_this_month ?? 0}
-          subtitle={`Всего встреч: ${meetingAnalytics?.total_meetings ?? 0}`}
-          icon={CalendarDays}
-          accentColor={ACCENT_BLUE}
-          staggerClass="stagger-5"
-        />
+        {riskCards.map((card, index) => (
+          <MetricCard
+            key={card.label}
+            label={card.label}
+            value={card.value}
+            subtitle={card.subtitle}
+            icon={card.icon}
+            accentColor={card.accentColor}
+            isPulsing={card.isPulsing}
+            staggerClass={`stagger-${Math.min(index + 2, 8)}`}
+          />
+        ))}
       </section>
 
-      {/* ═══════════ Task Blocks ═══════════ */}
-      <section className="animate-fade-in-up stagger-6 space-y-4">
-        {canUseDepartmentView && (
-          <div className="flex justify-end">
-            <div className="inline-flex rounded-lg border border-border/60 bg-card p-1">
-              <button
-                onClick={() => setTaskScope("my")}
-                className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-                  currentScope === "my"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Мои
-              </button>
-              <button
-                onClick={() => setTaskScope("department")}
-                className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
-                  currentScope === "department"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Отдел
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          {/* Scope Tasks */}
+      {/* ═══════════ Role Main Zone ═══════════ */}
+      <section className="animate-fade-in-up stagger-6">
+        <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
           <div className="rounded-2xl border border-border/60 bg-card p-6">
-            <SectionHeader
-              title={taskListTitle}
-              count={scopedTasks.length}
-              linkHref="/tasks"
-              linkLabel="Смотреть все"
-            />
+            {dashboardRole === "moderator" ? (
+              <>
+                <SectionHeader
+                  title="Отделы в зоне риска"
+                  icon={AlertTriangle}
+                  iconColor={ACCENT_DESTRUCTIVE}
+                  count={moderatorFocusDepartments.length}
+                  linkHref="/analytics"
+                  linkLabel="Расширенная аналитика"
+                />
 
-            {scopedTasks.length === 0 ? (
-              <EmptyState
-                variant="tasks"
-                title={emptyTaskTitle}
-                description={emptyTaskDescription}
-                className="py-6"
-              />
-            ) : (
-              <div className="space-y-2">
-                {scopedTasks.map((task) => (
-                  <TaskListItem
-                    key={task.id}
-                    task={task}
-                    variant={isOverdue(task) ? "overdue" : "default"}
-                    showAssignee={currentScope === "department"}
+                {moderatorFocusDepartments.length === 0 ? (
+                  <EmptyState
+                    variant="tasks"
+                    title="Критичных сигналов по отделам нет"
+                    description="Просрочки и загрузка в допустимых границах."
+                    className="py-6"
                   />
-                ))}
-              </div>
+                ) : (
+                  <div className="space-y-2">
+                    {moderatorFocusDepartments.map((row) => {
+                      const params = new URLSearchParams({
+                        preset: "overdue",
+                        department_id: row.department_id,
+                      });
+                      return (
+                        <Link
+                          key={row.department_id}
+                          href={`/tasks?${params.toString()}`}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-border/70 px-4 py-3 transition-colors hover:bg-secondary/40"
+                        >
+                          <div className="min-w-0">
+                            <p className="flex items-center gap-2 text-sm font-medium">
+                              <span
+                                className="h-2.5 w-2.5 rounded-full"
+                                style={{
+                                  backgroundColor:
+                                    row.department_color || "hsl(var(--muted-foreground))",
+                                }}
+                              />
+                              <span className="truncate">{row.department_name}</span>
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {row.active_tasks} активных · {row.done_week} done за неделю
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs font-medium text-destructive">
+                              {row.overdue_tasks} просроч.
+                            </span>
+                            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground/50" />
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <SectionHeader
+                  title={focusTitle}
+                  count={focusTasks.length}
+                  linkHref="/tasks"
+                  linkLabel="Смотреть все"
+                />
+
+                {focusTasks.length === 0 ? (
+                  <EmptyState
+                    variant="tasks"
+                    title={focusEmptyTitle}
+                    description={focusEmptyDescription}
+                    className="py-6"
+                  />
+                ) : (
+                  <div className="space-y-2">
+                    {focusTasks.map((task) => (
+                      <TaskListItem
+                        key={task.id}
+                        task={task}
+                        variant={
+                          isOverdue(task)
+                            ? "overdue"
+                            : !task.assignee_id
+                              ? "unassigned"
+                              : isStale(task)
+                                ? "stale"
+                                : "default"
+                        }
+                        showAssignee={dashboardRole === "lead"}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
             )}
           </div>
 
-          {/* Scope Overdue Tasks */}
-          <div
-            id="dashboard-overdue-tasks"
-            className={`rounded-2xl border p-6 ${
-              scopedOverdueTasks.length > 0
-                ? "border-destructive/20 bg-destructive/[0.02]"
-                : "border-border/60 bg-card"
-            }`}
-          >
-            <SectionHeader
-              title={overdueListTitle}
-              icon={AlertTriangle}
-              iconColor={ACCENT_DESTRUCTIVE}
-              count={scopedOverdueTasks.length}
-            />
+          <div className="rounded-2xl border border-border/60 bg-card p-6">
+            {dashboardRole === "employee" && (
+              <>
+                <SectionHeader title="Сегодня" icon={Zap} iconColor={ACCENT_PRIMARY} />
 
-            {scopedOverdueTasks.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-status-done-bg">
-                  <CheckCircle2 className="h-5 w-5 text-status-done-fg" />
+                {nextMeeting ? (
+                  <div className="rounded-xl border border-border/70 bg-background/60 p-4">
+                    <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                      Следующая встреча
+                    </p>
+                    <p className="mt-1 truncate text-sm font-semibold">
+                      {nextMeeting.title || "Встреча без названия"}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {nextMeetingDateLabel} · {nextMeetingTimeLabel}
+                    </p>
+                    {nextMeeting.zoom_join_url && (
+                      <a
+                        href={nextMeeting.zoom_join_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline"
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        Подключиться к Zoom
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-border/70 bg-background/40 p-4 text-xs text-muted-foreground">
+                    На ближайшее время встреч не запланировано.
+                  </div>
+                )}
+
+                <div className="mt-4 rounded-xl border border-border/70 bg-background/60 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Контроль на день
+                  </p>
+                  <div className="mt-2 space-y-1.5 text-sm">
+                    <p>Дедлайн ≤2 дней: {dueSoonMyCount}</p>
+                    <p>В работе: {inProgressCount}</p>
+                    <p>На ревью: {reviewCount}</p>
+                    <p>Done за неделю: {doneWeekCount}</p>
+                  </div>
                 </div>
-                <p className="mb-0.5 text-sm font-heading font-semibold text-foreground">
-                  Всё в срок
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Нет просроченных задач
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {scopedOverdueTasks.slice(0, 5).map((task) => (
-                  <TaskListItem
-                    key={task.id}
-                    task={task}
-                    variant="overdue"
-                    showAssignee={currentScope === "department"}
-                  />
-                ))}
-              </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button asChild size="sm" variant="secondary">
+                    <Link href={overdueHref}>Разобрать просрочки</Link>
+                  </Button>
+                  <Button asChild size="sm" variant="ghost">
+                    <Link href={kanbanHref}>Канбан</Link>
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {dashboardRole === "lead" && (
+              <>
+                <SectionHeader title="Нагрузка команды" icon={Zap} iconColor={ACCENT_PRIMARY} />
+
+                <div className="rounded-xl border border-border/70 bg-background/60 p-4">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                    Контроль отдела
+                  </p>
+                  <div className="mt-2 space-y-1.5 text-sm">
+                    <p>Просрочено: {departmentOverdueTasks.length}</p>
+                    <p>Без исполнителя: {unassignedDepartmentCount}</p>
+                    <p>Очередь ревью: {departmentMetrics?.review ?? 0}</p>
+                    <p>Дедлайн ≤2 дней: {dueSoonDepartmentCount}</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {teamLoadRows.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-border/70 bg-background/40 p-4 text-xs text-muted-foreground">
+                      По текущим задачам нет данных по загрузке команды.
+                    </div>
+                  ) : (
+                    teamLoadRows.map((member) => (
+                      <div
+                        key={member.id}
+                        className="flex items-center justify-between rounded-lg border border-border/70 px-3 py-2"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <UserAvatar
+                            name={member.fullName}
+                            avatarUrl={member.avatarUrl}
+                            size="sm"
+                          />
+                          <p className="truncate text-sm font-medium">
+                            {firstAndLastName(member.fullName)}
+                          </p>
+                        </div>
+                        <div className="text-right text-xs text-muted-foreground">
+                          <p>{member.total} в работе</p>
+                          <p className="text-destructive">{member.overdue} просроч.</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button asChild size="sm" variant="secondary">
+                    <Link href={overdueHref}>Снять просрочки</Link>
+                  </Button>
+                  <Button asChild size="sm" variant="ghost">
+                    <Link href={backlogHref}>Весь backlog</Link>
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {dashboardRole === "moderator" && (
+              <>
+                <SectionHeader
+                  title="Операционные очереди"
+                  icon={AlertOctagon}
+                  iconColor={ACCENT_AMBER}
+                />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-border/70 bg-background/60 p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      Без исполнителя
+                    </p>
+                    <p className="mt-1 text-xl font-semibold">{unassignedTasks.length}</p>
+                  </div>
+                  <div className="rounded-xl border border-border/70 bg-background/60 p-3">
+                    <p className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                      Не обновлялись
+                    </p>
+                    <p className="mt-1 text-xl font-semibold">{staleTasks.length}</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-3">
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Без исполнителя (top 3)
+                    </p>
+                    {unassignedTasks.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Пусто</p>
+                    ) : (
+                      unassignedTasks
+                        .slice(0, 3)
+                        .map((task) => (
+                          <CompactTaskLink key={task.id} task={task} tone="danger" />
+                        ))
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Не обновлялись {'>'}3 дней (top 3)
+                    </p>
+                    {staleTasks.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">Пусто</p>
+                    ) : (
+                      staleTasks
+                        .slice(0, 3)
+                        .map((task) => (
+                          <CompactTaskLink key={task.id} task={task} tone="warning" />
+                        ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button asChild size="sm" variant="secondary">
+                    <Link href={overdueHref}>Просрочки</Link>
+                  </Button>
+                  <Button asChild size="sm" variant="ghost">
+                    <Link href="/analytics">Аналитика</Link>
+                  </Button>
+                </div>
+              </>
             )}
           </div>
         </div>
       </section>
 
-      {/* ═══════════ Moderator: Stale Tasks ═══════════ */}
-      {isModerator && staleTasks.length > 0 && (
-        <section className="animate-fade-in-up stagger-8">
-          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.02] p-6">
-            <SectionHeader
-              title="Не обновлялись >3 дней"
-              icon={AlertOctagon}
-              iconColor="hsl(38, 80%, 52%)"
-              count={staleTasks.length}
-              linkHref="/tasks"
-              linkLabel="Все задачи"
-            />
-            <div className="space-y-2">
-              {staleTasks.map((task) => (
-                <TaskListItem key={task.id} task={task} variant="stale" />
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ═══════════ Upcoming Meetings ═══════════ */}
-      {upcomingMeetings.length > 0 && (
+      {/* ═══════════ Meetings (Compact) ═══════════ */}
+      {(upcomingMeetings.length > 0 || meetings.length > 0) && (
         <section className="animate-fade-in-up stagger-7">
           <div className="rounded-2xl border border-border/60 bg-card p-6">
-            <SectionHeader
-              title="Предстоящие встречи"
-              icon={Video}
-              iconColor={ACCENT_BLUE}
-              linkHref="/meetings"
-              linkLabel="Все встречи"
-              count={upcomingMeetings.length}
-            />
-            <div className="grid gap-4 md:grid-cols-3">
-              {upcomingMeetings.map((meeting, i) => (
-                <UpcomingMeetingCard
-                  key={meeting.id}
-                  meeting={meeting}
-                  staggerClass={`stagger-${i + 7}`}
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div>
+                <SectionHeader
+                  title="Ближайшие встречи"
+                  icon={Video}
+                  iconColor={ACCENT_BLUE}
+                  linkHref="/meetings"
+                  linkLabel="Все встречи"
+                  count={upcomingMeetings.length}
                 />
-              ))}
+                {upcomingMeetings.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border/70 bg-background/40 p-4 text-xs text-muted-foreground">
+                    Ближайших встреч нет.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {upcomingMeetings.slice(0, 2).map((meeting, i) => (
+                      <UpcomingMeetingCard
+                        key={meeting.id}
+                        meeting={meeting}
+                        staggerClass={`stagger-${Math.min(i + 7, 8)}`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <SectionHeader
+                  title="Последние встречи"
+                  icon={CalendarDays}
+                  linkHref="/meetings"
+                  linkLabel="Все встречи"
+                  count={meetings.length}
+                />
+                {meetings.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-border/70 bg-background/40 p-4 text-xs text-muted-foreground">
+                    Завершённых встреч пока нет.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {meetings.slice(0, 2).map((meeting, i) => (
+                      <MeetingCard
+                        key={meeting.id}
+                        meeting={meeting}
+                        staggerClass={`stagger-${Math.min(i + 7, 8)}`}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </section>
       )}
 
-      {/* ═══════════ Recent Past Meetings ═══════════ */}
-      {meetings.length > 0 && (
-        <section className="animate-fade-in-up stagger-7">
-          <div className="rounded-2xl border border-border/60 bg-card p-6">
-            <SectionHeader
-              title="Последние встречи"
-              icon={CalendarDays}
-              linkHref="/meetings"
-              linkLabel="Все встречи"
-            />
-            <div className="grid gap-4 md:grid-cols-3">
-              {meetings.map((meeting, i) => (
-                <MeetingCard
-                  key={meeting.id}
-                  meeting={meeting}
-                  staggerClass={`stagger-${i + 7}`}
-                />
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* ═══════════ Upcoming Birthdays ═══════════ */}
+      {/* ═══════════ Birthdays ═══════════ */}
       {teamMembers.length > 0 && (
         <section className="animate-fade-in-up stagger-8">
-          <UpcomingBirthdays
-            members={teamMembers}
-            className=""
-          />
-        </section>
-      )}
-
-      {/* ═══════════ Moderator: Unassigned ═══════════ */}
-      {isModerator && unassignedTasks.length > 0 && (
-        <section className="animate-fade-in-up stagger-8">
-          <div className="rounded-2xl border border-dashed border-muted-foreground/20 bg-card p-6">
-            <SectionHeader
-              title="Ожидают назначения"
-              icon={UserX}
-              count={unassignedTasks.length}
-              linkHref="/tasks"
-              linkLabel="Все задачи"
-            />
-            <div className="space-y-2">
-              {unassignedTasks.map((task) => (
-                <TaskListItem
-                  key={task.id}
-                  task={task}
-                  variant="unassigned"
-                />
-              ))}
-            </div>
-          </div>
+          <UpcomingBirthdays members={teamMembers} className="" />
         </section>
       )}
 
