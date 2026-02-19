@@ -51,17 +51,21 @@ interface ActiveFilter {
   label: string;
 }
 
+interface TaskFiltersProps {
+  filters: TaskFilterValues;
+  onFiltersChange: (filters: TaskFilterValues) => void;
+  members: TeamMember[];
+  departments: Department[];
+  showDepartmentFilter?: boolean;
+}
+
 export function TaskFilters({
   filters,
   onFiltersChange,
   members,
   departments,
-}: {
-  filters: TaskFilterValues;
-  onFiltersChange: (filters: TaskFilterValues) => void;
-  members: TeamMember[];
-  departments: Department[];
-}) {
+  showDepartmentFilter = true,
+}: TaskFiltersProps) {
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const assigneeOptions = useMemo(
     () =>
@@ -84,7 +88,7 @@ export function TaskFilters({
       label: TASK_SOURCE_LABELS[filters.source as TaskSource],
     });
   }
-  if (filters.department_id) {
+  if (showDepartmentFilter && filters.department_id) {
     const department = departments.find((d) => d.id === filters.department_id);
     activeFilters.push({
       key: "department_id",
@@ -200,39 +204,41 @@ export function TaskFilters({
           </Select>
 
           {/* Department */}
-          <Select
-            value={filters.department_id || "all"}
-            onValueChange={(v) => {
-              const nextDepartmentId = v === "all" ? "" : v;
-              const shouldResetAssignee =
-                Boolean(nextDepartmentId) &&
-                Boolean(filters.assignee_id) &&
-                filters.assignee_id !== "unassigned" &&
-                !members.some(
-                  (m) =>
-                    m.id === filters.assignee_id &&
-                    m.department_id === nextDepartmentId
-                );
+          {showDepartmentFilter && (
+            <Select
+              value={filters.department_id || "all"}
+              onValueChange={(v) => {
+                const nextDepartmentId = v === "all" ? "" : v;
+                const shouldResetAssignee =
+                  Boolean(nextDepartmentId) &&
+                  Boolean(filters.assignee_id) &&
+                  filters.assignee_id !== "unassigned" &&
+                  !members.some(
+                    (m) =>
+                      m.id === filters.assignee_id &&
+                      m.department_id === nextDepartmentId
+                  );
 
-              onFiltersChange({
-                ...filters,
-                department_id: nextDepartmentId,
-                assignee_id: shouldResetAssignee ? "" : filters.assignee_id,
-              });
-            }}
-          >
-            <SelectTrigger className="h-10 w-[180px] bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md">
-              <SelectValue placeholder="Отдел" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все отделы</SelectItem>
-              {departments.map((department) => (
-                <SelectItem key={department.id} value={department.id}>
-                  {department.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+                onFiltersChange({
+                  ...filters,
+                  department_id: nextDepartmentId,
+                  assignee_id: shouldResetAssignee ? "" : filters.assignee_id,
+                });
+              }}
+            >
+              <SelectTrigger className="h-10 w-[180px] bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md">
+                <SelectValue placeholder="Отдел" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все отделы</SelectItem>
+                {departments.map((department) => (
+                  <SelectItem key={department.id} value={department.id}>
+                    {department.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
 
           {/* Assignee */}
           <Select

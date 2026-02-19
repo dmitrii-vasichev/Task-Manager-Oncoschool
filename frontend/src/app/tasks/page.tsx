@@ -15,6 +15,7 @@ import { useToast } from "@/components/shared/Toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useDepartments } from "@/hooks/useDepartments";
 import { api } from "@/lib/api";
+import { getAccessibleDepartments } from "@/lib/departmentAccess";
 import type { Task, TaskStatus, TeamMember } from "@/lib/types";
 import { TASK_STATUS_LABELS } from "@/lib/types";
 import { PermissionService } from "@/lib/permissions";
@@ -47,18 +48,39 @@ export default function TasksPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<TaskStatus>("new");
   const defaultScopeUserIdRef = useRef<string | null>(null);
+  const userId = user?.id || "";
+  const userDepartmentId = user?.department_id || "";
+  const userRole = user?.role || "";
 
   // Native DnD state
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<TaskStatus | null>(null);
   const dragCounterRef = useRef<Record<string, number>>({});
+  const accessibleDepartments = useMemo(
+    () =>
+      getAccessibleDepartments({
+        departments,
+        userId,
+        userRole,
+        userDepartmentId: userDepartmentId || null,
+      }),
+    [departments, userDepartmentId, userId, userRole]
+  );
+  const accessibleDepartmentIds = useMemo(
+    () => new Set(accessibleDepartments.map((department) => department.id)),
+    [accessibleDepartments]
+  );
+  const canSwitchDepartment = accessibleDepartments.length > 1;
 
   const fetchData = useCallback(async () => {
     if (!user?.id) return;
     try {
       setLoading(true);
       const params: Record<string, string> = { per_page: "200" };
-      if (filters.department_id) {
+      if (
+        filters.department_id &&
+        accessibleDepartmentIds.has(filters.department_id)
+      ) {
         params.department_id = filters.department_id;
       }
       if (filters.assignee_id && filters.assignee_id !== "unassigned") {
@@ -79,7 +101,13 @@ export default function TasksPage() {
     } finally {
       setLoading(false);
     }
-  }, [filters.assignee_id, filters.department_id, toastError, user?.id]);
+  }, [
+    accessibleDepartmentIds,
+    filters.assignee_id,
+    filters.department_id,
+    toastError,
+    user?.id,
+  ]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -97,6 +125,13 @@ export default function TasksPage() {
     if (defaultScopeUserIdRef.current !== user.id) return;
     fetchData();
   }, [fetchData, user?.id]);
+
+  useEffect(() => {
+    if (departments.length === 0) return;
+    if (!filters.department_id) return;
+    if (accessibleDepartmentIds.has(filters.department_id)) return;
+    setFilters((prev) => ({ ...prev, department_id: "" }));
+  }, [accessibleDepartmentIds, departments.length, filters.department_id]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
@@ -242,7 +277,8 @@ export default function TasksPage() {
           filters={filters}
           onFiltersChange={setFilters}
           members={members}
-          departments={departments}
+          departments={accessibleDepartments}
+          showDepartmentFilter={canSwitchDepartment}
         />
         <Button
           onClick={() => setCreateOpen(true)}

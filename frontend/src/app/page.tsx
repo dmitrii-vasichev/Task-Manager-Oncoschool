@@ -32,11 +32,11 @@ import { useToast } from "@/components/shared/Toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useDepartments } from "@/hooks/useDepartments";
 import { PermissionService } from "@/lib/permissions";
+import { getAccessibleDepartments } from "@/lib/departmentAccess";
 import { api } from "@/lib/api";
 import { UpcomingBirthdays } from "./team/components/UpcomingBirthdays";
 import type {
   DashboardTasksAnalytics,
-  Department,
   MeetingAnalytics,
   Task,
   Meeting,
@@ -482,22 +482,19 @@ export default function DashboardPage() {
   const isModerator = user ? PermissionService.isModerator(user) : false;
   const userId = user?.id || "";
   const userDepartmentId = user?.department_id || "";
+  const userRole = user?.role || "";
 
-  const accessibleDepartments = useMemo<Department[]>(() => {
-    if (!userId) return [];
-    if (isModerator) return departments;
-
-    const allowedDepartmentIds = new Set<string>();
-    if (userDepartmentId) {
-      allowedDepartmentIds.add(userDepartmentId);
-    }
-    for (const department of departments) {
-      if (department.head_id === userId) {
-        allowedDepartmentIds.add(department.id);
-      }
-    }
-    return departments.filter((department) => allowedDepartmentIds.has(department.id));
-  }, [departments, isModerator, userDepartmentId, userId]);
+  const accessibleDepartments = useMemo(
+    () =>
+      getAccessibleDepartments({
+        departments,
+        userId,
+        userRole,
+        userDepartmentId: userDepartmentId || null,
+      }),
+    [departments, userDepartmentId, userId, userRole]
+  );
+  const canSwitchDepartment = accessibleDepartments.length > 1;
 
   useEffect(() => {
     if (!userId || departmentsLoading) return;
@@ -729,36 +726,40 @@ export default function DashboardPage() {
             </p>
           </div>
 
-          <div className="w-full md:w-[280px]">
-            <p className="mb-1 text-xs font-medium text-muted-foreground">Отдел</p>
-            <Select
-              value={
-                selectedDepartmentId ||
-                (accessibleDepartments[0]?.id ? accessibleDepartments[0].id : "__none__")
-              }
-              onValueChange={(value) => {
-                if (value === "__none__") return;
-                setSelectedDepartmentId(value);
-              }}
-            >
-              <SelectTrigger className="h-10 border-border/60 bg-card shadow-sm">
-                <SelectValue placeholder="Выберите отдел" />
-              </SelectTrigger>
-              <SelectContent>
-                {accessibleDepartments.length === 0 ? (
-                  <SelectItem value="__none__" disabled>
-                    Нет доступных отделов
-                  </SelectItem>
-                ) : (
-                  accessibleDepartments.map((department) => (
-                    <SelectItem key={department.id} value={department.id}>
-                      {department.name}
+          {canSwitchDepartment && (
+            <div className="w-full md:w-[280px]">
+              <p className="mb-1 text-xs font-medium text-muted-foreground">Отдел</p>
+              <Select
+                value={
+                  selectedDepartmentId ||
+                  (accessibleDepartments[0]?.id
+                    ? accessibleDepartments[0].id
+                    : "__none__")
+                }
+                onValueChange={(value) => {
+                  if (value === "__none__") return;
+                  setSelectedDepartmentId(value);
+                }}
+              >
+                <SelectTrigger className="h-10 border-border/60 bg-card shadow-sm">
+                  <SelectValue placeholder="Выберите отдел" />
+                </SelectTrigger>
+                <SelectContent>
+                  {accessibleDepartments.length === 0 ? (
+                    <SelectItem value="__none__" disabled>
+                      Нет доступных отделов
                     </SelectItem>
-                  ))
-                )}
-              </SelectContent>
-            </Select>
-          </div>
+                  ) : (
+                    accessibleDepartments.map((department) => (
+                      <SelectItem key={department.id} value={department.id}>
+                        {department.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
       </section>
 
