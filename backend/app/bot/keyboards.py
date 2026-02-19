@@ -9,6 +9,7 @@ from aiogram.types import (
 )
 
 from app.bot.callbacks import (
+    ALL_DEPARTMENTS_TOKEN,
     TaskBackToListCallback,
     TaskCardCallback,
     TaskListCallback,
@@ -38,7 +39,9 @@ TASK_FILTER_LABELS: dict[TaskListFilter, str] = {
 
 MENU_BTN_MY_TASKS = "📋 Мои задачи"
 MENU_BTN_HELP = "❓ Хелп"
-MENU_BTN_ALL_TASKS = "📊 Все задачи"
+MENU_BTN_ALL_TASKS_DEPARTMENT = "📊 Задачи отдела"
+MENU_BTN_ALL_TASKS_COMPANY = "🏢 Задачи компании"
+MENU_BTN_ALL_TASKS_LEGACY = "📊 Все задачи"
 MENU_BTN_NEXT_MEETING = "📅 Следующая встреча"
 MENU_BTN_MY_REMINDER = "⏰ Мои напоминания"
 MENU_BTN_MEETINGS = "🗓 Встречи"
@@ -55,13 +58,16 @@ def main_menu_reply_keyboard(
     is_admin: bool,
 ) -> ReplyKeyboardMarkup:
     """Persistent bottom keyboard for quick navigation in private chat."""
+    all_tasks_button = (
+        MENU_BTN_ALL_TASKS_COMPANY if is_moderator else MENU_BTN_ALL_TASKS_DEPARTMENT
+    )
     rows = [
         [
             KeyboardButton(text=MENU_BTN_MY_TASKS),
             KeyboardButton(text=MENU_BTN_HELP),
         ],
         [
-            KeyboardButton(text=MENU_BTN_ALL_TASKS),
+            KeyboardButton(text=all_tasks_button),
             KeyboardButton(text=MENU_BTN_NEXT_MEETING),
         ],
         [
@@ -144,10 +150,44 @@ def pagination_keyboard(current_page: int, total_pages: int, prefix: str) -> Inl
     return InlineKeyboardMarkup(inline_keyboard=[buttons])
 
 
+def task_departments_keyboard(
+    scope: TaskListScope,
+    current_filter: TaskListFilter,
+    current_department_token: str,
+    department_options: Sequence[tuple[str, str]],
+) -> InlineKeyboardMarkup:
+    """Inline-кнопки выбора отдела для списка задач."""
+    buttons: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+
+    for token, label in department_options:
+        text = f"✅ {label}" if token == current_department_token else label
+        row.append(
+            InlineKeyboardButton(
+                text=text,
+                callback_data=TaskListCallback(
+                    scope=scope,
+                    task_filter=current_filter,
+                    page=1,
+                    department_token=token,
+                ).pack(),
+            )
+        )
+        if len(row) == 2:
+            buttons.append(row)
+            row = []
+
+    if row:
+        buttons.append(row)
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 def task_filters_keyboard(
     scope: TaskListScope,
     current_filter: TaskListFilter,
     page: int = 1,
+    department_token: str = ALL_DEPARTMENTS_TOKEN,
 ) -> InlineKeyboardMarkup:
     """Inline-фильтры списка задач для Telegram UI."""
     buttons: list[list[InlineKeyboardButton]] = []
@@ -170,6 +210,7 @@ def task_filters_keyboard(
                     scope=scope,
                     task_filter=filter_value,
                     page=1,
+                    department_token=department_token,
                 ).pack(),
             )
         )
@@ -187,6 +228,7 @@ def task_filters_keyboard(
                 scope=scope,
                 task_filter=current_filter,
                 page=page,
+                department_token=department_token,
             ).pack(),
         )
     ])
@@ -199,6 +241,7 @@ def task_pagination_keyboard(
     current_filter: TaskListFilter,
     page: int,
     total_pages: int,
+    department_token: str = ALL_DEPARTMENTS_TOKEN,
 ) -> InlineKeyboardMarkup:
     """Пагинация списка задач с typed callback schema."""
     safe_page = max(1, page)
@@ -213,6 +256,7 @@ def task_pagination_keyboard(
                     scope=scope,
                     task_filter=current_filter,
                     page=safe_page - 1,
+                    department_token=department_token,
                 ).pack(),
             )
         )
@@ -227,6 +271,7 @@ def task_pagination_keyboard(
                     scope=scope,
                     task_filter=current_filter,
                     page=safe_page + 1,
+                    department_token=department_token,
                 ).pack(),
             )
         )
@@ -240,6 +285,8 @@ def task_list_keyboard(
     current_filter: TaskListFilter,
     page: int = 1,
     total_pages: int = 1,
+    department_token: str = ALL_DEPARTMENTS_TOKEN,
+    department_options: Sequence[tuple[str, str]] | None = None,
 ) -> InlineKeyboardMarkup:
     """Клавиатура списка задач: задачи + фильтры + пагинация."""
     buttons: list[list[InlineKeyboardButton]] = []
@@ -258,17 +305,36 @@ def task_list_keyboard(
                     scope=scope,
                     task_filter=current_filter,
                     page=max(1, page),
+                    department_token=department_token,
                 ).pack(),
             )
         ])
 
-    buttons.extend(task_filters_keyboard(scope, current_filter, page=page).inline_keyboard)
+    if department_options:
+        buttons.extend(
+            task_departments_keyboard(
+                scope=scope,
+                current_filter=current_filter,
+                current_department_token=department_token,
+                department_options=department_options,
+            ).inline_keyboard
+        )
+
+    buttons.extend(
+        task_filters_keyboard(
+            scope,
+            current_filter,
+            page=page,
+            department_token=department_token,
+        ).inline_keyboard
+    )
     buttons.extend(
         task_pagination_keyboard(
             scope=scope,
             current_filter=current_filter,
             page=page,
             total_pages=total_pages,
+            department_token=department_token,
         ).inline_keyboard
     )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
@@ -280,6 +346,7 @@ def task_card_keyboard(
     scope: TaskListScope,
     current_filter: TaskListFilter,
     page: int = 1,
+    department_token: str = ALL_DEPARTMENTS_TOKEN,
 ) -> InlineKeyboardMarkup:
     """Клавиатура карточки задачи с существующими действиями + навигация."""
     base_keyboard = task_actions_keyboard(task_id, is_moderator)
@@ -291,6 +358,7 @@ def task_card_keyboard(
                 scope=scope,
                 task_filter=current_filter,
                 page=max(1, page),
+                department_token=department_token,
             ).pack(),
         ),
         InlineKeyboardButton(
@@ -299,6 +367,7 @@ def task_card_keyboard(
                 scope=scope,
                 task_filter=current_filter,
                 page=max(1, page),
+                department_token=department_token,
             ).pack(),
         ),
     ])

@@ -2,6 +2,8 @@ from enum import Enum
 
 from aiogram.filters.callback_data import CallbackData
 
+ALL_DEPARTMENTS_TOKEN = "all"
+
 
 class TaskListScope(str, Enum):
     """Scope of task list view."""
@@ -25,11 +27,12 @@ class TaskListFilter(str, Enum):
 
 
 class TaskListCallback(CallbackData, prefix="tlst"):
-    """List state callback (scope/filter/page)."""
+    """List state callback (scope/filter/page/department)."""
 
     scope: TaskListScope
     task_filter: TaskListFilter
     page: int
+    department_token: str
 
 
 class TaskCardCallback(CallbackData, prefix="tcard"):
@@ -39,6 +42,7 @@ class TaskCardCallback(CallbackData, prefix="tcard"):
     scope: TaskListScope
     task_filter: TaskListFilter
     page: int
+    department_token: str
 
 
 class TaskBackToListCallback(CallbackData, prefix="tback"):
@@ -47,6 +51,7 @@ class TaskBackToListCallback(CallbackData, prefix="tback"):
     scope: TaskListScope
     task_filter: TaskListFilter
     page: int
+    department_token: str
 
 
 class TaskRefreshListCallback(CallbackData, prefix="tref"):
@@ -55,3 +60,4 @@ class TaskRefreshListCallback(CallbackData, prefix="tref"):
     scope: TaskListScope
     task_filter: TaskListFilter
     page: int
+    department_token: str

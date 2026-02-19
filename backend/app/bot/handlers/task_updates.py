@@ -12,6 +12,7 @@ from app.db.models import TeamMember
 from app.services.notification_service import NotificationService
 from app.services.permission_service import PermissionService
 from app.services.task_service import TaskService
+from app.services.task_visibility_service import can_access_task
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,7 @@ async def _add_progress_update(
 async def _show_updates_timeline(
     *,
     message: Message,
+    member: TeamMember,
     session_maker: async_sessionmaker,
     short_id: int,
 ) -> bool:
@@ -111,6 +113,10 @@ async def _show_updates_timeline(
         task = await task_service.get_task_by_short_id(session, short_id)
         if not task:
             await message.answer(f"❌ Задача #{short_id} не найдена")
+            return False
+
+        if not await can_access_task(session, member, task):
+            await message.answer("❌ Нет доступа к этой задаче")
             return False
 
         updates = await task_service.get_task_updates(session, task.id)
@@ -301,6 +307,7 @@ async def cmd_updates(
 
     await _show_updates_timeline(
         message=message,
+        member=member,
         session_maker=session_maker,
         short_id=short_id,
     )
@@ -309,6 +316,7 @@ async def cmd_updates(
 @router.message(TaskUpdateFSM.waiting_for_updates_task_id)
 async def fsm_receive_updates_task_id(
     message: Message,
+    member: TeamMember,
     session_maker: async_sessionmaker,
     state: FSMContext,
 ) -> None:
@@ -319,6 +327,7 @@ async def fsm_receive_updates_task_id(
 
     if await _show_updates_timeline(
         message=message,
+        member=member,
         session_maker=session_maker,
         short_id=short_id,
     ):

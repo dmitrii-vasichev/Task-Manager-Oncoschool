@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Search, X, SlidersHorizontal, ChevronDown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -14,12 +14,13 @@ import {
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import type { TaskPriority, TaskSource } from "@/lib/types";
 import { TASK_PRIORITY_LABELS, TASK_SOURCE_LABELS } from "@/lib/types";
-import type { TeamMember } from "@/lib/types";
+import type { Department, TeamMember } from "@/lib/types";
 
 export interface TaskFilterValues {
   search: string;
   priority: string;
   source: string;
+  department_id: string;
   assignee_id: string;
 }
 
@@ -27,6 +28,7 @@ const EMPTY_FILTERS: TaskFilterValues = {
   search: "",
   priority: "",
   source: "",
+  department_id: "",
   assignee_id: "",
 };
 
@@ -53,12 +55,21 @@ export function TaskFilters({
   filters,
   onFiltersChange,
   members,
+  departments,
 }: {
   filters: TaskFilterValues;
   onFiltersChange: (filters: TaskFilterValues) => void;
   members: TeamMember[];
+  departments: Department[];
 }) {
   const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const assigneeOptions = useMemo(
+    () =>
+      filters.department_id
+        ? members.filter((m) => m.department_id === filters.department_id)
+        : members,
+    [filters.department_id, members]
+  );
 
   const activeFilters: ActiveFilter[] = [];
   if (filters.priority) {
@@ -71,6 +82,13 @@ export function TaskFilters({
     activeFilters.push({
       key: "source",
       label: TASK_SOURCE_LABELS[filters.source as TaskSource],
+    });
+  }
+  if (filters.department_id) {
+    const department = departments.find((d) => d.id === filters.department_id);
+    activeFilters.push({
+      key: "department_id",
+      label: department?.name || "Отдел",
     });
   }
   if (filters.assignee_id) {
@@ -181,6 +199,41 @@ export function TaskFilters({
             </SelectContent>
           </Select>
 
+          {/* Department */}
+          <Select
+            value={filters.department_id || "all"}
+            onValueChange={(v) => {
+              const nextDepartmentId = v === "all" ? "" : v;
+              const shouldResetAssignee =
+                Boolean(nextDepartmentId) &&
+                Boolean(filters.assignee_id) &&
+                filters.assignee_id !== "unassigned" &&
+                !members.some(
+                  (m) =>
+                    m.id === filters.assignee_id &&
+                    m.department_id === nextDepartmentId
+                );
+
+              onFiltersChange({
+                ...filters,
+                department_id: nextDepartmentId,
+                assignee_id: shouldResetAssignee ? "" : filters.assignee_id,
+              });
+            }}
+          >
+            <SelectTrigger className="h-10 w-[180px] bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md">
+              <SelectValue placeholder="Отдел" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все отделы</SelectItem>
+              {departments.map((department) => (
+                <SelectItem key={department.id} value={department.id}>
+                  {department.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           {/* Assignee */}
           <Select
             value={filters.assignee_id || "all"}
@@ -199,7 +252,7 @@ export function TaskFilters({
               <SelectItem value="unassigned">
                 <span className="text-muted-foreground">Не назначен</span>
               </SelectItem>
-              {members.map((m) => (
+              {assigneeOptions.map((m) => (
                 <SelectItem key={m.id} value={m.id}>
                   <span className="flex items-center gap-2">
                     <UserAvatar name={m.full_name} avatarUrl={m.avatar_url} size="sm" />

@@ -11,7 +11,7 @@ HELP_PRIVATE_COMMAND = BotCommand(command="help", description="Хелп и сп�
 
 COMMON_PRIVATE_COMMANDS: list[BotCommand] = [
     BotCommand(command="tasks", description="Мои задачи"),
-    BotCommand(command="all", description="Все задачи команды"),
+    BotCommand(command="all", description="Задачи отдела / компании"),
     BotCommand(command="new", description="Создать задачу: /new <текст>"),
     BotCommand(command="done", description="Завершить задачу: /done <id>"),
     BotCommand(command="status", description="Статус задачи: /status <id> <статус>"),

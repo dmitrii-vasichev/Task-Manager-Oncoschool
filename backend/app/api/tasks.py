@@ -15,6 +15,10 @@ from app.db.schemas import TaskCreate, TaskEdit, TaskResponse
 from app.services.in_app_notification_service import InAppNotificationService
 from app.services.permission_service import PermissionService
 from app.services.task_service import TaskService
+from app.services.task_visibility_service import (
+    can_access_task,
+    resolve_visible_department_ids,
+)
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 task_service = TaskService()
@@ -32,6 +36,7 @@ class PaginatedTasksResponse(BaseModel):
 @router.get("", response_model=PaginatedTasksResponse)
 async def list_tasks(
     assignee_id: uuid.UUID | None = Query(None),
+    department_id: uuid.UUID | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
     priority: str | None = Query(None),
     meeting_id: uuid.UUID | None = Query(None),
@@ -46,6 +51,29 @@ async def list_tasks(
 ):
     """List tasks with filters, pagination, and sorting."""
     base_stmt = select(Task)
+
+    visible_department_ids = await resolve_visible_department_ids(session, member)
+
+    # Department visibility scope
+    if department_id is not None:
+        if (
+            visible_department_ids is not None
+            and department_id not in visible_department_ids
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail="Нет доступа к задачам выбранного отдела",
+            )
+        base_stmt = base_stmt.join(Task.assignee).where(
+            TeamMember.department_id == department_id
+        )
+    elif visible_department_ids is not None:
+        if visible_department_ids:
+            base_stmt = base_stmt.join(Task.assignee).where(
+                TeamMember.department_id.in_(visible_department_ids)
+            )
+        else:
+            base_stmt = base_stmt.where(Task.assignee_id == member.id)
 
     # Filters
     if assignee_id:
@@ -112,6 +140,11 @@ async def get_task(
     task = await task_service.get_task_by_short_id(session, short_id)
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
+    if not await can_access_task(session, member, task):
+        raise HTTPException(
+            status_code=403,
+            detail="Нет доступа к задаче: она вне вашей зоны видимости",
+        )
     return task
 
 
@@ -153,6 +186,11 @@ async def update_task(
     task = await task_service.get_task_by_short_id(session, short_id)
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
+    if not await can_access_task(session, member, task):
+        raise HTTPException(
+            status_code=403,
+            detail="Нет доступа к задаче: она вне вашей зоны видимости",
+        )
 
     # Permission: moderator can edit any, member can edit own
     is_moderator = PermissionService.is_moderator(member)

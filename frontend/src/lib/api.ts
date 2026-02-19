@@ -12,6 +12,7 @@ import type {
   Department,
   TeamTreeResponse,
   OverviewAnalytics,
+  DashboardTasksAnalytics,
   MemberStats,
   MeetingAnalytics,
   ReminderSettings,
@@ -464,6 +465,15 @@ class ApiClient {
 
   async getOverview(): Promise<OverviewAnalytics> {
     return this.request<OverviewAnalytics>("/api/analytics/overview");
+  }
+
+  async getDashboardTasksAnalytics(departmentId?: string): Promise<DashboardTasksAnalytics> {
+    const params = new URLSearchParams();
+    if (departmentId) {
+      params.set("department_id", departmentId);
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<DashboardTasksAnalytics>(`/api/analytics/dashboard-tasks${query}`);
   }
 
   async getMembersAnalytics(): Promise<{ members: MemberStats[] }> {

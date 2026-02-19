@@ -4,7 +4,12 @@ from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.bot.callbacks import TaskCardCallback, TaskListFilter, TaskListScope
+from app.bot.callbacks import (
+    ALL_DEPARTMENTS_TOKEN,
+    TaskCardCallback,
+    TaskListFilter,
+    TaskListScope,
+)
 from app.db.models import Meeting, Task, TaskUpdate, TeamMember
 from app.db.repositories import NotificationSubscriptionRepository, TeamMemberRepository
 
@@ -21,6 +26,7 @@ def _task_callback_markup(task: Task) -> InlineKeyboardMarkup:
                 scope=TaskListScope.TEAM,
                 task_filter=TaskListFilter.ALL,
                 page=1,
+                department_token=ALL_DEPARTMENTS_TOKEN,
             ).pack(),
         )
     ]])

@@ -8,9 +8,12 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.orm import selectinload
 
 from app.bot.callbacks import (
+    ALL_DEPARTMENTS_TOKEN,
     TaskBackToListCallback,
     TaskCardCallback,
     TaskListCallback,
@@ -25,11 +28,16 @@ from app.bot.keyboards import (
     task_card_keyboard,
     task_list_keyboard,
 )
-from app.db.models import TeamMember
-from app.db.repositories import TaskRepository, TeamMemberRepository
+from app.db.models import Task, TeamMember
+from app.db.repositories import DepartmentRepository, TaskRepository, TeamMemberRepository
 from app.services.notification_service import NotificationService
 from app.services.permission_service import PermissionService
 from app.services.task_service import TaskService
+from app.services.task_visibility_service import (
+    can_access_task,
+    get_default_department_id,
+    resolve_visible_department_ids,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,10 +46,15 @@ router = Router()
 task_service = TaskService()
 task_repo = TaskRepository()
 member_repo = TeamMemberRepository()
+department_repo = DepartmentRepository()
 TASKS_PER_PAGE = 8
+TASK_BACK_CALLBACK_PREFIX = "tbk"
+LEGACY_TASK_BACK_CALLBACK_PREFIX = "task_back"
 LEGACY_TASK_FILTER_ALIASES = {
     TaskListFilter.ACTIVE: TaskListFilter.ALL,
 }
+
+TaskListContext = tuple[TaskListScope, TaskListFilter, int, str]
 
 PRIORITY_EMOJI = {
     "urgent": "🔴",
@@ -77,6 +90,34 @@ def _parse_short_id(raw_value: str) -> int | None:
         return int(raw_value.strip().lstrip("#"))
     except ValueError:
         return None
+
+
+def _default_department_token(member: TeamMember) -> str:
+    department_id = get_default_department_id(member)
+    return department_id.hex if department_id else ALL_DEPARTMENTS_TOKEN
+
+
+def _coalesce_department_token(department_token: str | None, member: TeamMember) -> str:
+    token = (department_token or "").strip().lower()
+    return token if token else _default_department_token(member)
+
+
+def _decode_department_token(department_token: str | None) -> tuple[uuid.UUID | None, bool]:
+    token = (department_token or "").strip().lower()
+    if not token:
+        return None, False
+    if token == ALL_DEPARTMENTS_TOKEN:
+        return None, True
+    try:
+        if len(token) == 32:
+            return uuid.UUID(hex=token), True
+        return uuid.UUID(token), True
+    except ValueError:
+        return None, False
+
+
+def _department_token_from_id(department_id: uuid.UUID | None) -> str:
+    return department_id.hex if department_id else ALL_DEPARTMENTS_TOKEN
 
 
 async def _create_task_for_member(
@@ -253,24 +294,35 @@ def _paginate_tasks(tasks: list, page: int) -> tuple[list, int, int]:
 
 
 def _scope_title(scope: TaskListScope) -> str:
-    return "Мои задачи" if scope == TaskListScope.MY else "Все задачи команды"
+    if scope == TaskListScope.MY:
+        return "Мои задачи"
+    return "Задачи компании"
 
 
 def _format_list_caption(
     scope: TaskListScope,
+    member: TeamMember,
     task_filter: TaskListFilter,
+    department_label: str | None,
     page: int,
     total_pages: int,
     total_tasks: int,
     page_tasks_count: int,
 ) -> str:
     filter_label = TASK_FILTER_LABELS.get(task_filter, task_filter.value)
+    title = _scope_title(scope)
+    if scope == TaskListScope.TEAM and not PermissionService.is_moderator(member):
+        title = "Задачи отдела"
     lines = [
-        f"<b>📋 {_scope_title(scope)}</b>",
+        f"<b>📋 {title}</b>",
+    ]
+    if scope == TaskListScope.TEAM:
+        lines.append(f"Отдел: <b>{department_label or 'Без отдела'}</b>")
+    lines.extend([
         f"Фильтр: <b>{filter_label}</b>",
         f"Страница: {page}/{total_pages} · Всего: {total_tasks}",
         "",
-    ]
+    ])
     if page_tasks_count:
         lines.append("Выбери задачу из списка ниже:")
     else:
@@ -278,15 +330,107 @@ def _format_list_caption(
     return "\n".join(lines)
 
 
-async def _load_scope_tasks(
-    session_maker: async_sessionmaker,
+async def _resolve_department_scope_state(
+    *,
     scope: TaskListScope,
     member: TeamMember,
+    session,
+    department_token: str | None,
+) -> tuple[uuid.UUID | None, str, list[tuple[str, str]], str | None]:
+    effective_token = _coalesce_department_token(department_token, member)
+    if scope != TaskListScope.TEAM:
+        return None, effective_token, [], None
+
+    departments = await department_repo.get_all(session)
+    departments_by_id = {department.id: department for department in departments}
+
+    if PermissionService.is_moderator(member):
+        requested_department_id, is_token_valid = _decode_department_token(effective_token)
+        default_department_id = (
+            member.department_id if member.department_id in departments_by_id else None
+        )
+        if not is_token_valid:
+            selected_department_id = default_department_id
+        elif requested_department_id is None:
+            selected_department_id = None
+        elif requested_department_id in departments_by_id:
+            selected_department_id = requested_department_id
+        else:
+            selected_department_id = default_department_id
+
+        selected_token = _department_token_from_id(selected_department_id)
+        selected_label = (
+            departments_by_id[selected_department_id].name
+            if selected_department_id is not None
+            else "Все отделы"
+        )
+        options = [(ALL_DEPARTMENTS_TOKEN, "Все отделы")]
+        options.extend((department.id.hex, department.name) for department in departments)
+        return selected_department_id, selected_token, options, selected_label
+
+    visible_department_ids = await resolve_visible_department_ids(session, member)
+    allowed_department_ids = [
+        department_id
+        for department_id in (visible_department_ids or [])
+        if department_id in departments_by_id
+    ]
+    requested_department_id, is_token_valid = _decode_department_token(effective_token)
+    default_department_id = get_default_department_id(member)
+    if default_department_id not in allowed_department_ids:
+        default_department_id = allowed_department_ids[0] if allowed_department_ids else None
+
+    if requested_department_id in allowed_department_ids:
+        selected_department_id = requested_department_id
+    elif requested_department_id is None and is_token_valid:
+        selected_department_id = default_department_id
+    else:
+        selected_department_id = default_department_id
+
+    selected_token = _department_token_from_id(selected_department_id)
+    if selected_department_id is None:
+        return None, selected_token, [], "Без отдела"
+
+    selected_department_name = departments_by_id[selected_department_id].name
+    department_options = [
+        (department_id.hex, departments_by_id[department_id].name)
+        for department_id in allowed_department_ids
+    ]
+    return (
+        selected_department_id,
+        selected_token,
+        department_options,
+        selected_department_name,
+    )
+
+
+async def _load_scope_tasks(
+    *,
+    session,
+    scope: TaskListScope,
+    member: TeamMember,
+    department_id: uuid.UUID | None,
 ) -> list:
-    async with session_maker() as session:
-        if scope == TaskListScope.MY:
-            return await task_service.get_my_tasks(session, member.id)
+    if scope == TaskListScope.MY:
+        return await task_service.get_my_tasks(session, member.id)
+
+    if department_id is not None:
+        stmt = (
+            select(Task)
+            .options(selectinload(Task.assignee), selectinload(Task.created_by))
+            .join(Task.assignee)
+            .where(
+                TeamMember.department_id == department_id,
+                Task.status.notin_(["done", "cancelled"]),
+            )
+            .order_by(Task.created_at.desc())
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    if PermissionService.is_moderator(member):
         return await task_service.get_all_active_tasks(session)
+
+    return await task_service.get_visible_active_tasks(session, member)
 
 
 async def _build_task_list_view(
@@ -295,15 +439,36 @@ async def _build_task_list_view(
     member: TeamMember,
     task_filter: TaskListFilter,
     page: int,
+    department_token: str | None = None,
 ) -> tuple[str, InlineKeyboardMarkup]:
     normalized_filter = _normalize_task_filter(task_filter)
-    tasks = await _load_scope_tasks(session_maker, scope, member)
+    async with session_maker() as session:
+        (
+            selected_department_id,
+            selected_department_token,
+            department_options,
+            department_label,
+        ) = await _resolve_department_scope_state(
+            scope=scope,
+            member=member,
+            session=session,
+            department_token=department_token,
+        )
+        tasks = await _load_scope_tasks(
+            session=session,
+            scope=scope,
+            member=member,
+            department_id=selected_department_id,
+        )
+
     filtered_tasks = _filter_tasks(tasks, normalized_filter)
     page_tasks, safe_page, total_pages = _paginate_tasks(filtered_tasks, page)
 
     text = _format_list_caption(
         scope=scope,
+        member=member,
         task_filter=normalized_filter,
+        department_label=department_label,
         page=safe_page,
         total_pages=total_pages,
         total_tasks=len(filtered_tasks),
@@ -315,6 +480,8 @@ async def _build_task_list_view(
         current_filter=normalized_filter,
         page=safe_page,
         total_pages=total_pages,
+        department_token=selected_department_token,
+        department_options=department_options,
     )
     return text, keyboard
 
@@ -343,9 +510,139 @@ async def _safe_edit_text(
                 raise
 
 
+def _parse_list_context_parts(
+    parts: list[str],
+    *,
+    scope_index: int,
+    task_filter_index: int,
+    page_index: int,
+    department_index: int,
+) -> tuple[TaskListScope, TaskListFilter, int, str | None] | None:
+    if len(parts) <= page_index:
+        return None
+
+    try:
+        scope = TaskListScope(parts[scope_index])
+        task_filter = _normalize_task_filter(TaskListFilter(parts[task_filter_index]))
+        page = max(1, int(parts[page_index]))
+    except (TypeError, ValueError):
+        return None
+
+    department_token = parts[department_index] if len(parts) > department_index else None
+    if department_token == "":
+        department_token = None
+    return scope, task_filter, page, department_token
+
+
+def _parse_task_list_callback_data(
+    callback_data: str,
+) -> tuple[TaskListScope, TaskListFilter, int, str | None] | None:
+    try:
+        parsed = TaskListCallback.unpack(callback_data)
+        return (
+            parsed.scope,
+            _normalize_task_filter(parsed.task_filter),
+            max(1, parsed.page),
+            parsed.department_token or None,
+        )
+    except ValueError:
+        parts = callback_data.split(":")
+        if not parts or parts[0] != "tlst":
+            return None
+        return _parse_list_context_parts(
+            parts,
+            scope_index=1,
+            task_filter_index=2,
+            page_index=3,
+            department_index=4,
+        )
+
+
+def _parse_task_refresh_list_callback_data(
+    callback_data: str,
+) -> tuple[TaskListScope, TaskListFilter, int, str | None] | None:
+    try:
+        parsed = TaskRefreshListCallback.unpack(callback_data)
+        return (
+            parsed.scope,
+            _normalize_task_filter(parsed.task_filter),
+            max(1, parsed.page),
+            parsed.department_token or None,
+        )
+    except ValueError:
+        parts = callback_data.split(":")
+        if not parts or parts[0] != "tref":
+            return None
+        return _parse_list_context_parts(
+            parts,
+            scope_index=1,
+            task_filter_index=2,
+            page_index=3,
+            department_index=4,
+        )
+
+
+def _parse_task_back_to_list_callback_data(
+    callback_data: str,
+) -> tuple[TaskListScope, TaskListFilter, int, str | None] | None:
+    try:
+        parsed = TaskBackToListCallback.unpack(callback_data)
+        return (
+            parsed.scope,
+            _normalize_task_filter(parsed.task_filter),
+            max(1, parsed.page),
+            parsed.department_token or None,
+        )
+    except ValueError:
+        parts = callback_data.split(":")
+        if not parts or parts[0] != "tback":
+            return None
+        return _parse_list_context_parts(
+            parts,
+            scope_index=1,
+            task_filter_index=2,
+            page_index=3,
+            department_index=4,
+        )
+
+
+def _parse_task_card_callback_data(
+    callback_data: str,
+) -> tuple[int, TaskListScope, TaskListFilter, int, str | None] | None:
+    try:
+        parsed = TaskCardCallback.unpack(callback_data)
+        return (
+            parsed.short_id,
+            parsed.scope,
+            _normalize_task_filter(parsed.task_filter),
+            max(1, parsed.page),
+            parsed.department_token or None,
+        )
+    except ValueError:
+        parts = callback_data.split(":")
+        if len(parts) < 5 or parts[0] != "tcard":
+            return None
+        try:
+            short_id = int(parts[1])
+        except ValueError:
+            return None
+        parsed = _parse_list_context_parts(
+            parts,
+            scope_index=2,
+            task_filter_index=3,
+            page_index=4,
+            department_index=5,
+        )
+        if not parsed:
+            return None
+        scope, task_filter, page, department_token = parsed
+        return short_id, scope, task_filter, page, department_token
+
+
 def _extract_list_context_from_markup(
     markup: InlineKeyboardMarkup | None,
-) -> tuple[TaskListScope, TaskListFilter, int] | None:
+    member: TeamMember,
+) -> TaskListContext | None:
     if not markup:
         return None
 
@@ -353,72 +650,92 @@ def _extract_list_context_from_markup(
         for button in row:
             data = button.callback_data or ""
             if data.startswith("tback:"):
-                try:
-                    parsed = TaskBackToListCallback.unpack(data)
-                except ValueError:
+                parsed = _parse_task_back_to_list_callback_data(data)
+                if not parsed:
                     continue
+                scope, task_filter, page, department_token = parsed
                 return (
-                    parsed.scope,
-                    _normalize_task_filter(parsed.task_filter),
-                    max(1, parsed.page),
+                    scope,
+                    task_filter,
+                    page,
+                    _coalesce_department_token(department_token, member),
                 )
 
             # Back callback from reassignment flow may carry list context.
-            if data.startswith("task_back:"):
-                parts = data.split(":")
-                if len(parts) >= 5:
-                    try:
-                        scope = TaskListScope(parts[2])
-                        task_filter = _normalize_task_filter(TaskListFilter(parts[3]))
-                        page = max(1, int(parts[4]))
-                    except (TypeError, ValueError):
-                        continue
-                    return (scope, task_filter, page)
+            if data.startswith(f"{TASK_BACK_CALLBACK_PREFIX}:") or data.startswith(
+                f"{LEGACY_TASK_BACK_CALLBACK_PREFIX}:"
+            ):
+                try:
+                    _, context = _parse_task_back_callback_data(data, member)
+                except (IndexError, ValueError):
+                    continue
+                if context:
+                    return context
     return None
 
 
 def _task_back_callback_data(
     short_id: int,
-    context: tuple[TaskListScope, TaskListFilter, int] | None = None,
+    context: TaskListContext | None = None,
 ) -> str:
     if not context:
-        return f"task_back:{short_id}"
-    scope, task_filter, page = context
-    return f"task_back:{short_id}:{scope.value}:{task_filter.value}:{page}"
+        return f"{TASK_BACK_CALLBACK_PREFIX}:{short_id}"
+    scope, task_filter, page, department_token = context
+    return (
+        f"{TASK_BACK_CALLBACK_PREFIX}:{short_id}:{scope.value}:"
+        f"{task_filter.value}:{page}:{department_token}"
+    )
 
 
 def _parse_task_back_callback_data(
     callback_data: str,
-) -> tuple[int, tuple[TaskListScope, TaskListFilter, int] | None]:
+    member: TeamMember,
+) -> tuple[int, TaskListContext | None]:
     parts = callback_data.split(":")
+    if len(parts) < 2 or parts[0] not in (
+        TASK_BACK_CALLBACK_PREFIX,
+        LEGACY_TASK_BACK_CALLBACK_PREFIX,
+    ):
+        raise ValueError("Unsupported task_back callback prefix")
+
     short_id = int(parts[1])
-    if len(parts) < 5:
+    parsed = _parse_list_context_parts(
+        parts,
+        scope_index=2,
+        task_filter_index=3,
+        page_index=4,
+        department_index=5,
+    )
+    if not parsed:
         return short_id, None
 
-    try:
-        scope = TaskListScope(parts[2])
-        task_filter = _normalize_task_filter(TaskListFilter(parts[3]))
-        page = max(1, int(parts[4]))
-    except (TypeError, ValueError):
-        return short_id, None
-
-    return short_id, (scope, task_filter, page)
+    scope, task_filter, page, department_token = parsed
+    return (
+        short_id,
+        (
+            scope,
+            task_filter,
+            page,
+            _coalesce_department_token(department_token, member),
+        ),
+    )
 
 
 def _task_detail_keyboard(
     task_id: int,
     is_moderator: bool,
-    context: tuple[TaskListScope, TaskListFilter, int] | None = None,
+    context: TaskListContext | None = None,
 ) -> InlineKeyboardMarkup:
     if not context:
         return task_actions_keyboard(task_id, is_moderator)
-    scope, task_filter, page = context
+    scope, task_filter, page, department_token = context
     return task_card_keyboard(
         task_id=task_id,
         is_moderator=is_moderator,
         scope=scope,
         current_filter=task_filter,
         page=page,
+        department_token=department_token,
     )
 
 
@@ -433,11 +750,12 @@ async def cmd_tasks(message: Message, member: TeamMember, session_maker: async_s
         member=member,
         task_filter=TaskListFilter.ALL,
         page=1,
+        department_token=_default_department_token(member),
     )
     await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
 
 
-# ── /all — Все задачи команды ──
+# ── /all — Задачи отдела / компании ──
 
 
 @router.message(Command("all"))
@@ -448,14 +766,14 @@ async def cmd_all(message: Message, member: TeamMember, session_maker: async_ses
         member=member,
         task_filter=TaskListFilter.ALL,
         page=1,
+        department_token=_default_department_token(member),
     )
     await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
 
 
-@router.callback_query(TaskListCallback.filter())
+@router.callback_query(F.data.startswith("tlst:"))
 async def cb_task_list(
     callback: CallbackQuery,
-    callback_data: TaskListCallback,
     member: TeamMember,
     session_maker: async_sessionmaker,
 ) -> None:
@@ -463,21 +781,27 @@ async def cb_task_list(
         await callback.answer("Сообщение больше недоступно", show_alert=True)
         return
 
+    parsed = _parse_task_list_callback_data(callback.data or "")
+    if not parsed:
+        await callback.answer("Некорректный callback", show_alert=True)
+        return
+    scope, task_filter, page, department_token = parsed
+
     text, keyboard = await _build_task_list_view(
         session_maker=session_maker,
-        scope=callback_data.scope,
+        scope=scope,
         member=member,
-        task_filter=callback_data.task_filter,
-        page=callback_data.page,
+        task_filter=task_filter,
+        page=page,
+        department_token=_coalesce_department_token(department_token, member),
     )
     await _safe_edit_text(callback.message, text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
 
 
-@router.callback_query(TaskRefreshListCallback.filter())
+@router.callback_query(F.data.startswith("tref:"))
 async def cb_task_list_refresh(
     callback: CallbackQuery,
-    callback_data: TaskRefreshListCallback,
     member: TeamMember,
     session_maker: async_sessionmaker,
 ) -> None:
@@ -485,21 +809,27 @@ async def cb_task_list_refresh(
         await callback.answer("Сообщение больше недоступно", show_alert=True)
         return
 
+    parsed = _parse_task_refresh_list_callback_data(callback.data or "")
+    if not parsed:
+        await callback.answer("Некорректный callback", show_alert=True)
+        return
+    scope, task_filter, page, department_token = parsed
+
     text, keyboard = await _build_task_list_view(
         session_maker=session_maker,
-        scope=callback_data.scope,
+        scope=scope,
         member=member,
-        task_filter=callback_data.task_filter,
-        page=callback_data.page,
+        task_filter=task_filter,
+        page=page,
+        department_token=_coalesce_department_token(department_token, member),
     )
     await _safe_edit_text(callback.message, text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer("Обновлено")
 
 
-@router.callback_query(TaskCardCallback.filter())
+@router.callback_query(F.data.startswith("tcard:"))
 async def cb_task_card_open(
     callback: CallbackQuery,
-    callback_data: TaskCardCallback,
     member: TeamMember,
     session_maker: async_sessionmaker,
 ) -> None:
@@ -507,19 +837,28 @@ async def cb_task_card_open(
         await callback.answer("Сообщение больше недоступно", show_alert=True)
         return
 
-    normalized_filter = _normalize_task_filter(callback_data.task_filter)
+    parsed = _parse_task_card_callback_data(callback.data or "")
+    if not parsed:
+        await callback.answer("Некорректный callback", show_alert=True)
+        return
+    short_id, scope, task_filter, page, department_token = parsed
+    department_token = _coalesce_department_token(department_token, member)
+    normalized_filter = _normalize_task_filter(task_filter)
 
     async with session_maker() as session:
-        task = await task_service.get_task_by_short_id(session, callback_data.short_id)
+        task = await task_service.get_task_by_short_id(session, short_id)
+        if task and not await can_access_task(session, member, task):
+            task = None
 
     if not task:
-        await callback.answer("Задача уже недоступна", show_alert=True)
+        await callback.answer("Задача недоступна в вашей зоне видимости", show_alert=True)
         text, keyboard = await _build_task_list_view(
             session_maker=session_maker,
-            scope=callback_data.scope,
+            scope=scope,
             member=member,
             task_filter=normalized_filter,
-            page=callback_data.page,
+            page=page,
+            department_token=department_token,
         )
         await _safe_edit_text(callback.message, text, reply_markup=keyboard, parse_mode="HTML")
         return
@@ -532,18 +871,18 @@ async def cb_task_card_open(
         reply_markup=task_card_keyboard(
             task_id=task.short_id,
             is_moderator=is_mod,
-            scope=callback_data.scope,
+            scope=scope,
             current_filter=normalized_filter,
-            page=max(1, callback_data.page),
+            page=max(1, page),
+            department_token=department_token,
         ),
     )
     await callback.answer()
 
 
-@router.callback_query(TaskBackToListCallback.filter())
+@router.callback_query(F.data.startswith("tback:"))
 async def cb_task_back_to_list(
     callback: CallbackQuery,
-    callback_data: TaskBackToListCallback,
     member: TeamMember,
     session_maker: async_sessionmaker,
 ) -> None:
@@ -551,12 +890,19 @@ async def cb_task_back_to_list(
         await callback.answer("Сообщение больше недоступно", show_alert=True)
         return
 
+    parsed = _parse_task_back_to_list_callback_data(callback.data or "")
+    if not parsed:
+        await callback.answer("Некорректный callback", show_alert=True)
+        return
+    scope, task_filter, page, department_token = parsed
+
     text, keyboard = await _build_task_list_view(
         session_maker=session_maker,
-        scope=callback_data.scope,
+        scope=scope,
         member=member,
-        task_filter=callback_data.task_filter,
-        page=callback_data.page,
+        task_filter=task_filter,
+        page=page,
+        department_token=_coalesce_department_token(department_token, member),
     )
     await _safe_edit_text(callback.message, text, reply_markup=keyboard, parse_mode="HTML")
     await callback.answer()
@@ -845,7 +1191,7 @@ async def cb_task_done(callback: CallbackQuery, member: TeamMember, session_make
         return
 
     short_id = int(callback.data.split(":")[1])
-    context = _extract_list_context_from_markup(callback.message.reply_markup)
+    context = _extract_list_context_from_markup(callback.message.reply_markup, member)
 
     async with session_maker() as session:
         async with session.begin():
@@ -891,7 +1237,7 @@ async def cb_task_inprogress(callback: CallbackQuery, member: TeamMember, sessio
         return
 
     short_id = int(callback.data.split(":")[1])
-    context = _extract_list_context_from_markup(callback.message.reply_markup)
+    context = _extract_list_context_from_markup(callback.message.reply_markup, member)
 
     async with session_maker() as session:
         async with session.begin():
@@ -932,7 +1278,7 @@ async def cb_task_review(callback: CallbackQuery, member: TeamMember, session_ma
         return
 
     short_id = int(callback.data.split(":")[1])
-    context = _extract_list_context_from_markup(callback.message.reply_markup)
+    context = _extract_list_context_from_markup(callback.message.reply_markup, member)
 
     async with session_maker() as session:
         async with session.begin():
@@ -977,7 +1323,7 @@ async def cb_task_cancel(callback: CallbackQuery, member: TeamMember, session_ma
         return
 
     short_id = int(callback.data.split(":")[1])
-    context = _extract_list_context_from_markup(callback.message.reply_markup)
+    context = _extract_list_context_from_markup(callback.message.reply_markup, member)
 
     async with session_maker() as session:
         async with session.begin():
@@ -1018,7 +1364,7 @@ async def cb_task_reassign(callback: CallbackQuery, member: TeamMember, session_
         return
 
     short_id = int(callback.data.split(":")[1])
-    context = _extract_list_context_from_markup(callback.message.reply_markup)
+    context = _extract_list_context_from_markup(callback.message.reply_markup, member)
 
     # Show team members list for reassignment
     async with session_maker() as session:
@@ -1063,7 +1409,7 @@ async def cb_do_reassign(callback: CallbackQuery, member: TeamMember, session_ma
         await callback.answer("Сообщение больше недоступно", show_alert=True)
         return
 
-    context = _extract_list_context_from_markup(callback.message.reply_markup)
+    context = _extract_list_context_from_markup(callback.message.reply_markup, member)
     parts = callback.data.split(":")
     short_id = int(parts[1])
     new_assignee_id = uuid.UUID(parts[2])
@@ -1100,23 +1446,39 @@ async def cb_do_reassign(callback: CallbackQuery, member: TeamMember, session_ma
     )
 
 
-@router.callback_query(F.data.startswith("task_back:"))
+@router.callback_query(F.data.startswith(f"{TASK_BACK_CALLBACK_PREFIX}:"))
+@router.callback_query(F.data.startswith(f"{LEGACY_TASK_BACK_CALLBACK_PREFIX}:"))
 async def cb_task_back(callback: CallbackQuery, member: TeamMember, session_maker: async_sessionmaker) -> None:
     if not callback.message:
         await callback.answer("Сообщение больше недоступно", show_alert=True)
         return
 
     try:
-        short_id, context = _parse_task_back_callback_data(callback.data)
+        short_id, context = _parse_task_back_callback_data(callback.data or "", member)
     except (IndexError, ValueError):
         await callback.answer("Некорректный callback", show_alert=True)
         return
 
     async with session_maker() as session:
         task = await task_service.get_task_by_short_id(session, short_id)
+        has_access = await can_access_task(session, member, task)
 
     if not task:
         await callback.answer(f"Задача #{short_id} не найдена", show_alert=True)
+        return
+
+    if not has_access:
+        await callback.answer("Задача недоступна в вашей зоне видимости", show_alert=True)
+        if context:
+            text, keyboard = await _build_task_list_view(
+                session_maker=session_maker,
+                scope=context[0],
+                member=member,
+                task_filter=context[1],
+                page=context[2],
+                department_token=context[3],
+            )
+            await _safe_edit_text(callback.message, text, reply_markup=keyboard, parse_mode="HTML")
         return
 
     is_mod = PermissionService.is_moderator(member)

@@ -8,7 +8,9 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.bot.keyboards import (
     MENU_BTN_AI_MODEL,
-    MENU_BTN_ALL_TASKS,
+    MENU_BTN_ALL_TASKS_COMPANY,
+    MENU_BTN_ALL_TASKS_DEPARTMENT,
+    MENU_BTN_ALL_TASKS_LEGACY,
     MENU_BTN_HELP,
     MENU_BTN_MEETINGS,
     MENU_BTN_MY_REMINDER,
@@ -86,11 +88,12 @@ async def cmd_start(message: Message, member: TeamMember) -> None:
 async def cmd_help(message: Message, member: TeamMember) -> None:
     is_mod = PermissionService.is_moderator(member)
     is_adm = PermissionService.is_admin(member)
+    all_tasks_help = "/all — задачи компании\n" if is_mod else "/all — задачи отдела\n"
 
     common_commands = (
         "<b>Команды:</b>\n\n"
         "/tasks — мои задачи\n"
-        "/all — все задачи команды\n"
+        f"{all_tasks_help}"
         "/new &lt;текст&gt; — создать задачу себе\n"
         "/assign @username &lt;текст&gt; — назначить задачу (модератор)\n"
         "/done &lt;id&gt; — завершить задачу\n"
@@ -145,7 +148,9 @@ async def menu_btn_help(message: Message, member: TeamMember) -> None:
     await cmd_help(message, member)
 
 
-@router.message(StateFilter(None), F.chat.type == "private", F.text == MENU_BTN_ALL_TASKS)
+@router.message(StateFilter(None), F.chat.type == "private", F.text == MENU_BTN_ALL_TASKS_DEPARTMENT)
+@router.message(StateFilter(None), F.chat.type == "private", F.text == MENU_BTN_ALL_TASKS_COMPANY)
+@router.message(StateFilter(None), F.chat.type == "private", F.text == MENU_BTN_ALL_TASKS_LEGACY)
 async def menu_btn_all_tasks(
     message: Message,
     member: TeamMember,

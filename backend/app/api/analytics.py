@@ -1,6 +1,7 @@
-from datetime import date, datetime
+import uuid
+from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,10 @@ from app.api.auth import get_current_user, require_moderator
 from app.db.database import get_session
 from app.db.models import Meeting, Task, TaskUpdate, TeamMember
 from app.db.repositories import TeamMemberRepository
+from app.services.task_visibility_service import (
+    get_headed_department_ids,
+    resolve_visible_department_ids,
+)
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 member_repo = TeamMemberRepository()
@@ -48,6 +53,142 @@ class MeetingStats(BaseModel):
     total_meetings: int
     tasks_from_meetings: int
     meetings_this_month: int
+
+
+class DashboardTaskMetrics(BaseModel):
+    active: int
+    new: int
+    in_progress: int
+    review: int
+    overdue: int
+    done_total: int
+    done_week: int
+
+
+class DashboardTasksMeta(BaseModel):
+    selected_department_id: uuid.UUID | None
+    can_view_department: bool
+    is_department_head: bool
+
+
+class DashboardTasksResponse(BaseModel):
+    my: DashboardTaskMetrics
+    department: DashboardTaskMetrics
+    meta: DashboardTasksMeta
+
+
+def _empty_dashboard_task_metrics() -> DashboardTaskMetrics:
+    return DashboardTaskMetrics(
+        active=0,
+        new=0,
+        in_progress=0,
+        review=0,
+        overdue=0,
+        done_total=0,
+        done_week=0,
+    )
+
+
+async def _collect_task_metrics(
+    session: AsyncSession,
+    *filters,
+    with_assignee_join: bool = False,
+) -> DashboardTaskMetrics:
+    today = date.today()
+    week_ago = datetime.utcnow() - timedelta(days=7)
+
+    stmt = select(
+        func.count(case((Task.status.notin_(["done", "cancelled"]), Task.id))).label(
+            "active"
+        ),
+        func.count(case((Task.status == "new", Task.id))).label("new"),
+        func.count(case((Task.status == "in_progress", Task.id))).label("in_progress"),
+        func.count(case((Task.status == "review", Task.id))).label("review"),
+        func.count(
+            case((
+                (Task.deadline < today) & Task.status.notin_(["done", "cancelled"]),
+                Task.id,
+            ))
+        ).label("overdue"),
+        func.count(case((Task.status == "done", Task.id))).label("done_total"),
+        func.count(
+            case((
+                (Task.status == "done")
+                & Task.completed_at.is_not(None)
+                & (Task.completed_at >= week_ago),
+                Task.id,
+            ))
+        ).label("done_week"),
+    )
+
+    if with_assignee_join:
+        stmt = stmt.join(Task.assignee)
+    if filters:
+        stmt = stmt.where(*filters)
+
+    row = (await session.execute(stmt)).one()
+    return DashboardTaskMetrics(
+        active=int(row.active or 0),
+        new=int(row.new or 0),
+        in_progress=int(row.in_progress or 0),
+        review=int(row.review or 0),
+        overdue=int(row.overdue or 0),
+        done_total=int(row.done_total or 0),
+        done_week=int(row.done_week or 0),
+    )
+
+
+@router.get("/dashboard-tasks", response_model=DashboardTasksResponse)
+async def analytics_dashboard_tasks(
+    department_id: uuid.UUID | None = Query(None),
+    member: TeamMember = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get dashboard task metrics for current member and selected department."""
+    visible_department_ids = await resolve_visible_department_ids(session, member)
+
+    if (
+        department_id is not None
+        and visible_department_ids is not None
+        and department_id not in visible_department_ids
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="Нет доступа к задачам выбранного отдела",
+        )
+
+    selected_department_id = department_id or member.department_id
+    my_metrics = await _collect_task_metrics(session, Task.assignee_id == member.id)
+
+    can_view_department = False
+    is_department_head = False
+    department_metrics = _empty_dashboard_task_metrics()
+
+    if selected_department_id is not None:
+        can_view_department = (
+            visible_department_ids is None
+            or selected_department_id in visible_department_ids
+        )
+
+        headed_department_ids = await get_headed_department_ids(session, member.id)
+        is_department_head = selected_department_id in headed_department_ids
+
+        if can_view_department:
+            department_metrics = await _collect_task_metrics(
+                session,
+                TeamMember.department_id == selected_department_id,
+                with_assignee_join=True,
+            )
+
+    return DashboardTasksResponse(
+        my=my_metrics,
+        department=department_metrics,
+        meta=DashboardTasksMeta(
+            selected_department_id=selected_department_id,
+            can_view_department=can_view_department,
+            is_department_head=is_department_head,
+        ),
+    )
 
 
 @router.get("/overview", response_model=OverviewResponse)

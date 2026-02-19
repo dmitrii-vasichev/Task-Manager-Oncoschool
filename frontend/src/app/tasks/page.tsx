@@ -13,6 +13,7 @@ import {
 import { CreateTaskDialog } from "@/components/tasks/CreateTaskDialog";
 import { useToast } from "@/components/shared/Toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useDepartments } from "@/hooks/useDepartments";
 import { api } from "@/lib/api";
 import type { Task, TaskStatus, TeamMember } from "@/lib/types";
 import { TASK_STATUS_LABELS } from "@/lib/types";
@@ -37,47 +38,65 @@ const COLUMN_BG: Record<string, string> = {
 
 export default function TasksPage() {
   const { user } = useCurrentUser();
+  const { departments } = useDepartments();
   const { toastError } = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState<TaskFilterValues>(() =>
-    user ? { ...EMPTY_FILTERS, assignee_id: user.id } : EMPTY_FILTERS
-  );
+  const [filters, setFilters] = useState<TaskFilterValues>(EMPTY_FILTERS);
   const [createOpen, setCreateOpen] = useState(false);
   const [mobileTab, setMobileTab] = useState<TaskStatus>("new");
-  const hasAppliedDefaultAssigneeRef = useRef(Boolean(user?.id));
+  const defaultScopeUserIdRef = useRef<string | null>(null);
 
   // Native DnD state
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<TaskStatus | null>(null);
   const dragCounterRef = useRef<Record<string, number>>({});
 
-  async function fetchData() {
+  const fetchData = useCallback(async () => {
+    if (!user?.id) return;
     try {
       setLoading(true);
+      const params: Record<string, string> = { per_page: "200" };
+      if (filters.department_id) {
+        params.department_id = filters.department_id;
+      }
+      if (filters.assignee_id && filters.assignee_id !== "unassigned") {
+        params.assignee_id = filters.assignee_id;
+      }
       const [tasksRes, membersRes] = await Promise.all([
-        api.getTasks({ per_page: "200" }),
+        api.getTasks(params),
         api.getTeam().catch(() => [] as TeamMember[]),
       ]);
-      setTasks(tasksRes.items);
+      const scopedTasks =
+        filters.assignee_id === "unassigned"
+          ? tasksRes.items.filter((task) => !task.assignee_id)
+          : tasksRes.items;
+      setTasks(scopedTasks);
       setMembers(membersRes);
     } catch {
       toastError("Не удалось загрузить задачи");
     } finally {
       setLoading(false);
     }
-  }
+  }, [filters.assignee_id, filters.department_id, toastError, user?.id]);
 
   useEffect(() => {
+    if (!user?.id) return;
+    if (defaultScopeUserIdRef.current === user.id) return;
+    setFilters(
+      user.department_id
+        ? { ...EMPTY_FILTERS, department_id: user.department_id }
+        : { ...EMPTY_FILTERS, assignee_id: user.id }
+    );
+    defaultScopeUserIdRef.current = user.id;
+  }, [user?.department_id, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    if (defaultScopeUserIdRef.current !== user.id) return;
     fetchData();
-  }, []);
-
-  useEffect(() => {
-    if (!user?.id || hasAppliedDefaultAssigneeRef.current) return;
-    setFilters((prev) => ({ ...prev, assignee_id: prev.assignee_id || user.id }));
-    hasAppliedDefaultAssigneeRef.current = true;
-  }, [user?.id]);
+  }, [fetchData, user?.id]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
@@ -223,6 +242,7 @@ export default function TasksPage() {
           filters={filters}
           onFiltersChange={setFilters}
           members={members}
+          departments={departments}
         />
         <Button
           onClick={() => setCreateOpen(true)}

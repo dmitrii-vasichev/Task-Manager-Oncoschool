@@ -2,12 +2,15 @@ import re
 import uuid
 from datetime import date, datetime, timezone
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.db.models import Task, TaskUpdate, TeamMember
 from app.db.repositories import TaskRepository, TaskUpdateRepository, TeamMemberRepository
 from app.services.in_app_notification_service import InAppNotificationService
 from app.services.permission_service import PermissionService
+from app.services.task_visibility_service import resolve_visible_department_ids
 
 
 class TaskService:
@@ -73,6 +76,37 @@ class TaskService:
     async def get_all_active_tasks(self, session: AsyncSession) -> list[Task]:
         """Get all active tasks (not done/cancelled)."""
         return await self.task_repo.get_all_active(session)
+
+    async def get_visible_active_tasks(
+        self,
+        session: AsyncSession,
+        member: TeamMember,
+    ) -> list[Task]:
+        """
+        Get active tasks by unified visibility rules (same as Web/API):
+        - moderator/admin: company-wide
+        - member: own department(s), fallback to own tasks
+        """
+        visible_department_ids = await resolve_visible_department_ids(session, member)
+
+        if visible_department_ids is None:
+            return await self.task_repo.get_all_active(session)
+
+        if visible_department_ids:
+            stmt = (
+                select(Task)
+                .options(selectinload(Task.assignee), selectinload(Task.created_by))
+                .join(Task.assignee)
+                .where(
+                    TeamMember.department_id.in_(visible_department_ids),
+                    Task.status.notin_(["done", "cancelled"]),
+                )
+                .order_by(Task.created_at.desc())
+            )
+            result = await session.execute(stmt)
+            return list(result.scalars().all())
+
+        return await self.get_my_tasks(session, member.id)
 
     async def get_task_by_short_id(self, session: AsyncSession, short_id: int) -> Task | None:
         return await self.task_repo.get_by_short_id(session, short_id)

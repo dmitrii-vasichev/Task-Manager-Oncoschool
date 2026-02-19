@@ -389,6 +389,28 @@ export interface OverviewAnalytics {
   tasks_by_priority: Record<string, number>;
 }
 
+export interface DashboardTaskMetrics {
+  active: number;
+  new: number;
+  in_progress: number;
+  review: number;
+  overdue: number;
+  done_total: number;
+  done_week: number;
+}
+
+export interface DashboardTasksMeta {
+  selected_department_id: string | null;
+  can_view_department: boolean;
+  is_department_head: boolean;
+}
+
+export interface DashboardTasksAnalytics {
+  my: DashboardTaskMetrics;
+  department: DashboardTaskMetrics;
+  meta: DashboardTasksMeta;
+}
+
 export interface MemberStats {
   id: string;
   full_name: string;

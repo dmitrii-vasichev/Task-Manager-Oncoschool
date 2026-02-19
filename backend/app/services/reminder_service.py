@@ -9,7 +9,12 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 
-from app.bot.callbacks import TaskListCallback, TaskListFilter, TaskListScope
+from app.bot.callbacks import (
+    ALL_DEPARTMENTS_TOKEN,
+    TaskListCallback,
+    TaskListFilter,
+    TaskListScope,
+)
 from app.db.models import ReminderSettings, Task, TeamMember
 from app.db.repositories import (
     NotificationSubscriptionRepository,
@@ -158,6 +163,7 @@ class ReminderService:
                     scope=TaskListScope.MY,
                     task_filter=TaskListFilter.ALL,
                     page=1,
+                    department_token=ALL_DEPARTMENTS_TOKEN,
                 ).pack(),
             )
         ]])

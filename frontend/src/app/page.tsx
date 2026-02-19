@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Zap,
@@ -17,17 +17,26 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { PriorityBadge } from "@/components/shared/PriorityBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { useToast } from "@/components/shared/Toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useDepartments } from "@/hooks/useDepartments";
 import { PermissionService } from "@/lib/permissions";
 import { api } from "@/lib/api";
 import { UpcomingBirthdays } from "./team/components/UpcomingBirthdays";
 import type {
-  OverviewAnalytics,
+  DashboardTasksAnalytics,
+  Department,
   MeetingAnalytics,
   Task,
   Meeting,
@@ -447,27 +456,87 @@ function MeetingCard({
 
 export default function DashboardPage() {
   const { user } = useCurrentUser();
+  const { departments, loading: departmentsLoading } = useDepartments();
   const { toastError } = useToast();
   const [loading, setLoading] = useState(true);
 
   // Data
-  const [overview, setOverview] = useState<OverviewAnalytics | null>(null);
+  const [dashboardTasksAnalytics, setDashboardTasksAnalytics] =
+    useState<DashboardTasksAnalytics | null>(null);
   const [meetingAnalytics, setMeetingAnalytics] =
     useState<MeetingAnalytics | null>(null);
   const [myTasks, setMyTasks] = useState<Task[]>([]);
-  const [overdueTasks, setOverdueTasks] = useState<Task[]>([]);
-  const [completedThisWeek, setCompletedThisWeek] = useState(0);
+  const [myOverdueTasks, setMyOverdueTasks] = useState<Task[]>([]);
+  const [departmentTasks, setDepartmentTasks] = useState<Task[]>([]);
+  const [departmentOverdueTasks, setDepartmentOverdueTasks] = useState<Task[]>(
+    []
+  );
+  const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
+  const [taskScope, setTaskScope] = useState<"my" | "department">("my");
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [upcomingMeetings, setUpcomingMeetings] = useState<Meeting[]>([]);
   const [unassignedTasks, setUnassignedTasks] = useState<Task[]>([]);
   const [staleTasks, setStaleTasks] = useState<Task[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
+  const isModerator = user ? PermissionService.isModerator(user) : false;
+  const userId = user?.id || "";
+  const userDepartmentId = user?.department_id || "";
+
+  const accessibleDepartments = useMemo<Department[]>(() => {
+    if (!userId) return [];
+    if (isModerator) return departments;
+
+    const allowedDepartmentIds = new Set<string>();
+    if (userDepartmentId) {
+      allowedDepartmentIds.add(userDepartmentId);
+    }
+    for (const department of departments) {
+      if (department.head_id === userId) {
+        allowedDepartmentIds.add(department.id);
+      }
+    }
+    return departments.filter((department) => allowedDepartmentIds.has(department.id));
+  }, [departments, isModerator, userDepartmentId, userId]);
+
   useEffect(() => {
-    if (!user) return;
+    if (!userId || departmentsLoading) return;
+
+    setSelectedDepartmentId((current) => {
+      const availableIds = new Set(accessibleDepartments.map((d) => d.id));
+      if (current && availableIds.has(current)) {
+        return current;
+      }
+      if (userDepartmentId && availableIds.has(userDepartmentId)) {
+        return userDepartmentId;
+      }
+      return accessibleDepartments[0]?.id || "";
+    });
+  }, [accessibleDepartments, departmentsLoading, userDepartmentId, userId]);
+
+  const selectedDepartment = useMemo(
+    () =>
+      departments.find((department) => department.id === selectedDepartmentId) || null,
+    [departments, selectedDepartmentId]
+  );
+
+  const isDepartmentHead =
+    Boolean(userId && selectedDepartment && selectedDepartment.head_id === userId);
+  const canUseDepartmentView =
+    Boolean(selectedDepartmentId) && (isModerator || isDepartmentHead);
+
+  useEffect(() => {
+    if (!canUseDepartmentView && taskScope === "department") {
+      setTaskScope("my");
+    }
+  }, [canUseDepartmentView, taskScope]);
+
+  useEffect(() => {
+    if (!userId || departmentsLoading) return;
     let cancelled = false;
 
     async function fetchData() {
+      setLoading(true);
       try {
         const catchLog = (label: string) => (err: unknown) => {
           if (process.env.NODE_ENV === "development") {
@@ -476,97 +545,115 @@ export default function DashboardPage() {
           return null;
         };
 
-        // Parallel fetch — shared data
-        const promises: Promise<unknown>[] = [
-          api.getOverview().catch(catchLog("getOverview")),
+        const openStatuses = "new,in_progress,review";
+        const selectedDepartmentParam = selectedDepartmentId || undefined;
+        const emptyTasksPage = {
+          items: [] as Task[],
+          total: 0,
+          page: 1,
+          per_page: 0,
+          pages: 1,
+        };
+
+        const results = await Promise.all([
+          api
+            .getDashboardTasksAnalytics(selectedDepartmentParam)
+            .catch(catchLog("getDashboardTasksAnalytics")),
           api.getMeetingsAnalytics().catch(catchLog("getMeetingsAnalytics")),
-          api.getTasks({
-            assignee_id: user!.id,
-            status: "new,in_progress,review",
-            per_page: "50",
-            sort: "created_at_desc",
-          }).catch(catchLog("getMyTasks")),
-          api.getTasks({
-            status: "done",
-            per_page: "50",
-            sort: "created_at_desc",
-          }).catch(catchLog("getDoneTasks")),
+          api
+            .getTasks({
+              assignee_id: userId,
+              status: openStatuses,
+              per_page: "50",
+              sort: "created_at_desc",
+            })
+            .catch(catchLog("getMyTasks")),
+          selectedDepartmentParam
+            ? api
+                .getTasks({
+                  department_id: selectedDepartmentParam,
+                  status: openStatuses,
+                  per_page: "50",
+                  sort: "created_at_desc",
+                })
+                .catch(catchLog("getDepartmentTasks"))
+            : Promise.resolve(emptyTasksPage),
           api.getMeetings({ upcoming: true }).catch(catchLog("getUpcomingMeetings")),
           api.getMeetings({ past: true }).catch(catchLog("getPastMeetings")),
           api.getTeam().catch(catchLog("getTeam")),
-        ];
+          isModerator
+            ? api
+                .getTasks({
+                  status: "new",
+                  per_page: "20",
+                  sort: "created_at_desc",
+                })
+                .catch(catchLog("getUnassignedTasks"))
+            : Promise.resolve(emptyTasksPage),
+          isModerator
+            ? api
+                .getTasks({
+                  status: "in_progress,review",
+                  per_page: "50",
+                  sort: "created_at_asc",
+                })
+                .catch(catchLog("getStaleTasks"))
+            : Promise.resolve(emptyTasksPage),
+        ]);
 
-        // Moderator-only data
-        const isMod = PermissionService.isModerator(user!);
-        if (isMod) {
-          promises.push(
-            api.getTasks({
-              status: "new",
-              per_page: "20",
-              sort: "created_at_desc",
-            }).catch(catchLog("getUnassignedTasks"))
-          );
-          promises.push(
-            api.getTasks({
-              status: "in_progress,review",
-              per_page: "50",
-              sort: "created_at_asc",
-            }).catch(catchLog("getStaleTasks"))
-          );
-        }
-
-        const results = await Promise.all(promises);
         if (cancelled) return;
 
-        const overviewData = results[0] as OverviewAnalytics | null;
+        const dashboardData = results[0] as DashboardTasksAnalytics | null;
         const meetingData = results[1] as MeetingAnalytics | null;
         const myTasksData = results[2] as { items: Task[] } | null;
-        const doneTasksData = results[3] as { items: Task[] } | null;
+        const departmentTasksData = results[3] as { items: Task[] } | null;
         const upcomingData = results[4] as Meeting[] | null;
         const pastData = results[5] as Meeting[] | null;
         const teamData = results[6] as TeamMember[] | null;
+        const unassignedData = results[7] as { items: Task[] } | null;
+        const staleData = results[8] as { items: Task[] } | null;
 
         const hasError = results.some((r) => r === null);
 
-        if (overviewData) setOverview(overviewData);
-        if (meetingData) setMeetingAnalytics(meetingData);
-        if (teamData) setTeamMembers(teamData);
+        setDashboardTasksAnalytics(dashboardData);
+        setMeetingAnalytics(meetingData);
+        setTeamMembers(teamData ?? []);
 
         // My tasks — first 5 for display
         if (myTasksData) {
           setMyTasks(myTasksData.items.slice(0, 5));
-          setOverdueTasks(myTasksData.items.filter(isOverdue));
+          setMyOverdueTasks(myTasksData.items.filter(isOverdue));
+        } else {
+          setMyTasks([]);
+          setMyOverdueTasks([]);
         }
 
-        // Completed this week
-        if (doneTasksData) {
-          const weekAgo = new Date();
-          weekAgo.setDate(weekAgo.getDate() - 7);
-          const thisWeekCount = doneTasksData.items.filter(
-            (t) => t.completed_at && new Date(t.completed_at) > weekAgo
-          ).length;
-          setCompletedThisWeek(thisWeekCount);
+        // Department tasks — first 5 for display
+        if (departmentTasksData) {
+          setDepartmentTasks(departmentTasksData.items.slice(0, 5));
+          setDepartmentOverdueTasks(departmentTasksData.items.filter(isOverdue));
+        } else {
+          setDepartmentTasks([]);
+          setDepartmentOverdueTasks([]);
         }
 
         // Upcoming meetings (top 3)
-        if (upcomingData) setUpcomingMeetings(upcomingData.slice(0, 3));
+        setUpcomingMeetings(upcomingData ? upcomingData.slice(0, 3) : []);
 
         // Recent past meetings (top 3)
-        if (pastData) setMeetings(pastData.slice(0, 3));
+        setMeetings(pastData ? pastData.slice(0, 3) : []);
 
         // Moderator data
-        if (isMod) {
-          const unassignedData = results[7] as { items: Task[] } | null;
-          const staleData = results[8] as { items: Task[] } | null;
-
-          if (unassignedData) {
-            setUnassignedTasks(
-              unassignedData.items.filter((t) => !t.assignee_id).slice(0, 5)
-            );
-          }
-          if (staleData) {
-            setStaleTasks(staleData.items.filter(isStale).slice(0, 5));
-          }
+        if (isModerator) {
+          setUnassignedTasks(
+            unassignedData
+              ? unassignedData.items.filter((t) => !t.assignee_id).slice(0, 5)
+              : []
+          );
+          setStaleTasks(staleData ? staleData.items.filter(isStale).slice(0, 5) : []);
+        } else {
+          setUnassignedTasks([]);
+          setStaleTasks([]);
         }
 
         if (hasError) toastError("Не удалось загрузить часть данных");
@@ -578,23 +665,47 @@ export default function DashboardPage() {
     }
 
     fetchData();
-    return () => { cancelled = true; };
-  }, [user?.id]);
+    return () => {
+      cancelled = true;
+    };
+  }, [departmentsLoading, isModerator, selectedDepartmentId, toastError, userId]);
 
   if (!user) return null;
 
-  if (loading) {
+  if (loading || departmentsLoading) {
     return <DashboardSkeleton />;
   }
 
-  const isModerator = PermissionService.isModerator(user);
-  const activeTasks =
-    (overview?.tasks_new ?? 0) +
-    (overview?.tasks_in_progress ?? 0) +
-    (overview?.tasks_review ?? 0);
+  const myMetrics = dashboardTasksAnalytics?.my;
+  const departmentMetrics = dashboardTasksAnalytics?.department;
+
+  const activeTasks = myMetrics?.active ?? 0;
+  const completedThisWeek = myMetrics?.done_week ?? 0;
+  const overdueCount = myMetrics?.overdue ?? 0;
+
+  const currentScope =
+    canUseDepartmentView && taskScope === "department" ? "department" : "my";
+  const scopedTasks = currentScope === "department" ? departmentTasks : myTasks;
+  const scopedOverdueTasks =
+    currentScope === "department" ? departmentOverdueTasks : myOverdueTasks;
+
+  const taskListTitle = currentScope === "department" ? "Задачи отдела" : "Мои задачи";
+  const overdueListTitle =
+    currentScope === "department" ? "Просроченные отдела" : "Мои просроченные";
+  const emptyTaskTitle =
+    currentScope === "department"
+      ? "В отделе нет активных задач"
+      : "Нет активных задач";
+  const emptyTaskDescription =
+    currentScope === "department"
+      ? "По выбранному отделу сейчас нет активных задач."
+      : "Все задачи выполнены — отличная работа!";
+
+  const departmentSubtitle = (value: number): string =>
+    selectedDepartment ? `Всего в отделе: ${value}` : "Отдел не выбран";
 
   const todayStr = formatFullDate(new Date());
-  const greeting = getGreetingMessage(myTasks.length, overdueTasks.length);
+  const greeting = getGreetingMessage(activeTasks, overdueCount);
 
   // Accent colors mapped to design system
   const ACCENT_PRIMARY = "hsl(174, 62%, 26%)";
@@ -606,14 +717,49 @@ export default function DashboardPage() {
     <div className="space-y-8">
       {/* ═══════════ Greeting ═══════════ */}
       <section className="animate-fade-in-up stagger-1">
-        <h1 className="text-2xl font-bold font-heading tracking-tight md:text-3xl">
-          Привет, {firstName(user.full_name)}!
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          <span className="capitalize">{todayStr}</span>
-          <span className="mx-2 text-border">|</span>
-          {greeting}
-        </p>
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold font-heading tracking-tight md:text-3xl">
+              Привет, {firstName(user.full_name)}!
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              <span className="capitalize">{todayStr}</span>
+              <span className="mx-2 text-border">|</span>
+              {greeting}
+            </p>
+          </div>
+
+          <div className="w-full md:w-[280px]">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Отдел</p>
+            <Select
+              value={
+                selectedDepartmentId ||
+                (accessibleDepartments[0]?.id ? accessibleDepartments[0].id : "__none__")
+              }
+              onValueChange={(value) => {
+                if (value === "__none__") return;
+                setSelectedDepartmentId(value);
+              }}
+            >
+              <SelectTrigger className="h-10 border-border/60 bg-card shadow-sm">
+                <SelectValue placeholder="Выберите отдел" />
+              </SelectTrigger>
+              <SelectContent>
+                {accessibleDepartments.length === 0 ? (
+                  <SelectItem value="__none__" disabled>
+                    Нет доступных отделов
+                  </SelectItem>
+                ) : (
+                  accessibleDepartments.map((department) => (
+                    <SelectItem key={department.id} value={department.id}>
+                      {department.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
       </section>
 
       {/* ═══════════ Metric Cards ═══════════ */}
@@ -621,7 +767,7 @@ export default function DashboardPage() {
         <MetricCard
           label="Активных задач"
           value={activeTasks}
-          subtitle={`Новых: ${overview?.tasks_new ?? 0} · В работе: ${overview?.tasks_in_progress ?? 0}`}
+          subtitle={departmentSubtitle(departmentMetrics?.active ?? 0)}
           icon={Zap}
           accentColor={ACCENT_PRIMARY}
           staggerClass="stagger-2"
@@ -629,15 +775,15 @@ export default function DashboardPage() {
         <MetricCard
           label="Выполнено за неделю"
           value={completedThisWeek}
-          subtitle={`Всего выполнено: ${overview?.tasks_done ?? 0}`}
+          subtitle={departmentSubtitle(departmentMetrics?.done_total ?? 0)}
           icon={CheckCircle2}
           accentColor={ACCENT_DONE}
           staggerClass="stagger-3"
         />
         <MetricCard
           label="Просроченных"
-          value={overview?.tasks_overdue ?? 0}
-          subtitle="Требуют внимания"
+          value={overdueCount}
+          subtitle={departmentSubtitle(departmentMetrics?.overdue ?? 0)}
           icon={AlertTriangle}
           accentColor={ACCENT_DESTRUCTIVE}
           isPulsing
@@ -653,71 +799,100 @@ export default function DashboardPage() {
         />
       </section>
 
-      {/* ═══════════ My Tasks + Overdue ═══════════ */}
-      <section className="animate-fade-in-up stagger-6 grid gap-6 lg:grid-cols-2">
-        {/* My Tasks */}
-        <div className="rounded-2xl border border-border/60 bg-card p-6">
-          <SectionHeader
-            title="Мои задачи"
-            count={myTasks.length}
-            linkHref="/tasks"
-            linkLabel="Смотреть все"
-          />
+      {/* ═══════════ Task Blocks ═══════════ */}
+      <section className="animate-fade-in-up stagger-6 space-y-4">
+        {canUseDepartmentView && (
+          <div className="flex justify-end">
+            <div className="inline-flex rounded-lg border border-border/60 bg-card p-1">
+              <button
+                onClick={() => setTaskScope("my")}
+                className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                  currentScope === "my"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Мои
+              </button>
+              <button
+                onClick={() => setTaskScope("department")}
+                className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                  currentScope === "department"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Отдел
+              </button>
+            </div>
+          </div>
+        )}
 
-          {myTasks.length === 0 ? (
-            <EmptyState
-              variant="tasks"
-              title="Нет активных задач"
-              description="Все задачи выполнены — отличная работа!"
-              className="py-6"
+        <div className="grid gap-6 lg:grid-cols-2">
+          {/* Scope Tasks */}
+          <div className="rounded-2xl border border-border/60 bg-card p-6">
+            <SectionHeader
+              title={taskListTitle}
+              count={scopedTasks.length}
+              linkHref="/tasks"
+              linkLabel="Смотреть все"
             />
-          ) : (
-            <div className="space-y-2">
-              {myTasks.map((task) => (
-                <TaskListItem
-                  key={task.id}
-                  task={task}
-                  variant={isOverdue(task) ? "overdue" : "default"}
-                />
-              ))}
-            </div>
-          )}
-        </div>
 
-        {/* Overdue Tasks */}
-        <div
-          className={`rounded-2xl border p-6 ${
-            overdueTasks.length > 0
-              ? "border-destructive/20 bg-destructive/[0.02]"
-              : "border-border/60 bg-card"
-          }`}
-        >
-          <SectionHeader
-            title="Просроченные"
-            icon={AlertTriangle}
-            iconColor={ACCENT_DESTRUCTIVE}
-            count={overdueTasks.length}
-          />
-
-          {overdueTasks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-status-done-bg mb-3">
-                <CheckCircle2 className="h-5 w-5 text-status-done-fg" />
+            {scopedTasks.length === 0 ? (
+              <EmptyState
+                variant="tasks"
+                title={emptyTaskTitle}
+                description={emptyTaskDescription}
+                className="py-6"
+              />
+            ) : (
+              <div className="space-y-2">
+                {scopedTasks.map((task) => (
+                  <TaskListItem
+                    key={task.id}
+                    task={task}
+                    variant={isOverdue(task) ? "overdue" : "default"}
+                  />
+                ))}
               </div>
-              <p className="text-sm font-heading font-semibold text-foreground mb-0.5">
-                Всё в срок
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Нет просроченных задач
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {overdueTasks.slice(0, 5).map((task) => (
-                <TaskListItem key={task.id} task={task} variant="overdue" />
-              ))}
-            </div>
-          )}
+            )}
+          </div>
+
+          {/* Scope Overdue Tasks */}
+          <div
+            className={`rounded-2xl border p-6 ${
+              scopedOverdueTasks.length > 0
+                ? "border-destructive/20 bg-destructive/[0.02]"
+                : "border-border/60 bg-card"
+            }`}
+          >
+            <SectionHeader
+              title={overdueListTitle}
+              icon={AlertTriangle}
+              iconColor={ACCENT_DESTRUCTIVE}
+              count={scopedOverdueTasks.length}
+            />
+
+            {scopedOverdueTasks.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-status-done-bg">
+                  <CheckCircle2 className="h-5 w-5 text-status-done-fg" />
+                </div>
+                <p className="mb-0.5 text-sm font-heading font-semibold text-foreground">
+                  Всё в срок
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Нет просроченных задач
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {scopedOverdueTasks.slice(0, 5).map((task) => (
+                  <TaskListItem key={task.id} task={task} variant="overdue" />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </section>
 
