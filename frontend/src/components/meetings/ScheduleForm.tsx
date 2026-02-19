@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Loader2,
   Video,
@@ -31,12 +31,14 @@ import {
 } from "@/components/ui/select";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { TimePicker } from "@/components/shared/TimePicker";
+import { ParticipantsPickerDialog } from "@/components/meetings/ParticipantsPickerDialog";
 import type {
   MeetingSchedule,
   MeetingScheduleCreateRequest,
   TeamMember,
   TelegramNotificationTarget,
   MeetingRecurrence,
+  Department,
 } from "@/lib/types";
 import { DAY_OF_WEEK_LABELS, RECURRENCE_LABELS } from "@/lib/types";
 
@@ -104,6 +106,7 @@ function utcTimeToLocal(timeUtc: string, timezone: string): string {
 interface ScheduleFormProps {
   schedule: MeetingSchedule | null; // null = create mode
   members: TeamMember[];
+  departments: Department[];
   telegramTargets: TelegramNotificationTarget[];
   onSave: (data: MeetingScheduleCreateRequest) => Promise<void>;
   onClose: () => void;
@@ -112,6 +115,7 @@ interface ScheduleFormProps {
 export function ScheduleForm({
   schedule,
   members,
+  departments,
   telegramTargets,
   onSave,
   onClose,
@@ -160,15 +164,25 @@ export function ScheduleForm({
     }
     return "";
   });
+  const [participantPickerOpen, setParticipantPickerOpen] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const toggleParticipant = (id: string) => {
-    setParticipantIds((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
-    );
-  };
+  const membersById = useMemo(
+    () => new Map(members.map((member) => [member.id, member])),
+    [members]
+  );
+
+  const selectedMembers = useMemo(
+    () =>
+      participantIds
+        .map((participantId) => membersById.get(participantId))
+        .filter((member): member is TeamMember => !!member),
+    [participantIds, membersById]
+  );
+
+  const hiddenSelectedCount = participantIds.length - selectedMembers.length;
 
   const toggleTarget = (id: string) => {
     setSelectedTargetIds((prev) =>
@@ -346,33 +360,70 @@ export function ScheduleForm({
               <Users className="h-3 w-3" />
               Участники
             </Label>
-            <div className="flex flex-wrap gap-2 mt-2">
-              {members
-                .filter((m) => m.is_active)
-                .map((member) => {
-                  const selected = participantIds.includes(member.id);
-                  return (
-                    <button
+            <div className="mt-2 rounded-xl border border-border/60 bg-card p-3 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">
+                    {participantIds.length > 0
+                      ? `Выбрано: ${participantIds.length}`
+                      : "Участники не выбраны"}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Поиск и группировка доступны в отдельном окне выбора
+                  </p>
+                </div>
+
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-lg shrink-0"
+                  onClick={() => setParticipantPickerOpen(true)}
+                >
+                  Изменить
+                </Button>
+              </div>
+
+              {selectedMembers.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {selectedMembers.slice(0, 8).map((member) => (
+                    <div
                       key={member.id}
-                      onClick={() => toggleParticipant(member.id)}
-                      className={`
-                        flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium
-                        transition-all duration-150
-                        ${
-                          selected
-                            ? "border-primary bg-primary/5 text-foreground"
-                            : "border-border/60 bg-card text-muted-foreground hover:border-border"
-                        }
-                      `}
+                      className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/20 px-2 py-1"
                     >
                       <UserAvatar name={member.full_name} avatarUrl={member.avatar_url} size="sm" />
-                      <span className="truncate max-w-[120px]">
-                        {member.full_name.split(" ")[0]}
+                      <span className="text-xs font-medium text-foreground truncate max-w-[140px]">
+                        {member.full_name}
                       </span>
-                    </button>
-                  );
-                })}
+                    </div>
+                  ))}
+                  {selectedMembers.length > 8 && (
+                    <span className="inline-flex items-center rounded-lg border border-border/60 px-2 py-1 text-xs text-muted-foreground">
+                      +{selectedMembers.length - 8}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground/70">
+                  Выберите участников, чтобы они автоматически попадали во встречи по расписанию.
+                </p>
+              )}
+
+              {hiddenSelectedCount > 0 && (
+                <p className="text-xs text-amber-600">
+                  {hiddenSelectedCount} участник(ов) скрыт: они неактивны или отсутствуют в текущем списке команды.
+                </p>
+              )}
             </div>
+
+            <ParticipantsPickerDialog
+              open={participantPickerOpen}
+              onOpenChange={setParticipantPickerOpen}
+              members={members}
+              departments={departments}
+              selectedIds={participantIds}
+              onApply={setParticipantIds}
+            />
           </div>
 
           {/* Divider */}

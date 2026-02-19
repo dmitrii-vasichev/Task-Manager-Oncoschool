@@ -27,6 +27,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useMeetingSchedules } from "@/hooks/useMeetingSchedules";
 import { useMeetings } from "@/hooks/useMeetings";
 import { useTeam } from "@/hooks/useTeam";
+import { useDepartments } from "@/hooks/useDepartments";
 import { PermissionService } from "@/lib/permissions";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/shared/Toast";
@@ -57,6 +58,7 @@ export default function MeetingsPage() {
   const { meetings: upcomingMeetings, loading: upcomingLoading, refetch: refetchUpcoming } = useMeetings({ upcoming: true });
   const { meetings: pastMeetings, loading: pastLoading, refetch: refetchPast } = useMeetings({ past: true });
   const { members } = useTeam();
+  const { departments } = useDepartments();
 
   // Telegram targets (for schedule form)
   const [telegramTargets, setTelegramTargets] = useState<TelegramNotificationTarget[]>([]);
@@ -403,6 +405,7 @@ export default function MeetingsPage() {
         <ScheduleForm
           schedule={editSchedule}
           members={members}
+          departments={departments}
           telegramTargets={telegramTargets}
           onSave={editSchedule ? handleUpdateSchedule : handleCreateSchedule}
           onClose={() => {
