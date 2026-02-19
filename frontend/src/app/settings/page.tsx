@@ -63,6 +63,9 @@ import type {
 export default function SettingsPage() {
   const { user } = useCurrentUser();
   const isAdmin = user ? PermissionService.isAdmin(user) : false;
+  const canConfigureReminders = user
+    ? PermissionService.canConfigureReminders(user)
+    : false;
 
   return (
     <ModeratorGuard>
@@ -70,7 +73,7 @@ export default function SettingsPage() {
         {isAdmin && <AIModelSection />}
         <NotificationsSection />
         {isAdmin && <TelegramTargetsSection />}
-        {isAdmin && <RemindersSection />}
+        {canConfigureReminders && <RemindersSection />}
       </div>
     </ModeratorGuard>
   );

@@ -85,13 +85,15 @@ def main_menu_reply_keyboard(
                 KeyboardButton(text=MENU_BTN_SUBSCRIBE),
                 KeyboardButton(text=MENU_BTN_SUMMARY),
             ],
+            [
+                KeyboardButton(text=MENU_BTN_TEAM_REMINDERS),
+            ],
         ])
 
     if is_admin:
         rows.extend([
             [
                 KeyboardButton(text=MENU_BTN_AI_MODEL),
-                KeyboardButton(text=MENU_BTN_TEAM_REMINDERS),
             ],
         ])
 

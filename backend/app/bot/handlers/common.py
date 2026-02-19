@@ -114,6 +114,7 @@ async def cmd_help(message: Message, member: TeamMember) -> None:
             "\n\n<b>\U0001f6e1\ufe0f Модератор:</b>\n\n"
             "/meetings — предстоящие и прошедшие встречи\n"
             "/subscribe — подписки на уведомления\n"
+            "/reminders — настройки напоминаний\n"
             "/summary — парсинг Zoom AI Summary\n"
             "/stats — статистика"
         )
@@ -124,7 +125,6 @@ async def cmd_help(message: Message, member: TeamMember) -> None:
             "\n\n<b>\U0001f451 Администрирование:</b>\n\n"
             "/setrole @username admin|moderator|member — изменить роль\n"
             "/aimodel — текущая AI-модель\n"
-            "/reminders — настройки напоминаний\n"
             "\u2699\ufe0f Настройки AI, напоминания — через веб-интерфейс"
         )
         text += admin_commands
@@ -264,8 +264,8 @@ async def menu_btn_team_reminders(
     member: TeamMember,
     session_maker: async_sessionmaker,
 ) -> None:
-    if not PermissionService.is_admin(member):
-        await message.answer("⛔ Эта кнопка доступна только администратору.")
+    if not PermissionService.is_moderator(member):
+        await message.answer("⛔ Эта кнопка доступна только модератору.")
         return
 
     from app.bot.handlers.settings import cmd_reminders

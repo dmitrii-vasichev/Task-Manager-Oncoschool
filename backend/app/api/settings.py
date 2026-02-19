@@ -96,10 +96,10 @@ async def update_notifications(
 @router.get("/reminders/{member_id}", response_model=ReminderSettingsResponse | None)
 async def get_reminder_settings(
     member_id: uuid.UUID,
-    member: TeamMember = Depends(require_admin),
+    member: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
 ):
-    """Get reminder settings for a member. Admin only."""
+    """Get reminder settings for a member. Moderator only."""
     rs = await reminder_repo.get_by_member(session, member_id)
     return rs
 
@@ -108,10 +108,10 @@ async def get_reminder_settings(
 async def update_reminder_settings(
     member_id: uuid.UUID,
     data: ReminderSettingsUpdate,
-    member: TeamMember = Depends(require_admin),
+    member: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
 ):
-    """Update reminder settings for a member. Admin only."""
+    """Update reminder settings for a member. Moderator only."""
     update_data = data.model_dump(exclude_unset=True)
     update_data["configured_by_id"] = member.id
 
@@ -129,10 +129,10 @@ class BulkReminderRequest(BaseModel):
 @router.post("/reminders/bulk", response_model=dict)
 async def bulk_update_reminders(
     data: BulkReminderRequest,
-    member: TeamMember = Depends(require_admin),
+    member: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
 ):
-    """Bulk update reminder settings for all members. Admin only."""
+    """Bulk update reminder settings for all members. Moderator only."""
     # Throttle bulk operations
     member_key = str(member.id)
     now = time.time()

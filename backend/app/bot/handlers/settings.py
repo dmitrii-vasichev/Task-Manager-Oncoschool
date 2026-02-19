@@ -105,7 +105,7 @@ async def cb_subscribe_toggle(
 # ══════════════════════════════════════════
 
 
-@router.message(Command("reminders"), IsAdminFilter())
+@router.message(Command("reminders"), IsModeratorFilter())
 async def cmd_reminders(
     message: Message,
     member: TeamMember,
@@ -138,8 +138,8 @@ async def cb_reminders_page(
     session_maker: async_sessionmaker,
 ) -> None:
     from app.services.permission_service import PermissionService
-    if not PermissionService.is_admin(member):
-        await callback.answer("Только для администраторов", show_alert=True)
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
         return
     page = int(callback.data.split(":")[1])
     member_repo = TeamMemberRepository()
@@ -167,8 +167,8 @@ async def cb_reminder_member(
     session_maker: async_sessionmaker,
 ) -> None:
     from app.services.permission_service import PermissionService
-    if not PermissionService.is_admin(member):
-        await callback.answer("Только для администраторов", show_alert=True)
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
         return
     target_id = callback.data.split(":", 1)[1]
     reminder_repo = ReminderSettingsRepository()
@@ -207,8 +207,8 @@ async def cb_reminder_toggle(
     session_maker: async_sessionmaker,
 ) -> None:
     from app.services.permission_service import PermissionService
-    if not PermissionService.is_admin(member):
-        await callback.answer("Только для администраторов", show_alert=True)
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
         return
     target_id = callback.data.split(":", 1)[1]
     reminder_repo = ReminderSettingsRepository()
@@ -256,8 +256,8 @@ async def cb_reminder_time(
     state: FSMContext,
 ) -> None:
     from app.services.permission_service import PermissionService
-    if not PermissionService.is_admin(member):
-        await callback.answer("Только для администраторов", show_alert=True)
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
         return
     target_id = callback.data.split(":", 1)[1]
     await state.set_state(ReminderFSM.waiting_time)
@@ -310,8 +310,8 @@ async def cb_reminder_days(
     state: FSMContext,
 ) -> None:
     from app.services.permission_service import PermissionService
-    if not PermissionService.is_admin(member):
-        await callback.answer("Только для администраторов", show_alert=True)
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
         return
     target_id = callback.data.split(":", 1)[1]
     await state.set_state(ReminderFSM.waiting_days)
@@ -367,8 +367,8 @@ async def cb_reminder_back_list(
     session_maker: async_sessionmaker,
 ) -> None:
     from app.services.permission_service import PermissionService
-    if not PermissionService.is_admin(member):
-        await callback.answer("Только для администраторов", show_alert=True)
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
         return
     async with session_maker() as session:
         stmt = (
@@ -397,8 +397,8 @@ async def cb_reminder_bulk_enable(
     session_maker: async_sessionmaker,
 ) -> None:
     from app.services.permission_service import PermissionService
-    if not PermissionService.is_admin(member):
-        await callback.answer("Только для администраторов", show_alert=True)
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
         return
     member_repo = TeamMemberRepository()
     reminder_repo = ReminderSettingsRepository()
@@ -434,8 +434,8 @@ async def cb_reminder_bulk_disable(
     session_maker: async_sessionmaker,
 ) -> None:
     from app.services.permission_service import PermissionService
-    if not PermissionService.is_admin(member):
-        await callback.answer("Только для администраторов", show_alert=True)
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
         return
     member_repo = TeamMemberRepository()
     reminder_repo = ReminderSettingsRepository()

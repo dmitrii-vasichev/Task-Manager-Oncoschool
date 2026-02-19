@@ -28,13 +28,13 @@ MODERATOR_EXTRA_COMMANDS: list[BotCommand] = [
     BotCommand(command="meetings", description="Список встреч"),
     BotCommand(command="stats", description="Статистика команды"),
     BotCommand(command="subscribe", description="Подписки на уведомления"),
+    BotCommand(command="reminders", description="Напоминания для команды"),
     BotCommand(command="summary", description="Создать задачи из Zoom Summary"),
-    BotCommand(command="aimodel", description="Настройки AI-модели"),
 ]
 
 ADMIN_EXTRA_COMMANDS: list[BotCommand] = [
+    BotCommand(command="aimodel", description="Настройки AI-модели"),
     BotCommand(command="setrole", description="Изменить роль: /setrole @user role"),
-    BotCommand(command="reminders", description="Напоминания для команды"),
 ]
 
 

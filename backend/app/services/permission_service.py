@@ -73,4 +73,4 @@ class PermissionService:
 
     @staticmethod
     def can_configure_reminders(member: TeamMember) -> bool:
-        return PermissionService.is_admin(member)
+        return PermissionService.is_moderator(member)

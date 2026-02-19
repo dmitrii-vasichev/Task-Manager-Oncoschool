@@ -60,6 +60,6 @@ export class PermissionService {
   }
 
   static canConfigureReminders(member: TeamMember): boolean {
-    return PermissionService.isAdmin(member);
+    return PermissionService.isModerator(member);
   }
 }
