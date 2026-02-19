@@ -17,6 +17,7 @@ from app.services.in_app_notification_service import InAppNotificationService
 from app.services.meeting_service import MeetingService
 from app.services.meeting_status import compute_effective_status
 from app.services.task_service import TaskService
+from app.services.zoom_service import sanitize_zoom_join_url
 
 router = APIRouter(prefix="/meetings", tags=["meetings"])
 meeting_service = MeetingService()
@@ -100,6 +101,10 @@ def _meeting_response(meeting) -> MeetingResponse:
     )
     # Populate participant_ids from loaded relationship
     resp.participant_ids = [p.member_id for p in (meeting.participants or [])]
+    resp.zoom_join_url = sanitize_zoom_join_url(
+        meeting.zoom_join_url,
+        zoom_meeting_id=meeting.zoom_meeting_id,
+    )
     # Ensure meeting_date is timezone-aware (UTC) so frontend receives "+00:00" suffix
     # and JavaScript correctly interprets it as UTC, not browser-local time
     if resp.meeting_date and resp.meeting_date.tzinfo is None:

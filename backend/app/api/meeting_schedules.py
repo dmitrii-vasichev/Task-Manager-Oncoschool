@@ -15,6 +15,7 @@ from app.db.schemas import (
     MeetingScheduleResponse,
     MeetingScheduleUpdate,
 )
+from app.services.zoom_service import extract_zoom_join_url
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +231,7 @@ async def create_schedule(
             status="scheduled",
             duration_minutes=data.duration_minutes,
             zoom_meeting_id=str(zoom_data["id"]) if zoom_data else None,
-            zoom_join_url=zoom_data.get("join_url") if zoom_data else None,
+            zoom_join_url=extract_zoom_join_url(zoom_data) if zoom_data else None,
             created_by_id=member.id,
         )
         session.add(meeting)

@@ -12,6 +12,7 @@ from app.bot.filters import IsModeratorFilter
 from app.config import settings
 from app.db.models import Meeting, Task, TaskUpdate, TeamMember
 from app.db.repositories import MeetingRepository, TeamMemberRepository
+from app.services.zoom_service import sanitize_zoom_join_url
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,11 @@ async def cmd_meetings(
                 time_str = _format_meeting_time(m.meeting_date)
                 lines.append(f"📅 {date_str} · {time_str}")
             if m.zoom_join_url:
-                lines.append(f"🔗 {_zoom_short_url(m.zoom_join_url)}")
+                safe_zoom_url = sanitize_zoom_join_url(
+                    m.zoom_join_url,
+                    zoom_meeting_id=m.zoom_meeting_id,
+                )
+                lines.append(f"🔗 {_zoom_short_url(safe_zoom_url)}")
             lines.append("")
     else:
         lines.append("📋 Нет предстоящих встреч.\n")
@@ -189,7 +194,11 @@ async def cmd_nextmeeting(
         lines.append(f"⏰ {_format_meeting_time(m.meeting_date)} ({_time_until(m.meeting_date)})")
 
     if m.zoom_join_url:
-        lines.append(f"🔗 Подключиться: {m.zoom_join_url}")
+        safe_zoom_url = sanitize_zoom_join_url(
+            m.zoom_join_url,
+            zoom_meeting_id=m.zoom_meeting_id,
+        )
+        lines.append(f"🔗 Подключиться: {safe_zoom_url}")
 
     await message.answer("\n".join(lines), parse_mode="HTML")
 

@@ -1,10 +1,76 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+HOST_ONLY_QUERY_KEYS = {"zak", "zpk"}
+
+
+def _extract_meeting_id_from_path(path: str) -> str | None:
+    """Extract numeric meeting id from common Zoom URL path patterns."""
+    if not path:
+        return None
+
+    parts = [segment for segment in path.split("/") if segment]
+    if not parts:
+        return None
+
+    candidate = parts[-1]
+    if parts[0] in {"j", "s", "wc"} and len(parts) > 1:
+        candidate = parts[1]
+
+    digits = "".join(ch for ch in candidate if ch.isdigit())
+    return digits or None
+
+
+def sanitize_zoom_join_url(raw_url: str | None, zoom_meeting_id: str | None = None) -> str | None:
+    """
+    Normalize Zoom URLs for participants only.
+    - removes host-only query params (zak/zpk)
+    - converts host path /s/<id> to participant path /j/<id>
+    """
+    if not raw_url:
+        return None
+
+    parsed = urlparse(raw_url)
+    if not parsed.scheme or not parsed.netloc:
+        return raw_url
+
+    query_items = parse_qsl(parsed.query, keep_blank_values=True)
+    query = {k: v for k, v in query_items if k not in HOST_ONLY_QUERY_KEYS}
+
+    path_parts = [segment for segment in parsed.path.split("/") if segment]
+    path_head = path_parts[0] if path_parts else ""
+    meeting_id = (zoom_meeting_id or _extract_meeting_id_from_path(parsed.path) or "").strip()
+
+    path = parsed.path or ""
+    if path_head == "s" and meeting_id:
+        path = f"/j/{meeting_id}"
+
+    return urlunparse(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            path,
+            "",
+            urlencode(query),
+            "",
+        )
+    )
+
+
+def extract_zoom_join_url(zoom_data: dict | None) -> str | None:
+    """Read Zoom payload and return a safe participant join URL."""
+    if not zoom_data:
+        return None
+
+    zoom_meeting_id = str(zoom_data["id"]) if zoom_data.get("id") else None
+    raw_url = zoom_data.get("join_url") or zoom_data.get("start_url")
+    return sanitize_zoom_join_url(raw_url, zoom_meeting_id=zoom_meeting_id)
 
 
 class ZoomService:

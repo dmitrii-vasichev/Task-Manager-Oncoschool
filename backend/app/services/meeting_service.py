@@ -8,6 +8,7 @@ from app.db.models import Meeting, Task, TeamMember
 from app.db.repositories import MeetingRepository, TeamMemberRepository
 from app.services.permission_service import PermissionService
 from app.services.task_service import TaskService
+from app.services.zoom_service import extract_zoom_join_url
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +70,7 @@ class MeetingService:
         )
         if zoom_data:
             kwargs["zoom_meeting_id"] = str(zoom_data["id"])
-            kwargs["zoom_join_url"] = zoom_data.get("join_url")
+            kwargs["zoom_join_url"] = extract_zoom_join_url(zoom_data)
 
         meeting = await self.meeting_repo.create(
             session, participant_ids=participant_ids or [], **kwargs

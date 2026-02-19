@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import Meeting, MeetingParticipant, MeetingSchedule, TeamMember
 from app.db.repositories import MeetingScheduleRepository
+from app.services.zoom_service import extract_zoom_join_url, sanitize_zoom_join_url
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +262,13 @@ class MeetingSchedulerService:
         zoom_data = None
         if schedule.zoom_enabled and self.zoom_service:
             if existing and existing.zoom_meeting_id:
-                zoom_data = {"id": existing.zoom_meeting_id, "join_url": existing.zoom_join_url}
+                zoom_data = {
+                    "id": existing.zoom_meeting_id,
+                    "join_url": sanitize_zoom_join_url(
+                        existing.zoom_join_url,
+                        zoom_meeting_id=existing.zoom_meeting_id,
+                    ),
+                }
             else:
                 try:
                     zoom_data = await self.zoom_service.create_meeting(
@@ -282,7 +289,7 @@ class MeetingSchedulerService:
             # Update with Zoom info if it was missing
             if zoom_data and not existing.zoom_meeting_id:
                 existing.zoom_meeting_id = str(zoom_data["id"])
-                existing.zoom_join_url = zoom_data.get("join_url")
+                existing.zoom_join_url = extract_zoom_join_url(zoom_data)
                 await session.commit()
             logger.info(f"Using existing meeting for schedule '{schedule.title}' at {meeting_date}")
         else:
@@ -293,7 +300,7 @@ class MeetingSchedulerService:
                 status="scheduled",
                 duration_minutes=schedule.duration_minutes,
                 zoom_meeting_id=str(zoom_data["id"]) if zoom_data else None,
-                zoom_join_url=zoom_data.get("join_url") if zoom_data else None,
+                zoom_join_url=extract_zoom_join_url(zoom_data) if zoom_data else None,
                 created_by_id=schedule.created_by_id,
             )
             session.add(meeting)
@@ -356,8 +363,13 @@ class MeetingSchedulerService:
             if mentions:
                 text += "\n\n" + " ".join(mentions)
 
-        if zoom_data and zoom_data.get("join_url"):
-            text += f"\n\nСсылка для подключения: {zoom_data['join_url']}"
+        raw_join_url = (zoom_data or {}).get("join_url") or meeting.zoom_join_url
+        safe_join_url = sanitize_zoom_join_url(
+            raw_join_url,
+            zoom_meeting_id=meeting.zoom_meeting_id,
+        )
+        if safe_join_url:
+            text += f"\n\nСсылка для подключения: {safe_join_url}"
 
         # Deduplicate targets by chat_id+thread_id to avoid sending twice
         seen_targets: set[str] = set()
