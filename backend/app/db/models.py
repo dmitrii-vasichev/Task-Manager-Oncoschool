@@ -414,6 +414,35 @@ class TelegramNotificationTarget(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class TelegramBroadcast(Base):
+    __tablename__ = "telegram_broadcasts"
+    __table_args__ = (
+        Index("idx_telegram_broadcasts_status_scheduled_at", "status", "scheduled_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    target_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    thread_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    message_html: Mapped[str] = mapped_column(Text, nullable=False)
+    scheduled_at: Mapped[datetime] = mapped_column(nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(30), default="scheduled", server_default="scheduled"
+    )  # scheduled | sent | failed | cancelled
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_members.id"), nullable=True
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    # Relationships
+    created_by: Mapped["TeamMember | None"] = relationship(foreign_keys=[created_by_id])
+
+
 class AppSettings(Base):
     __tablename__ = "app_settings"
 

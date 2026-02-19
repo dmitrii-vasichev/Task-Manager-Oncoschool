@@ -10,6 +10,7 @@ import {
   BarChart3,
   Users,
   Settings,
+  Megaphone,
   LogOut,
   ChevronsLeft,
   ChevronsRight,
@@ -73,6 +74,13 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/meetings", label: "Встречи", icon: CalendarDays, section: "main" },
   { href: "/analytics", label: "Аналитика", icon: BarChart3, section: "main" },
   { href: "/team", label: "Команда", icon: Users, section: "main" },
+  {
+    href: "/broadcasts",
+    label: "Рассылки",
+    icon: Megaphone,
+    moderatorOnly: true,
+    section: "manage",
+  },
   {
     href: "/settings",
     label: "Настройки",

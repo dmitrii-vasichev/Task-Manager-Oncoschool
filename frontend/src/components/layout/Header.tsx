@@ -14,6 +14,7 @@ import {
   LayoutDashboard,
   Loader2,
   MessageSquareWarning,
+  Megaphone,
   RefreshCw,
   Settings,
   UserPlus,
@@ -45,6 +46,7 @@ const PAGE_META: Record<string, PageMeta> = {
   "/meetings": { title: "Встречи", icon: CalendarDays },
   "/analytics": { title: "Аналитика", icon: BarChart3 },
   "/team": { title: "Команда", icon: Users },
+  "/broadcasts": { title: "Рассылки", icon: Megaphone },
   "/settings": { title: "Настройки", icon: Settings },
 };
 

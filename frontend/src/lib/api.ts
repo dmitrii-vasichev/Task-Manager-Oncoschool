@@ -24,6 +24,9 @@ import type {
   MeetingSchedule,
   MeetingScheduleCreateRequest,
   TelegramNotificationTarget,
+  TelegramBroadcast,
+  TelegramBroadcastCreateRequest,
+  TelegramBroadcastUpdateRequest,
   ZoomStatusResponse,
   TeamMemberUpdateRequest,
   MemberDeactivationPreviewResponse,
@@ -352,6 +355,44 @@ class ApiClient {
 
   async deleteTelegramTarget(id: string): Promise<void> {
     return this.request<void>(`/api/telegram-targets/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  // ==================== Telegram Broadcasts ====================
+
+  async getTelegramBroadcasts(params?: {
+    status?: "scheduled" | "sent" | "failed" | "cancelled";
+    limit?: number;
+  }): Promise<TelegramBroadcast[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set("status", params.status);
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return this.request<TelegramBroadcast[]>(`/api/broadcasts${query}`);
+  }
+
+  async createTelegramBroadcast(
+    data: TelegramBroadcastCreateRequest
+  ): Promise<TelegramBroadcast> {
+    return this.request<TelegramBroadcast>("/api/broadcasts", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateTelegramBroadcast(
+    id: string,
+    data: TelegramBroadcastUpdateRequest
+  ): Promise<TelegramBroadcast> {
+    return this.request<TelegramBroadcast>(`/api/broadcasts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async cancelTelegramBroadcast(id: string): Promise<void> {
+    return this.request<void>(`/api/broadcasts/${id}`, {
       method: "DELETE",
     });
   }

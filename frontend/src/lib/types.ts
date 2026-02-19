@@ -10,6 +10,7 @@ export type MemberRole = "admin" | "moderator" | "member";
 export type MemberDeactivationStrategy = "unassign" | "reassign";
 export type MeetingRecurrence = "weekly" | "biweekly" | "monthly_last_workday";
 export type MeetingStatus = "scheduled" | "in_progress" | "completed" | "cancelled";
+export type TelegramBroadcastStatus = "scheduled" | "sent" | "failed" | "cancelled";
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   new: "Новые",
@@ -147,6 +148,33 @@ export interface TelegramNotificationTarget {
   label: string | null;
   is_active: boolean;
   created_at: string;
+}
+
+export interface TelegramBroadcast {
+  id: string;
+  target_id: string;
+  chat_id: number;
+  thread_id: number | null;
+  target_label: string | null;
+  message_html: string;
+  scheduled_at: string;
+  status: TelegramBroadcastStatus;
+  created_by_id: string | null;
+  sent_at: string | null;
+  error_message: string | null;
+  created_at: string;
+}
+
+export interface TelegramBroadcastCreateRequest {
+  target_id: string;
+  message_html: string;
+  scheduled_at: string;
+}
+
+export interface TelegramBroadcastUpdateRequest {
+  target_id?: string;
+  message_html?: string;
+  scheduled_at?: string;
 }
 
 export interface MeetingSchedule {
@@ -496,4 +524,11 @@ export const MEETING_STATUS_LABELS: Record<MeetingStatus, string> = {
   in_progress: "Идёт",
   completed: "Завершена",
   cancelled: "Отменена",
+};
+
+export const TELEGRAM_BROADCAST_STATUS_LABELS: Record<TelegramBroadcastStatus, string> = {
+  scheduled: "Запланировано",
+  sent: "Отправлено",
+  failed: "Ошибка",
+  cancelled: "Отменено",
 };

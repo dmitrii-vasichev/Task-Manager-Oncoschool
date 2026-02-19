@@ -11,6 +11,7 @@ TaskSourceType = Literal["text", "voice", "summary", "web"]
 MemberRoleType = Literal["admin", "moderator", "member"]
 MemberDeactivationStrategyType = Literal["unassign", "reassign"]
 UpdateTypeType = Literal["progress", "status_change", "comment", "blocker", "completion"]
+TelegramBroadcastStatusType = Literal["scheduled", "sent", "failed", "cancelled"]
 
 
 # ── TeamMember ──
@@ -281,6 +282,38 @@ class TelegramTargetResponse(BaseModel):
     thread_id: int | None
     label: str | None
     is_active: bool
+    created_at: datetime
+
+
+# ── Telegram Broadcasts ──
+
+
+class TelegramBroadcastCreate(BaseModel):
+    target_id: uuid.UUID
+    message_html: str
+    scheduled_at: datetime
+
+
+class TelegramBroadcastUpdate(BaseModel):
+    target_id: uuid.UUID | None = None
+    message_html: str | None = None
+    scheduled_at: datetime | None = None
+
+
+class TelegramBroadcastResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    target_id: uuid.UUID
+    chat_id: int
+    thread_id: int | None
+    target_label: str | None
+    message_html: str
+    scheduled_at: datetime
+    status: TelegramBroadcastStatusType
+    created_by_id: uuid.UUID | None
+    sent_at: datetime | None
+    error_message: str | None
     created_at: datetime
 
 

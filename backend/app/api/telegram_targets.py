@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.auth import get_current_user, require_admin, require_moderator
+from app.api.auth import require_admin, require_moderator
 from app.db.database import get_session
 from app.db.models import TeamMember
 from app.db.repositories import TelegramTargetRepository
@@ -16,10 +16,10 @@ target_repo = TelegramTargetRepository()
 
 @router.get("", response_model=list[TelegramTargetResponse])
 async def get_all_targets(
-    _: TeamMember = Depends(get_current_user),
+    _: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
 ):
-    """Get all active telegram notification targets."""
+    """Get all active telegram notification targets (moderator+)."""
     return await target_repo.get_all_active(session)
 
 

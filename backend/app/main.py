@@ -27,6 +27,7 @@ from app.bot.menu import configure_global_menu
 from app.bot.middlewares import AuthMiddleware
 from app.config import settings
 from app.db.database import async_session
+from app.services.broadcast_scheduler_service import BroadcastSchedulerService
 from app.services.meeting_scheduler_service import MeetingSchedulerService
 from app.services.reminder_service import ReminderService
 from app.services.supabase_storage import SupabaseStorageService
@@ -151,6 +152,7 @@ reminder_service = ReminderService(bot=bot, session_maker=async_session)
 meeting_scheduler = MeetingSchedulerService(
     bot=bot, session_maker=async_session, zoom_service=zoom_service
 )
+broadcast_scheduler = BroadcastSchedulerService(bot=bot, session_maker=async_session)
 
 
 @app.on_event("startup")
@@ -158,12 +160,14 @@ async def _start_background_schedulers() -> None:
     """Ensure schedulers run for both `python -m app.main` and `uvicorn app.main:app`."""
     reminder_service.start()
     meeting_scheduler.start()
+    broadcast_scheduler.start()
 
 
 @app.on_event("shutdown")
 async def _stop_background_schedulers() -> None:
     reminder_service.stop()
     meeting_scheduler.stop()
+    broadcast_scheduler.stop()
 
 
 @app.get("/health")

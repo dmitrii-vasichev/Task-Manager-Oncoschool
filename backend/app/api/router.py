@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.analytics import router as analytics_router
 from app.api.auth import router as auth_router
+from app.api.broadcasts import router as broadcasts_router
 from app.api.departments import router as departments_router
 from app.api.meeting_schedules import router as meeting_schedules_router
 from app.api.meetings import router as meetings_router
@@ -25,3 +26,4 @@ api_router.include_router(team_router)
 api_router.include_router(settings_router)
 api_router.include_router(analytics_router)
 api_router.include_router(telegram_targets_router)
+api_router.include_router(broadcasts_router)

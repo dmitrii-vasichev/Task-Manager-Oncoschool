@@ -23,6 +23,7 @@ from app.db.models import (
     Task,
     TaskUpdate,
     TeamMember,
+    TelegramBroadcast,
     TelegramNotificationTarget,
 )
 
@@ -386,6 +387,67 @@ class TelegramTargetRepository:
         stmt = delete(TelegramNotificationTarget).where(TelegramNotificationTarget.id == target_id)
         result = await session.execute(stmt)
         return result.rowcount > 0
+
+
+class TelegramBroadcastRepository:
+    async def get_all(
+        self,
+        session: AsyncSession,
+        *,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> list[TelegramBroadcast]:
+        stmt = select(TelegramBroadcast).order_by(TelegramBroadcast.scheduled_at.desc()).limit(limit)
+        if status:
+            stmt = stmt.where(TelegramBroadcast.status == status)
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_due_scheduled(
+        self,
+        session: AsyncSession,
+        *,
+        now_utc: datetime,
+        limit: int = 50,
+    ) -> list[TelegramBroadcast]:
+        stmt = (
+            select(TelegramBroadcast)
+            .where(
+                TelegramBroadcast.status == "scheduled",
+                TelegramBroadcast.scheduled_at <= now_utc,
+            )
+            .order_by(TelegramBroadcast.scheduled_at.asc())
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_by_id(
+        self,
+        session: AsyncSession,
+        broadcast_id: uuid.UUID,
+    ) -> TelegramBroadcast | None:
+        return await session.get(TelegramBroadcast, broadcast_id)
+
+    async def create(self, session: AsyncSession, **kwargs) -> TelegramBroadcast:
+        broadcast = TelegramBroadcast(**kwargs)
+        session.add(broadcast)
+        await session.flush()
+        return broadcast
+
+    async def update(
+        self,
+        session: AsyncSession,
+        broadcast_id: uuid.UUID,
+        **kwargs,
+    ) -> TelegramBroadcast | None:
+        broadcast = await self.get_by_id(session, broadcast_id)
+        if not broadcast:
+            return None
+        for key, value in kwargs.items():
+            setattr(broadcast, key, value)
+        await session.flush()
+        return broadcast
 
 
 class NotificationSubscriptionRepository:
