@@ -66,7 +66,9 @@ function formatFullDate(date: Date): string {
 function isOverdue(task: Task): boolean {
   if (!task.deadline || task.status === "done" || task.status === "cancelled")
     return false;
-  return parseLocalDate(task.deadline) < new Date();
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  return parseLocalDate(task.deadline) < todayStart;
 }
 
 function isStale(task: Task): boolean {
@@ -225,15 +227,14 @@ function TaskListItem({
   variant?: "default" | "overdue" | "unassigned" | "stale";
   showAssignee?: boolean;
 }) {
-  const borderClass = {
-    default: "border hover:bg-secondary/50",
-    overdue:
-      "border-destructive/25 bg-destructive/[0.03] hover:bg-destructive/[0.07]",
-    unassigned:
-      "border-dashed border-muted-foreground/20 hover:bg-secondary/50",
-    stale:
-      "border-amber-500/25 bg-amber-500/[0.03] hover:bg-amber-500/[0.07]",
-  }[variant];
+  const overdue = variant === "overdue" || isOverdue(task);
+  const borderClass = overdue
+    ? "border-destructive/35 bg-destructive/[0.06] hover:bg-destructive/[0.1] shadow-[0_0_0_1px_hsl(var(--destructive)/0.12)_inset]"
+    : variant === "unassigned"
+      ? "border-dashed border-muted-foreground/20 hover:bg-secondary/50"
+      : variant === "stale"
+        ? "border-amber-500/25 bg-amber-500/[0.03] hover:bg-amber-500/[0.07]"
+        : "border hover:bg-secondary/50";
 
   const sourceIcon =
     task.source === "voice" ? (
@@ -255,21 +256,24 @@ function TaskListItem({
           {sourceIcon}
           <span
             className={`text-sm font-medium truncate ${
-              variant === "overdue" ? "text-destructive" : ""
+              overdue ? "text-destructive" : ""
             }`}
           >
             {task.title}
           </span>
         </div>
         <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+          {overdue && (
+            <span className="inline-flex items-center rounded-full bg-destructive/12 px-2 py-0.5 text-[11px] font-medium text-destructive">
+              Просрочено
+            </span>
+          )}
           <StatusBadge status={task.status} />
           <PriorityBadge priority={task.priority} />
           {task.deadline && (
             <span
               className={`text-xs flex items-center gap-1 ${
-                isOverdue(task)
-                  ? "text-destructive font-medium"
-                  : "text-muted-foreground"
+                overdue ? "text-destructive font-medium" : "text-muted-foreground"
               }`}
             >
               <CalendarDays className="h-3 w-3" />
@@ -309,7 +313,9 @@ function TaskListItem({
           )}
         </div>
       </div>
-      <ArrowRight className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+      <ArrowRight
+        className={`h-4 w-4 shrink-0 ${overdue ? "text-destructive/45" : "text-muted-foreground/40"}`}
+      />
     </Link>
   );
 }
