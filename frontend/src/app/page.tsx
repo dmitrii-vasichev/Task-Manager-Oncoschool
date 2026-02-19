@@ -79,6 +79,12 @@ function firstName(fullName: string): string {
   return fullName.split(" ")[0] || fullName;
 }
 
+function firstAndLastName(fullName: string): string {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 2) return parts.join(" ");
+  return `${parts[0]} ${parts[1]}`;
+}
+
 function getGreetingMessage(activeTasks: number, overdue: number): string {
   if (overdue > 0) {
     return `${overdue} ${overdue === 1 ? "просроченная задача" : overdue < 5 ? "просроченные задачи" : "просроченных задач"} — пора разобраться`;
@@ -213,9 +219,11 @@ function DashboardSkeleton() {
 function TaskListItem({
   task,
   variant = "default",
+  showAssignee = false,
 }: {
   task: Task;
   variant?: "default" | "overdue" | "unassigned" | "stale";
+  showAssignee?: boolean;
 }) {
   const borderClass = {
     default: "border hover:bg-secondary/50",
@@ -279,6 +287,25 @@ function TaskListItem({
               <Clock className="h-3 w-3" />
               Обновлено: {formatDate(task.updated_at)}
             </span>
+          )}
+          {showAssignee && (
+            task.assignee ? (
+              <span className="text-xs text-muted-foreground flex items-center gap-1 min-w-0">
+                <UserAvatar
+                  name={task.assignee.full_name}
+                  avatarUrl={task.assignee.avatar_url}
+                  size="sm"
+                />
+                <span className="truncate max-w-[150px]">
+                  {firstAndLastName(task.assignee.full_name)}
+                </span>
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground/70 flex items-center gap-1">
+                <UserX className="h-3 w-3" />
+                Не назначен
+              </span>
+            )
           )}
         </div>
       </div>
@@ -688,7 +715,9 @@ export default function DashboardPage() {
 
   const taskListTitle = currentScope === "department" ? "Задачи отдела" : "Мои задачи";
   const overdueListTitle =
-    currentScope === "department" ? "Просроченные отдела" : "Мои просроченные";
+    currentScope === "department"
+      ? "Просроченные задачи отдела"
+      : "Мои просроченные задачи";
   const emptyTaskTitle =
     currentScope === "department"
       ? "В отделе нет активных задач"
@@ -853,6 +882,7 @@ export default function DashboardPage() {
                     key={task.id}
                     task={task}
                     variant={isOverdue(task) ? "overdue" : "default"}
+                    showAssignee={currentScope === "department"}
                   />
                 ))}
               </div>
@@ -889,7 +919,12 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-2">
                 {scopedOverdueTasks.slice(0, 5).map((task) => (
-                  <TaskListItem key={task.id} task={task} variant="overdue" />
+                  <TaskListItem
+                    key={task.id}
+                    task={task}
+                    variant="overdue"
+                    showAssignee={currentScope === "department"}
+                  />
                 ))}
               </div>
             )}
