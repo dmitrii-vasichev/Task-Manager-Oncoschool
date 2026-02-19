@@ -110,6 +110,12 @@ export default function MeetingsPage() {
     }
   }, [tabParam]);
 
+  const handleTabChange = useCallback((value: string) => {
+    if (value === "upcoming" || value === "past") {
+      setActiveTab(value);
+    }
+  }, []);
+
   // Active schedules sorted by day_of_week
   const activeSchedules = useMemo(
     () => schedules.filter((s) => s.is_active).sort((a, b) => a.day_of_week - b.day_of_week),
@@ -277,7 +283,7 @@ export default function MeetingsPage() {
           SECTION 2: Встречи (Предстоящие / Прошедшие)
           ============================================ */}
       <section>
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <Tabs value={activeTab} onValueChange={handleTabChange}>
           <div className="flex items-center justify-between mb-4">
             <TabsList className="rounded-xl">
               <TabsTrigger value="upcoming" className="rounded-lg gap-1.5 text-sm">
