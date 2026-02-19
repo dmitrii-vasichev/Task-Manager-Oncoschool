@@ -132,6 +132,7 @@ export interface Meeting {
   status: MeetingStatus;
   duration_minutes: number;
   effective_status: MeetingStatus;
+  participant_ids: string[];
 }
 
 export interface TelegramTargetRef {

@@ -10,6 +10,7 @@ import {
   Loader2,
   Video,
   CalendarPlus,
+  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,10 +39,14 @@ import { ScheduleCard } from "@/components/meetings/ScheduleCard";
 import { ScheduleForm } from "@/components/meetings/ScheduleForm";
 import { MeetingCard } from "@/components/meetings/MeetingCard";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { ParticipantsPickerDialog } from "@/components/meetings/ParticipantsPickerDialog";
+import { UserAvatar } from "@/components/shared/UserAvatar";
 import type {
   MeetingSchedule,
   MeetingScheduleCreateRequest,
   TelegramNotificationTarget,
+  TeamMember,
+  Department,
 } from "@/lib/types";
 import {
   PROJECT_TIMEZONE_LABEL,
@@ -427,6 +432,8 @@ export default function MeetingsPage() {
       {/* Create meeting manually */}
       {showCreateMeeting && (
         <CreateMeetingDialog
+          members={members}
+          departments={departments}
           onClose={() => setShowCreateMeeting(false)}
           onCreated={() => {
             refetchUpcoming();
@@ -443,9 +450,13 @@ export default function MeetingsPage() {
 // ============================================
 
 function CreateMeetingDialog({
+  members,
+  departments,
   onClose,
   onCreated,
 }: {
+  members: TeamMember[];
+  departments: Department[];
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -455,8 +466,23 @@ function CreateMeetingDialog({
   const [time, setTime] = useState("15:00");
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [zoomEnabled, setZoomEnabled] = useState(true);
+  const [participantIds, setParticipantIds] = useState<string[]>([]);
+  const [participantPickerOpen, setParticipantPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const membersById = useMemo(
+    () => new Map(members.map((m) => [m.id, m])),
+    [members]
+  );
+
+  const selectedMembers = useMemo(
+    () =>
+      participantIds
+        .map((id) => membersById.get(id))
+        .filter((m): m is TeamMember => !!m),
+    [participantIds, membersById]
+  );
 
   const handleCreate = async () => {
     if (!title.trim()) {
@@ -478,6 +504,7 @@ function CreateMeetingDialog({
         meeting_date: meetingDate,
         zoom_enabled: zoomEnabled,
         duration_minutes: durationMinutes,
+        participant_ids: participantIds.length > 0 ? participantIds : undefined,
       });
       toastSuccess("Встреча создана");
       onCreated();
@@ -492,7 +519,7 @@ function CreateMeetingDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-heading">Создать встречу</DialogTitle>
         </DialogHeader>
@@ -549,6 +576,62 @@ function CreateMeetingDialog({
               <option value={90}>1.5 часа</option>
               <option value={120}>2 часа</option>
             </select>
+          </div>
+
+          {/* Participants */}
+          <div>
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+              <Users className="h-3 w-3" />
+              Участники
+            </Label>
+            <div className="mt-1.5 rounded-xl border border-border/60 bg-card p-3 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm font-medium">
+                  {participantIds.length > 0
+                    ? `Выбрано: ${participantIds.length}`
+                    : "Участники не выбраны"}
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="rounded-lg shrink-0"
+                  onClick={() => setParticipantPickerOpen(true)}
+                >
+                  {participantIds.length > 0 ? "Изменить" : "Выбрать"}
+                </Button>
+              </div>
+
+              {selectedMembers.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {selectedMembers.slice(0, 8).map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/20 px-2 py-1"
+                    >
+                      <UserAvatar name={member.full_name} avatarUrl={member.avatar_url} size="sm" />
+                      <span className="text-xs font-medium text-foreground truncate max-w-[140px]">
+                        {member.full_name}
+                      </span>
+                    </div>
+                  ))}
+                  {selectedMembers.length > 8 && (
+                    <span className="inline-flex items-center rounded-lg border border-border/60 px-2 py-1 text-xs text-muted-foreground">
+                      +{selectedMembers.length - 8}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <ParticipantsPickerDialog
+              open={participantPickerOpen}
+              onOpenChange={setParticipantPickerOpen}
+              members={members}
+              departments={departments}
+              selectedIds={participantIds}
+              onApply={setParticipantIds}
+            />
           </div>
 
           <div className="flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border/40">

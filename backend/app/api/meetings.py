@@ -35,6 +35,7 @@ class ManualMeetingCreate(BaseModel):
     meeting_date: datetime
     zoom_enabled: bool = False
     duration_minutes: int = 60
+    participant_ids: list[uuid.UUID] = []
 
 
 class MeetingUpdate(BaseModel):
@@ -42,6 +43,7 @@ class MeetingUpdate(BaseModel):
     meeting_date: datetime | None = None
     status: str | None = None
     notes: str | None = None
+    participant_ids: list[uuid.UUID] | None = None
 
 
 class TranscriptRequest(BaseModel):
@@ -95,6 +97,8 @@ def _meeting_response(meeting) -> MeetingResponse:
         meeting_date=meeting.meeting_date,
         duration_minutes=meeting.duration_minutes,
     )
+    # Populate participant_ids from loaded relationship
+    resp.participant_ids = [p.member_id for p in (meeting.participants or [])]
     # Ensure meeting_date is timezone-aware (UTC) so frontend receives "+00:00" suffix
     # and JavaScript correctly interprets it as UTC, not browser-local time
     if resp.meeting_date and resp.meeting_date.tzinfo is None:
@@ -112,41 +116,104 @@ async def list_meetings(
     upcoming: bool = False,
     past: bool = False,
     status_filter: str | None = None,
+    member_id: uuid.UUID | None = None,
+    department_id: uuid.UUID | None = None,
     page: int = 1,
     per_page: int = 50,
     member: TeamMember = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     """List meetings with optional filters."""
-    if upcoming:
-        meetings = await meeting_service.get_upcoming_meetings(session, limit=per_page)
-    elif past:
-        meetings = await meeting_service.get_past_meetings(session, limit=per_page)
-    elif status_filter:
-        from sqlalchemy import select
-        from app.db.models import Meeting
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+    from sqlalchemy.dialects.postgresql import INTERVAL
+    from sqlalchemy import func, or_, and_, cast
+    from app.db.models import Meeting, MeetingParticipant
 
-        stmt = (
-            select(Meeting)
-            .where(Meeting.status == status_filter)
-            .order_by(Meeting.meeting_date.desc().nullslast())
-            .limit(per_page)
-            .offset((page - 1) * per_page)
-        )
-        result = await session.execute(stmt)
-        meetings = list(result.scalars().all())
+    # Participant filtering requires inline query (can't use repo methods)
+    has_participant_filter = member_id is not None or department_id is not None
+
+    if not has_participant_filter:
+        # Use repo methods (already have selectinload)
+        if upcoming:
+            meetings = await meeting_service.get_upcoming_meetings(session, limit=per_page)
+        elif past:
+            meetings = await meeting_service.get_past_meetings(session, limit=per_page)
+        elif status_filter:
+            stmt = (
+                select(Meeting)
+                .options(selectinload(Meeting.participants))
+                .where(Meeting.status == status_filter)
+                .order_by(Meeting.meeting_date.desc().nullslast())
+                .limit(per_page)
+                .offset((page - 1) * per_page)
+            )
+            result = await session.execute(stmt)
+            meetings = list(result.scalars().all())
+        else:
+            stmt = (
+                select(Meeting)
+                .options(selectinload(Meeting.participants))
+                .order_by(Meeting.meeting_date.desc().nullslast())
+                .limit(per_page)
+                .offset((page - 1) * per_page)
+            )
+            result = await session.execute(stmt)
+            meetings = list(result.scalars().all())
     else:
-        from sqlalchemy import select
-        from app.db.models import Meeting
-
-        stmt = (
-            select(Meeting)
-            .order_by(Meeting.meeting_date.desc().nullslast())
-            .limit(per_page)
-            .offset((page - 1) * per_page)
+        # Build base query with time-based filters
+        now_utc_naive = datetime.utcnow()
+        end_time = Meeting.meeting_date + cast(
+            func.concat(Meeting.duration_minutes, ' minutes'), INTERVAL
         )
+
+        stmt = select(Meeting).options(selectinload(Meeting.participants))
+
+        if upcoming:
+            stmt = stmt.where(
+                Meeting.status == "scheduled",
+                Meeting.meeting_date.is_not(None),
+                end_time > now_utc_naive,
+            ).order_by(Meeting.meeting_date.asc())
+        elif past:
+            stmt = stmt.where(
+                or_(
+                    Meeting.status.in_(["completed", "cancelled"]),
+                    and_(
+                        Meeting.status == "scheduled",
+                        Meeting.meeting_date.is_not(None),
+                        end_time <= now_utc_naive,
+                    ),
+                )
+            ).order_by(Meeting.meeting_date.desc().nullslast())
+        elif status_filter:
+            stmt = stmt.where(Meeting.status == status_filter).order_by(
+                Meeting.meeting_date.desc().nullslast()
+            )
+        else:
+            stmt = stmt.order_by(Meeting.meeting_date.desc().nullslast())
+
+        # Apply participant filters
+        if member_id is not None:
+            stmt = (
+                stmt.join(MeetingParticipant, Meeting.id == MeetingParticipant.meeting_id)
+                .where(MeetingParticipant.member_id == member_id)
+            )
+
+        if department_id is not None:
+            # If member_id already joined MeetingParticipant, reuse; otherwise join
+            if member_id is None:
+                stmt = stmt.join(
+                    MeetingParticipant, Meeting.id == MeetingParticipant.meeting_id
+                )
+            stmt = stmt.join(
+                TeamMember, MeetingParticipant.member_id == TeamMember.id
+            ).where(TeamMember.department_id == department_id)
+
+        stmt = stmt.distinct().limit(per_page).offset((page - 1) * per_page)
         result = await session.execute(stmt)
-        meetings = list(result.scalars().all())
+        meetings = list(result.scalars().unique().all())
+
     return [_meeting_response(m) for m in meetings]
 
 
@@ -220,8 +287,11 @@ async def create_meeting(
         creator=member,
         zoom_data=zoom_data,
         duration_minutes=data.duration_minutes,
+        participant_ids=data.participant_ids,
     )
     await session.commit()
+    # Re-fetch with participants loaded
+    meeting = await meeting_service.get_meeting_by_id(session, meeting.id)
     return _meeting_response(meeting)
 
 
@@ -242,6 +312,18 @@ async def update_meeting(
     if not fields:
         return _meeting_response(meeting)
 
+    # Handle participant_ids separately before updating other fields
+    if "participant_ids" in fields:
+        participant_ids = fields.pop("participant_ids")
+        from sqlalchemy import delete as sa_delete
+        from app.db.models import MeetingParticipant
+        await session.execute(
+            sa_delete(MeetingParticipant).where(MeetingParticipant.meeting_id == meeting_id)
+        )
+        for pid in participant_ids:
+            session.add(MeetingParticipant(meeting_id=meeting_id, member_id=pid))
+        await session.flush()
+
     # If changing date and Zoom meeting exists, update Zoom
     zoom_svc = _get_zoom_service(request)
     if "meeting_date" in fields and meeting.zoom_meeting_id and zoom_svc:
@@ -255,8 +337,11 @@ async def update_meeting(
             import logging
             logging.getLogger(__name__).warning(f"Zoom update failed: {e}")
 
-    updated = await meeting_service.update_meeting(session, meeting_id, **fields)
+    if fields:
+        await meeting_service.update_meeting(session, meeting_id, **fields)
     await session.commit()
+    # Re-fetch with participants loaded
+    updated = await meeting_service.get_meeting_by_id(session, meeting_id)
     return _meeting_response(updated)
 
 
@@ -302,6 +387,8 @@ async def add_transcript(
     if not meeting:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
     await session.commit()
+    # Re-fetch with participants loaded
+    meeting = await meeting_service.get_meeting_by_id(session, meeting_id)
     return _meeting_response(meeting)
 
 
@@ -384,7 +471,8 @@ async def apply_summary(
             session, meeting, member, len(tasks)
         )
         await session.commit()
-
+        # Re-fetch with participants loaded
+        meeting = await meeting_service.get_meeting_by_id(session, meeting_id)
         return MeetingWithTasksResponse(
             meeting=_meeting_response(meeting),
             tasks_created=len(tasks),

@@ -202,10 +202,12 @@ class ApiClient {
 
   // ==================== Meetings ====================
 
-  async getMeetings(params?: { upcoming?: boolean; past?: boolean }): Promise<Meeting[]> {
+  async getMeetings(params?: { upcoming?: boolean; past?: boolean; member_id?: string; department_id?: string }): Promise<Meeting[]> {
     const searchParams = new URLSearchParams();
     if (params?.upcoming) searchParams.set("upcoming", "true");
     if (params?.past) searchParams.set("past", "true");
+    if (params?.member_id) searchParams.set("member_id", params.member_id);
+    if (params?.department_id) searchParams.set("department_id", params.department_id);
     const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
     return this.request<Meeting[]>(`/api/meetings${query}`);
   }
@@ -218,14 +220,14 @@ class ApiClient {
     return this.request<Task[]>(`/api/meetings/${id}/tasks`);
   }
 
-  async createMeetingManual(data: { title: string; meeting_date: string; zoom_enabled?: boolean; duration_minutes?: number }): Promise<Meeting> {
+  async createMeetingManual(data: { title: string; meeting_date: string; zoom_enabled?: boolean; duration_minutes?: number; participant_ids?: string[] }): Promise<Meeting> {
     return this.request<Meeting>("/api/meetings", {
       method: "POST",
       body: JSON.stringify(data),
     });
   }
 
-  async updateMeeting(id: string, data: Partial<Meeting>): Promise<Meeting> {
+  async updateMeeting(id: string, data: Partial<Meeting> & { participant_ids?: string[] }): Promise<Meeting> {
     return this.request<Meeting>(`/api/meetings/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),

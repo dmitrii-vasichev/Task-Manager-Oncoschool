@@ -262,6 +262,7 @@ class MeetingRepository:
         )
         stmt = (
             select(Meeting)
+            .options(selectinload(Meeting.participants))
             .where(
                 Meeting.status == "scheduled",
                 Meeting.meeting_date.is_not(None),
@@ -281,6 +282,7 @@ class MeetingRepository:
         )
         stmt = (
             select(Meeting)
+            .options(selectinload(Meeting.participants))
             .where(
                 or_(
                     Meeting.status.in_(["completed", "cancelled"]),

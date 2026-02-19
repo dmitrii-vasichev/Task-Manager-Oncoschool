@@ -57,6 +57,7 @@ class MeetingService:
         creator: TeamMember,
         zoom_data: dict | None = None,
         duration_minutes: int = 60,
+        participant_ids: list[uuid.UUID] | None = None,
     ) -> Meeting:
         """Create a meeting manually (without schedule). Optionally with Zoom."""
         kwargs = dict(
@@ -70,7 +71,9 @@ class MeetingService:
             kwargs["zoom_meeting_id"] = str(zoom_data["id"])
             kwargs["zoom_join_url"] = zoom_data.get("join_url")
 
-        meeting = await self.meeting_repo.create(session, **kwargs)
+        meeting = await self.meeting_repo.create(
+            session, participant_ids=participant_ids or [], **kwargs
+        )
         return meeting
 
     # ── Task creation from parsed data ──

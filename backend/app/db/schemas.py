@@ -200,6 +200,7 @@ class MeetingResponse(BaseModel):
     status: str = "scheduled"
     duration_minutes: int = 60
     effective_status: str = "scheduled"
+    participant_ids: list[uuid.UUID] = []
 
 
 # ── MeetingSchedule ──

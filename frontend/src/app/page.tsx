@@ -403,7 +403,8 @@ export default function DashboardPage() {
   );
   const [selectedDepartmentId, setSelectedDepartmentId] = useState("");
   const [taskScope, setTaskScope] = useState<"my" | "department">("my");
-  const [upcomingMeetings, setUpcomingMeetings] = useState<Meeting[]>([]);
+  const [myUpcomingMeetings, setMyUpcomingMeetings] = useState<Meeting[]>([]);
+  const [departmentUpcomingMeetings, setDepartmentUpcomingMeetings] = useState<Meeting[]>([]);
   const [unassignedTasks, setUnassignedTasks] = useState<Task[]>([]);
   const [staleTasks, setStaleTasks] = useState<Task[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -507,7 +508,10 @@ export default function DashboardPage() {
                 })
                 .catch(catchLog("getDepartmentTasks"))
             : Promise.resolve(emptyTasksPage),
-          api.getMeetings({ upcoming: true }).catch(catchLog("getUpcomingMeetings")),
+          api.getMeetings({ upcoming: true, member_id: userId }).catch(catchLog("getMyUpcomingMeetings")),
+          selectedDepartmentParam
+            ? api.getMeetings({ upcoming: true, department_id: selectedDepartmentParam }).catch(catchLog("getDeptUpcomingMeetings"))
+            : Promise.resolve([]),
           api.getTeam().catch(catchLog("getTeam")),
           isModerator
             ? api
@@ -535,10 +539,11 @@ export default function DashboardPage() {
         const meetingData = results[1] as MeetingAnalytics | null;
         const myTasksData = results[2] as { items: Task[] } | null;
         const departmentTasksData = results[3] as { items: Task[] } | null;
-        const upcomingData = results[4] as Meeting[] | null;
-        const teamData = results[5] as TeamMember[] | null;
-        const unassignedData = results[6] as { items: Task[] } | null;
-        const staleData = results[7] as { items: Task[] } | null;
+        const myMeetingsData = results[4] as Meeting[] | null;
+        const deptMeetingsData = results[5] as Meeting[] | null;
+        const teamData = results[6] as TeamMember[] | null;
+        const unassignedData = results[7] as { items: Task[] } | null;
+        const staleData = results[8] as { items: Task[] } | null;
 
         const hasError = results.some((r) => r === null);
 
@@ -565,7 +570,8 @@ export default function DashboardPage() {
         }
 
         // Upcoming meetings (top 3)
-        setUpcomingMeetings(upcomingData ? upcomingData.slice(0, 3) : []);
+        setMyUpcomingMeetings(myMeetingsData ? myMeetingsData.slice(0, 3) : []);
+        setDepartmentUpcomingMeetings(deptMeetingsData ? deptMeetingsData.slice(0, 3) : []);
 
         // Moderator data
         if (isModerator) {
@@ -611,6 +617,8 @@ export default function DashboardPage() {
   const scopedTasks = currentScope === "department" ? departmentTasks : myTasks;
   const scopedOverdueTasks =
     currentScope === "department" ? departmentOverdueTasks : myOverdueTasks;
+
+  const scopedMeetings = currentScope === "department" ? departmentUpcomingMeetings : myUpcomingMeetings;
 
   const taskListTitle = currentScope === "department" ? "Задачи отдела" : "Мои задачи";
   const overdueListTitle =
@@ -829,19 +837,26 @@ export default function DashboardPage() {
       )}
 
       {/* ═══════════ Upcoming Meetings ═══════════ */}
-      {upcomingMeetings.length > 0 && (
-        <section className="animate-fade-in-up stagger-4">
-          <div className="rounded-2xl border border-border/60 bg-card p-5">
-            <SectionHeader
-              title="Предстоящие встречи"
-              icon={Video}
-              iconColor={ACCENT_BLUE}
-              linkHref="/meetings"
-              linkLabel="Все встречи"
-              badges={meetingBadges}
+      <section className="animate-fade-in-up stagger-4">
+        <div className="rounded-2xl border border-border/60 bg-card p-5">
+          <SectionHeader
+            title={currentScope === "department" ? "Встречи отдела" : "Мои встречи"}
+            icon={Video}
+            iconColor={ACCENT_BLUE}
+            linkHref="/meetings"
+            linkLabel="Все встречи"
+            badges={meetingBadges}
+          />
+          {scopedMeetings.length === 0 ? (
+            <EmptyState
+              variant="meetings"
+              title={currentScope === "department" ? "В отделе нет предстоящих встреч" : "У вас нет предстоящих встреч"}
+              description={currentScope === "department" ? "По выбранному отделу нет запланированных встреч." : "Вы пока не являетесь участником ни одной предстоящей встречи."}
+              className="py-6"
             />
+          ) : (
             <div className="grid gap-3 md:grid-cols-3">
-              {upcomingMeetings.map((meeting, i) => (
+              {scopedMeetings.map((meeting, i) => (
                 <UpcomingMeetingCard
                   key={meeting.id}
                   meeting={meeting}
@@ -849,9 +864,9 @@ export default function DashboardPage() {
                 />
               ))}
             </div>
-          </div>
-        </section>
-      )}
+          )}
+        </div>
+      </section>
 
       {/* ═══════════ Upcoming Birthdays ═══════════ */}
       {teamMembers.length > 0 && (

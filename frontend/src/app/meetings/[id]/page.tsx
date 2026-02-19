@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -15,13 +15,16 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/shared/Toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { useTeam } from "@/hooks/useTeam";
+import { useDepartments } from "@/hooks/useDepartments";
 import { PermissionService } from "@/lib/permissions";
 import { api } from "@/lib/api";
-import type { Meeting, Task, MeetingStatus } from "@/lib/types";
+import type { Meeting, Task, MeetingStatus, TeamMember } from "@/lib/types";
 
 import { MeetingHeader } from "@/components/meetings/MeetingHeader";
 import { ZoomBlock } from "@/components/meetings/ZoomBlock";
 import { ParticipantsBlock } from "@/components/meetings/ParticipantsBlock";
+import { ParticipantsPickerDialog } from "@/components/meetings/ParticipantsPickerDialog";
 import { TranscriptTab } from "@/components/meetings/TranscriptTab";
 import { SummaryTab } from "@/components/meetings/SummaryTab";
 import { MeetingTasksTab } from "@/components/meetings/MeetingTasksTab";
@@ -38,11 +41,26 @@ export default function MeetingDetailPage() {
 
   const isModerator = user ? PermissionService.isModerator(user) : false;
   const { setPageTitle } = usePageTitle();
+  const { members } = useTeam();
+  const { departments } = useDepartments();
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>("summary");
+  const [participantPickerOpen, setParticipantPickerOpen] = useState(false);
+
+  const membersById = useMemo(
+    () => new Map(members.map((m) => [m.id, m])),
+    [members]
+  );
+
+  const resolvedParticipants = useMemo(() => {
+    if (!meeting?.participant_ids?.length) return [];
+    return meeting.participant_ids
+      .map((id) => membersById.get(id))
+      .filter((m): m is TeamMember => !!m);
+  }, [meeting?.participant_ids, membersById]);
 
   const fetchData = useCallback(async () => {
     try {
@@ -103,6 +121,17 @@ export default function MeetingDetailPage() {
 
   const handleMeetingUpdate = (updated: Meeting) => {
     setMeeting(updated);
+  };
+
+  const handleUpdateParticipants = async (ids: string[]) => {
+    if (!meeting) return;
+    try {
+      const updated = await api.updateMeeting(meeting.id, { participant_ids: ids });
+      setMeeting(updated);
+      toastSuccess("Участники обновлены");
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Ошибка обновления");
+    }
   };
 
   const handleDelete = async () => {
@@ -176,8 +205,24 @@ export default function MeetingDetailPage() {
       {/* Zoom + Participants row */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in-up stagger-2">
         <ZoomBlock meeting={meeting} isModerator={isModerator} />
-        <ParticipantsBlock participants={[]} />
+        <ParticipantsBlock
+          participants={resolvedParticipants}
+          isModerator={isModerator}
+          onEdit={() => setParticipantPickerOpen(true)}
+        />
       </div>
+
+      {/* Participants picker dialog (moderator only) */}
+      {isModerator && (
+        <ParticipantsPickerDialog
+          open={participantPickerOpen}
+          onOpenChange={setParticipantPickerOpen}
+          members={members}
+          departments={departments}
+          selectedIds={meeting.participant_ids ?? []}
+          onApply={handleUpdateParticipants}
+        />
+      )}
 
       {/* Custom tabs */}
       <div className="animate-fade-in-up stagger-3">
