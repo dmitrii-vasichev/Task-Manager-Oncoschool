@@ -217,7 +217,12 @@ class TaskService:
         """Delete task. Moderator only."""
         if not PermissionService.can_delete_task(member):
             raise PermissionError("Только модератор может удалять задачи")
-        return await self.task_repo.delete(session, task.id)
+        deleted = await self.task_repo.delete(session, task.id)
+        if deleted:
+            await self.in_app_notifications.delete_task_notifications(
+                session, task.short_id
+            )
+        return deleted
 
     async def add_task_update(
         self,

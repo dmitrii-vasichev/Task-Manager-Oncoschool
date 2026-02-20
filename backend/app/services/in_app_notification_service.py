@@ -40,12 +40,13 @@ class InAppNotificationService:
         if assignee.id == assigned_by.id:
             return
 
+        task_title = self._task_title(task)
         await self.repo.create(
             session,
             recipient_id=assignee.id,
             actor_id=assigned_by.id,
             event_type="task_assigned",
-            title=f"Вам назначили задачу #{task.short_id}",
+            title=f"Вам назначили задачу «{task_title}»",
             body=task.title,
             priority="high",
             action_url=f"/tasks/{task.short_id}",
@@ -60,6 +61,7 @@ class InAppNotificationService:
         old_status: str,
         new_status: str,
     ) -> None:
+        task_title = self._task_title(task)
         if task.assignee_id and task.assignee_id != changed_by.id:
             assignee = task.assignee or await self.member_repo.get_by_id(
                 session, task.assignee_id
@@ -70,7 +72,7 @@ class InAppNotificationService:
                     recipient_id=assignee.id,
                     actor_id=changed_by.id,
                     event_type="task_status_changed_by_other",
-                    title=f"Статус задачи #{task.short_id} изменён",
+                    title=f"Статус задачи «{task_title}» изменён",
                     body=f"{STATUS_LABELS.get(old_status, old_status)} → {STATUS_LABELS.get(new_status, new_status)}",
                     priority="normal",
                     action_url=f"/tasks/{task.short_id}",
@@ -87,7 +89,7 @@ class InAppNotificationService:
                     recipient_id=moderator.id,
                     actor_id=changed_by.id,
                     event_type="task_review_requested",
-                    title=f"Задача #{task.short_id} переведена в ревью",
+                    title=f"Задача «{task_title}» переведена в ревью",
                     body=task.title,
                     priority="high",
                     action_url=f"/tasks/{task.short_id}",
@@ -114,6 +116,7 @@ class InAppNotificationService:
         if not recipients:
             return
 
+        task_title = self._task_title(task)
         body = self._truncate(task_update.content)
         for recipient_id in recipients:
             await self.repo.create(
@@ -121,7 +124,7 @@ class InAppNotificationService:
                 recipient_id=recipient_id,
                 actor_id=added_by.id,
                 event_type="task_blocker_added",
-                title=f"Блокер в задаче #{task.short_id}",
+                title=f"Блокер в задаче «{task_title}»",
                 body=body,
                 priority="high",
                 action_url=f"/tasks/{task.short_id}",
@@ -138,6 +141,7 @@ class InAppNotificationService:
             return
 
         moderators = await self._get_active_moderators(session)
+        task_title = self._task_title(task)
         for moderator in moderators:
             if moderator.id == created_by.id:
                 continue
@@ -146,7 +150,7 @@ class InAppNotificationService:
                 recipient_id=moderator.id,
                 actor_id=created_by.id,
                 event_type="task_created_unassigned",
-                title=f"Задача #{task.short_id} без исполнителя",
+                title=f"Задача «{task_title}» без исполнителя",
                 body=task.title,
                 priority="high",
                 action_url=f"/tasks/{task.short_id}",
@@ -198,6 +202,7 @@ class InAppNotificationService:
             assignee = task.assignee
             if not assignee or not assignee.is_active or not task.deadline:
                 continue
+            task_title = self._task_title(task)
 
             if task.deadline == tomorrow:
                 await self.repo.create_if_not_exists(
@@ -206,7 +211,7 @@ class InAppNotificationService:
                     dedupe_key=f"task_deadline_tomorrow:{task.id}:{tomorrow.isoformat()}",
                     actor_id=None,
                     event_type="task_deadline_tomorrow",
-                    title=f"Дедлайн завтра по задаче #{task.short_id}",
+                    title=f"Дедлайн завтра по задаче «{task_title}»",
                     body=task.title,
                     priority="normal",
                     action_url=f"/tasks/{task.short_id}",
@@ -219,7 +224,7 @@ class InAppNotificationService:
                     dedupe_key=f"task_deadline_today:{task.id}:{today.isoformat()}",
                     actor_id=None,
                     event_type="task_deadline_today",
-                    title=f"Дедлайн сегодня по задаче #{task.short_id}",
+                    title=f"Дедлайн сегодня по задаче «{task_title}»",
                     body=task.title,
                     priority="high",
                     action_url=f"/tasks/{task.short_id}",
@@ -232,12 +237,17 @@ class InAppNotificationService:
                     dedupe_key=f"task_overdue_started:{task.id}",
                     actor_id=None,
                     event_type="task_overdue_started",
-                    title=f"Задача #{task.short_id} стала просроченной",
+                    title=f"Задача «{task_title}» стала просроченной",
                     body=task.title,
                     priority="high",
                     action_url=f"/tasks/{task.short_id}",
                     task_short_id=task.short_id,
                 )
+
+    async def delete_task_notifications(
+        self, session: AsyncSession, task_short_id: int
+    ) -> int:
+        return await self.repo.delete_by_task_short_id(session, task_short_id)
 
     async def _get_active_moderators(self, session: AsyncSession) -> list[TeamMember]:
         members = await self.member_repo.get_all_active(session)
@@ -251,3 +261,7 @@ class InAppNotificationService:
         if len(cleaned) <= max_len:
             return cleaned
         return cleaned[: max_len - 1] + "…"
+
+    def _task_title(self, task: Task, max_len: int = 110) -> str:
+        raw = (task.title or "Без названия").strip()
+        return self._truncate(raw, max_len=max_len) or "Без названия"

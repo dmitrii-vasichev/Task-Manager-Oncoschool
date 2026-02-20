@@ -498,6 +498,18 @@ class NotificationSubscriptionRepository:
 
 
 class InAppNotificationRepository:
+    @staticmethod
+    def _task_reference_is_valid():
+        task_exists = (
+            select(Task.id)
+            .where(Task.short_id == InAppNotification.task_short_id)
+            .exists()
+        )
+        return or_(
+            InAppNotification.task_short_id.is_(None),
+            task_exists,
+        )
+
     async def list_for_member(
         self,
         session: AsyncSession,
@@ -509,7 +521,10 @@ class InAppNotificationRepository:
         stmt = (
             select(InAppNotification)
             .options(selectinload(InAppNotification.actor))
-            .where(InAppNotification.recipient_id == member_id)
+            .where(
+                InAppNotification.recipient_id == member_id,
+                self._task_reference_is_valid(),
+            )
             .order_by(InAppNotification.created_at.desc())
             .limit(limit)
         )
@@ -527,6 +542,7 @@ class InAppNotificationRepository:
             .where(
                 InAppNotification.recipient_id == member_id,
                 InAppNotification.is_read.is_(False),
+                self._task_reference_is_valid(),
             )
         )
         result = await session.execute(stmt)
@@ -588,6 +604,16 @@ class InAppNotificationRepository:
                 InAppNotification.is_read.is_(False),
             )
             .values(is_read=True, read_at=datetime.utcnow())
+        )
+        result = await session.execute(stmt)
+        await session.flush()
+        return int(result.rowcount or 0)
+
+    async def delete_by_task_short_id(
+        self, session: AsyncSession, task_short_id: int
+    ) -> int:
+        stmt = delete(InAppNotification).where(
+            InAppNotification.task_short_id == task_short_id
         )
         result = await session.execute(stmt)
         await session.flush()
