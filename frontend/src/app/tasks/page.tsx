@@ -307,30 +307,36 @@ export default function TasksPage() {
       </div>
 
       {/* Mobile tabs */}
-      <div className="flex gap-1 overflow-x-auto pb-1 lg:hidden" data-no-transition>
-        {COLUMNS.map((status) => (
-          <button
-            key={status}
-            onClick={() => setMobileTab(status)}
-            className={`
-              flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap
-              ${
-                mobileTab === status
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }
-            `}
-          >
-            <span className={`h-2 w-2 rounded-full ${COLUMN_DOT_COLORS[status]}`} />
-            {TASK_STATUS_LABELS[status]}
-            <span className={`
-              text-xs rounded-full px-1.5 min-w-[20px] text-center
-              ${mobileTab === status ? "bg-primary-foreground/20" : "bg-foreground/10"}
-            `}>
-              {tasksByStatus[status].length}
-            </span>
-          </button>
-        ))}
+      <div className="relative lg:hidden">
+        <div
+          className="flex gap-1 overflow-x-auto pb-1 pr-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          data-no-transition
+        >
+          {COLUMNS.map((status) => (
+            <button
+              key={status}
+              onClick={() => setMobileTab(status)}
+              className={`
+                flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap
+                ${
+                  mobileTab === status
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }
+              `}
+            >
+              <span className={`h-2 w-2 rounded-full ${COLUMN_DOT_COLORS[status]}`} />
+              {TASK_STATUS_LABELS[status]}
+              <span className={`
+                text-xs rounded-full px-1.5 min-w-[20px] text-center
+                ${mobileTab === status ? "bg-primary-foreground/20" : "bg-foreground/10"}
+              `}>
+                {tasksByStatus[status].length}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-background to-transparent" />
       </div>
 
       {/* Mobile: single column — no DnD */}

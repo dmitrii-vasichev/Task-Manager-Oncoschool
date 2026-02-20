@@ -103,57 +103,63 @@ export default function TeamPage() {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
       {/* Header */}
-      <div className="flex flex-wrap items-center gap-3 animate-fade-in-up stagger-1">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Users className="h-4 w-4 text-primary" />
+      <div className="animate-fade-in-up stagger-1 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Users className="h-4 w-4 text-primary" />
+            </div>
+            <span>
+              <span className="font-heading font-bold text-foreground text-lg">
+                {totalMembers}
+              </span>{" "}
+              участников
+            </span>
           </div>
-          <span>
-            <span className="font-heading font-bold text-foreground text-lg">
-              {totalMembers}
-            </span>{" "}
-            участников
+          <div className="h-4 w-px bg-border/60" />
+          <span className="text-xs text-muted-foreground">
+            Активных: {activeMembers}
+          </span>
+          {inactiveMembers > 0 && (
+            <>
+              <div className="h-4 w-px bg-border/60" />
+              <span className="text-xs text-muted-foreground">
+                Неактивных: {inactiveMembers}
+              </span>
+            </>
+          )}
+          <div className="h-4 w-px bg-border/60" />
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <Building2 className="h-3 w-3" />
+            Отделов: {totalDepts}
           </span>
         </div>
-        <div className="h-4 w-px bg-border/60" />
-        <span className="text-xs text-muted-foreground">
-          Активных: {activeMembers}
-        </span>
-        {inactiveMembers > 0 && (
-          <>
-            <div className="h-4 w-px bg-border/60" />
-            <span className="text-xs text-muted-foreground">
-              Неактивных: {inactiveMembers}
-            </span>
-          </>
-        )}
-        <div className="h-4 w-px bg-border/60" />
-        <span className="text-xs text-muted-foreground flex items-center gap-1">
-          <Building2 className="h-3 w-3" />
-          Отделов: {totalDepts}
-        </span>
 
-        {canAdd && (
-          <Button
-            size="sm"
-            className="rounded-xl gap-1.5 ml-auto"
-            onClick={() => setShowCreateModal(true)}
-          >
-            <UserPlus className="h-3.5 w-3.5" />
-            Добавить
-          </Button>
-        )}
+        {(canAdd || canEdit) && (
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            {canAdd && (
+              <Button
+                size="sm"
+                className="w-full rounded-xl gap-1.5 sm:w-auto"
+                onClick={() => setShowCreateModal(true)}
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Добавить
+              </Button>
+            )}
 
-        {canEdit && (
-          <Button
-            variant="outline"
-            size="sm"
-            className={`rounded-xl gap-1.5 ${!canAdd ? "ml-auto" : ""}`}
-            onClick={() => setShowDeptManager(true)}
-          >
-            <Settings2 className="h-3.5 w-3.5" />
-            Управление отделами
-          </Button>
+            {canEdit && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full rounded-xl gap-1.5 sm:w-auto"
+                onClick={() => setShowDeptManager(true)}
+              >
+                <Settings2 className="h-3.5 w-3.5" />
+                Управление отделами
+              </Button>
+            )}
+          </div>
         )}
       </div>
 

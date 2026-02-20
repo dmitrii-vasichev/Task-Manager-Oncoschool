@@ -140,59 +140,59 @@ export function ScheduleCard({
         </div>
 
         {/* Bottom row: indicators + participants */}
-        <div className="flex items-center gap-2.5 sm:gap-3 mt-2.5 pt-2.5 sm:mt-3 sm:pt-3 border-t border-border/40">
-          {/* Indicators */}
-          <div className="flex items-center gap-2">
-            {schedule.zoom_enabled && (
-              <div className="flex items-center gap-1 text-2xs text-muted-foreground">
-                <Video className="h-3 w-3 text-blue-500" />
-                <span>Zoom</span>
+        <div className="mt-3 border-t border-border/40 pt-3">
+          <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3">
+            {/* Indicators */}
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+              {schedule.zoom_enabled && (
+                <div className="flex items-center gap-1 text-2xs text-muted-foreground">
+                  <Video className="h-3 w-3 text-blue-500" />
+                  <span>Zoom</span>
+                </div>
+              )}
+              {schedule.reminder_enabled && (
+                <div className="flex items-center gap-1 text-2xs text-muted-foreground">
+                  <Bell className="h-3 w-3 text-amber-500" />
+                  <span>за {schedule.reminder_minutes_before} мин</span>
+                </div>
+              )}
+              {schedule.next_occurrence_skip && (
+                <div className="flex items-center gap-1 text-2xs text-amber-600 font-medium">
+                  <SkipForward className="h-3 w-3" />
+                  <span>Следующая отменена</span>
+                </div>
+              )}
+              {!schedule.next_occurrence_skip && schedule.next_occurrence_time_override && (
+                <div className="flex items-center gap-1 text-2xs text-blue-600 font-medium">
+                  <Clock className="h-3 w-3" />
+                  <span>
+                    Перенос на {formatUtcClockAsMoscowWithLocal(schedule.next_occurrence_time_override)}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Participants */}
+            {participants.length > 0 ? (
+              <div className="flex items-center gap-1 sm:ml-auto">
+                <div className="flex -space-x-1.5">
+                  {participants.slice(0, 4).map((p) => (
+                    <UserAvatar key={p.id} name={p.full_name} avatarUrl={p.avatar_url} size="sm" />
+                  ))}
+                </div>
+                {participants.length > 4 && (
+                  <span className="text-2xs text-muted-foreground ml-1">
+                    +{participants.length - 4}
+                  </span>
+                )}
               </div>
-            )}
-            {schedule.reminder_enabled && (
-              <div className="flex items-center gap-1 text-2xs text-muted-foreground">
-                <Bell className="h-3 w-3 text-amber-500" />
-                <span>за {schedule.reminder_minutes_before} мин</span>
-              </div>
-            )}
-            {schedule.next_occurrence_skip && (
-              <div className="flex items-center gap-1 text-2xs text-amber-600 font-medium">
-                <SkipForward className="h-3 w-3" />
-                <span>Следующая отменена</span>
-              </div>
-            )}
-            {!schedule.next_occurrence_skip && schedule.next_occurrence_time_override && (
-              <div className="flex items-center gap-1 text-2xs text-blue-600 font-medium">
-                <Clock className="h-3 w-3" />
-                <span>
-                  Перенос на {formatUtcClockAsMoscowWithLocal(schedule.next_occurrence_time_override)}
-                </span>
+            ) : (
+              <div className="flex items-center gap-1 text-2xs text-muted-foreground/50 sm:ml-auto">
+                <Users className="h-3 w-3" />
+                <span>Нет участников</span>
               </div>
             )}
           </div>
-
-          <div className="flex-1" />
-
-          {/* Participants */}
-          {participants.length > 0 ? (
-            <div className="flex items-center gap-1">
-              <div className="flex -space-x-1.5">
-                {participants.slice(0, 4).map((p) => (
-                  <UserAvatar key={p.id} name={p.full_name} avatarUrl={p.avatar_url} size="sm" />
-                ))}
-              </div>
-              {participants.length > 4 && (
-                <span className="text-2xs text-muted-foreground ml-1">
-                  +{participants.length - 4}
-                </span>
-              )}
-            </div>
-          ) : (
-            <div className="flex items-center gap-1 text-2xs text-muted-foreground/50">
-              <Users className="h-3 w-3" />
-              <span>Нет участников</span>
-            </div>
-          )}
         </div>
       </div>
     </div>
