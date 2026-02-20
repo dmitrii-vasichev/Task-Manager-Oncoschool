@@ -302,6 +302,35 @@ class MeetingRepository:
         result = await session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_upcoming_for_department(
+        self,
+        session: AsyncSession,
+        department_id: uuid.UUID,
+        limit: int = 10,
+    ) -> list[Meeting]:
+        """Return upcoming meetings where at least one participant is from department."""
+        now_utc_naive = datetime.utcnow()
+        end_time = Meeting.meeting_date + cast(
+            func.concat(Meeting.duration_minutes, ' minutes'), INTERVAL
+        )
+        stmt = (
+            select(Meeting)
+            .options(selectinload(Meeting.participants))
+            .join(MeetingParticipant, Meeting.id == MeetingParticipant.meeting_id)
+            .join(TeamMember, MeetingParticipant.member_id == TeamMember.id)
+            .where(
+                Meeting.status == "scheduled",
+                Meeting.meeting_date.is_not(None),
+                end_time > now_utc_naive,
+                TeamMember.department_id == department_id,
+            )
+            .order_by(Meeting.meeting_date.asc())
+            .distinct()
+            .limit(limit)
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().unique().all())
+
     async def get_past(self, session: AsyncSession, limit: int = 20) -> list[Meeting]:
         now_utc_naive = datetime.utcnow()
         # Use end time (start + duration) so in-progress meetings don't appear here

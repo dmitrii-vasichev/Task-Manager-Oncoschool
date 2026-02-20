@@ -12,6 +12,7 @@ from app.bot.filters import IsModeratorFilter
 from app.config import settings
 from app.db.models import Meeting, Task, TaskUpdate, TeamMember
 from app.db.repositories import MeetingRepository, TeamMemberRepository
+from app.services.permission_service import PermissionService
 from app.services.zoom_service import sanitize_zoom_join_url
 
 logger = logging.getLogger(__name__)
@@ -176,17 +177,34 @@ async def cmd_nextmeeting(
     message: Message, member: TeamMember, session_maker: async_sessionmaker
 ) -> None:
     """Show the next upcoming meeting."""
+    is_moderator = PermissionService.is_moderator(member)
+
     async with session_maker() as session:
-        upcoming = await meeting_repo.get_upcoming(session, limit=1)
+        if is_moderator:
+            upcoming = await meeting_repo.get_upcoming(session, limit=1)
+        elif member.department_id:
+            upcoming = await meeting_repo.get_upcoming_for_department(
+                session,
+                department_id=member.department_id,
+                limit=1,
+            )
+        else:
+            upcoming = []
 
     if not upcoming:
-        await message.answer("📋 Нет запланированных встреч.")
+        if is_moderator:
+            await message.answer("📋 Нет запланированных встреч.")
+        else:
+            await message.answer("📋 В вашем отделе нет запланированных встреч.")
         return
 
     m = upcoming[0]
     title = m.title or "Без названия"
 
-    lines = ["<b>📹 Следующая встреча:</b>\n"]
+    if is_moderator:
+        lines = ["<b>📹 Следующая встреча:</b>\n"]
+    else:
+        lines = ["<b>📹 Следующая встреча отдела:</b>\n"]
     lines.append(f"<b>{title}</b>")
 
     if m.meeting_date:
