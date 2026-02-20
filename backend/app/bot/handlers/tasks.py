@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import date
+from html import escape
 
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
@@ -70,6 +71,23 @@ STATUS_EMOJI = {
     "done": "✅",
     "cancelled": "❌",
 }
+
+STATUS_LABELS = {
+    "new": "Новая",
+    "in_progress": "В работе",
+    "review": "Ревью",
+    "done": "Готово",
+    "cancelled": "Отменена",
+}
+
+PRIORITY_LABELS = {
+    "urgent": "Urgent",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+}
+
+TASK_LIST_TITLE_LIMIT = 64
 
 
 STATUS_USAGE_TEXT = (
@@ -299,6 +317,26 @@ def _scope_title(scope: TaskListScope) -> str:
     return "Задачи компании"
 
 
+def _truncate_text(value: str, limit: int) -> str:
+    compact = " ".join((value or "").split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[: max(0, limit - 1)].rstrip()}…"
+
+
+def _format_task_list_item(task) -> str:
+    title = escape(_truncate_text(task.title, TASK_LIST_TITLE_LIMIT) or "Без названия")
+    status_icon = STATUS_EMOJI.get(task.status, "•")
+    status_label = STATUS_LABELS.get(task.status, task.status.replace("_", " ").title())
+    priority_icon = PRIORITY_EMOJI.get(task.priority, "•")
+    priority_label = PRIORITY_LABELS.get(task.priority, task.priority.title())
+    deadline_str = task.deadline.strftime("%d.%m") if task.deadline else "—"
+    return (
+        f"• <b>#{task.short_id}</b> {title}\n"
+        f"  {status_icon} {status_label} · {priority_icon} {priority_label} · 📅 {deadline_str}"
+    )
+
+
 def _format_list_caption(
     scope: TaskListScope,
     member: TeamMember,
@@ -307,7 +345,7 @@ def _format_list_caption(
     page: int,
     total_pages: int,
     total_tasks: int,
-    page_tasks_count: int,
+    page_tasks: list,
 ) -> str:
     filter_label = TASK_FILTER_LABELS.get(task_filter, task_filter.value)
     title = _scope_title(scope)
@@ -323,8 +361,17 @@ def _format_list_caption(
         f"Страница: {page}/{total_pages} · Всего: {total_tasks}",
         "",
     ])
-    if page_tasks_count:
-        lines.append("Выбери задачу из списка ниже:")
+    if page_tasks:
+        lines.append("Список задач на этой странице:")
+        lines.append("")
+        for index, task in enumerate(page_tasks):
+            lines.append(_format_task_list_item(task))
+            if index < len(page_tasks) - 1:
+                lines.append("")
+        lines.extend([
+            "",
+            "Нажми кнопку с номером задачи ниже, чтобы открыть карточку.",
+        ])
     else:
         lines.append("По этому фильтру задач нет.")
     return "\n".join(lines)
@@ -472,7 +519,7 @@ async def _build_task_list_view(
         page=safe_page,
         total_pages=total_pages,
         total_tasks=len(filtered_tasks),
-        page_tasks_count=len(page_tasks),
+        page_tasks=page_tasks,
     )
     keyboard = task_list_keyboard(
         page_tasks,

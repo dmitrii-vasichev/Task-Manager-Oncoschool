@@ -292,16 +292,12 @@ def task_list_keyboard(
 ) -> InlineKeyboardMarkup:
     """Клавиатура списка задач: задачи + фильтры + пагинация."""
     buttons: list[list[InlineKeyboardButton]] = []
+    task_rows: list[InlineKeyboardButton] = []
 
     for task in tasks:
-        title = task.title.strip()
-        short_title = title if len(title) <= 24 else f"{title[:21]}..."
-        deadline = task.deadline.strftime("%d.%m") if task.deadline else "—"
-        line = f"#{task.short_id} · {short_title} · {task.priority} · {deadline}"
-        button_text = line if len(line) <= 64 else f"{line[:61]}..."
-        buttons.append([
+        task_rows.append(
             InlineKeyboardButton(
-                text=button_text,
+                text=f"#{task.short_id}",
                 callback_data=TaskCardCallback(
                     short_id=task.short_id,
                     scope=scope,
@@ -310,7 +306,13 @@ def task_list_keyboard(
                     department_token=department_token,
                 ).pack(),
             )
-        ])
+        )
+        if len(task_rows) == 4:
+            buttons.append(task_rows)
+            task_rows = []
+
+    if task_rows:
+        buttons.append(task_rows)
 
     if department_options:
         buttons.extend(
