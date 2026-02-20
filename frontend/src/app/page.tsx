@@ -433,6 +433,10 @@ export default function DashboardPage() {
   const isModerator = user ? PermissionService.isModerator(user) : false;
   const userId = user?.id || "";
   const userDepartmentId = user?.department_id || "";
+  const userExtraDepartmentIds = useMemo(
+    () => user?.extra_department_ids || [],
+    [user?.extra_department_ids]
+  );
   const userRole = user?.role || "";
 
   const accessibleDepartments = useMemo(
@@ -442,8 +446,9 @@ export default function DashboardPage() {
         userId,
         userRole,
         userDepartmentId: userDepartmentId || null,
+        userExtraDepartmentIds,
       }),
-    [departments, userDepartmentId, userId, userRole]
+    [departments, userDepartmentId, userExtraDepartmentIds, userId, userRole]
   );
   const canSwitchDepartment = accessibleDepartments.length > 1;
 
@@ -462,16 +467,14 @@ export default function DashboardPage() {
     });
   }, [accessibleDepartments, departmentsLoading, userDepartmentId, userId]);
 
-  const selectedDepartment = useMemo(
-    () =>
-      departments.find((department) => department.id === selectedDepartmentId) || null,
-    [departments, selectedDepartmentId]
+  const accessibleDepartmentIds = useMemo(
+    () => new Set(accessibleDepartments.map((department) => department.id)),
+    [accessibleDepartments]
   );
 
-  const isDepartmentHead =
-    Boolean(userId && selectedDepartment && selectedDepartment.head_id === userId);
   const canUseDepartmentView =
-    Boolean(selectedDepartmentId) && (isModerator || isDepartmentHead);
+    Boolean(selectedDepartmentId) &&
+    (isModerator || accessibleDepartmentIds.has(selectedDepartmentId));
 
   useEffect(() => {
     if (!canUseDepartmentView && taskScope === "department") {

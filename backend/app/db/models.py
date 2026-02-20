@@ -14,6 +14,7 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    inspect,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -46,6 +47,11 @@ class Department(Base):
     )
     members: Mapped[list["TeamMember"]] = relationship(
         back_populates="department", foreign_keys="TeamMember.department_id"
+    )
+    extra_member_accesses: Mapped[list["TeamMemberDepartmentAccess"]] = relationship(
+        back_populates="department",
+        foreign_keys="TeamMemberDepartmentAccess.department_id",
+        cascade="all, delete-orphan",
     )
 
 
@@ -103,6 +109,60 @@ class TeamMember(Base):
     )
     reminder_settings: Mapped["ReminderSettings | None"] = relationship(
         back_populates="member", foreign_keys="ReminderSettings.member_id", uselist=False
+    )
+    extra_department_accesses: Mapped[list["TeamMemberDepartmentAccess"]] = relationship(
+        back_populates="member",
+        foreign_keys="TeamMemberDepartmentAccess.member_id",
+        cascade="all, delete-orphan",
+    )
+
+    @property
+    def extra_department_ids(self) -> list[uuid.UUID]:
+        state = inspect(self)
+        if "extra_department_accesses" in state.unloaded:
+            return []
+        now = datetime.utcnow()
+        return [
+            access.department_id
+            for access in self.extra_department_accesses
+            if access.expires_at is None or access.expires_at > now
+        ]
+
+
+class TeamMemberDepartmentAccess(Base):
+    __tablename__ = "team_member_department_access"
+    __table_args__ = (
+        Index(
+            "idx_team_member_department_access_department_id",
+            "department_id",
+        ),
+    )
+
+    member_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team_members.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    department_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("departments.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    granted_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_members.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    member: Mapped["TeamMember"] = relationship(
+        back_populates="extra_department_accesses",
+        foreign_keys=[member_id],
+    )
+    department: Mapped["Department"] = relationship(
+        back_populates="extra_member_accesses",
+        foreign_keys=[department_id],
+    )
+    granted_by: Mapped["TeamMember | None"] = relationship(
+        foreign_keys=[granted_by_id]
     )
 
 

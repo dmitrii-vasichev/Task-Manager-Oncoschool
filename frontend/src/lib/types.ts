@@ -63,6 +63,7 @@ export interface TeamMember {
   full_name: string;
   name_variants: string[];
   department_id: string | null;
+  extra_department_ids: string[];
   position: string | null;
   email: string | null;
   birthday: string | null;
@@ -396,6 +397,7 @@ export interface TeamMemberUpdateRequest {
   role?: MemberRole;
   is_active?: boolean;
   department_id?: string | null;
+  extra_department_ids?: string[];
   position?: string | null;
   email?: string | null;
   birthday?: string | null;

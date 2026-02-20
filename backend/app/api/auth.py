@@ -420,6 +420,7 @@ async def get_me(member: TeamMember = Depends(get_current_user)):
         "is_active": member.is_active,
         "position": member.position,
         "department_id": str(member.department_id) if member.department_id else None,
+        "extra_department_ids": [str(dept_id) for dept_id in member.extra_department_ids],
         "avatar_url": member.avatar_url,
         "email": member.email,
         "birthday": member.birthday.isoformat() if member.birthday else None,

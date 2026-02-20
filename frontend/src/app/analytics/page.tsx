@@ -253,6 +253,10 @@ export default function AnalyticsPage() {
   const userId = user?.id || "";
   const userRole = user?.role || "";
   const userDepartmentId = user?.department_id || "";
+  const userExtraDepartmentIds = useMemo(
+    () => user?.extra_department_ids || [],
+    [user?.extra_department_ids]
+  );
 
   const accessibleDepartments = useMemo(
     () =>
@@ -261,8 +265,9 @@ export default function AnalyticsPage() {
         userId,
         userRole,
         userDepartmentId: userDepartmentId || null,
+        userExtraDepartmentIds,
       }),
-    [departments, userId, userRole, userDepartmentId]
+    [departments, userExtraDepartmentIds, userId, userRole, userDepartmentId]
   );
 
   const selectedDepartment = useMemo(

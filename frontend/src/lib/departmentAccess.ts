@@ -5,6 +5,7 @@ interface DepartmentAccessContext {
   userId: string;
   userRole: MemberRole | "";
   userDepartmentId: string | null;
+  userExtraDepartmentIds?: string[];
 }
 
 export function getAccessibleDepartments({
@@ -12,6 +13,7 @@ export function getAccessibleDepartments({
   userId,
   userRole,
   userDepartmentId,
+  userExtraDepartmentIds = [],
 }: DepartmentAccessContext): Department[] {
   if (!userId) {
     return [];
@@ -24,6 +26,11 @@ export function getAccessibleDepartments({
   const allowedDepartmentIds = new Set<string>();
   if (userDepartmentId) {
     allowedDepartmentIds.add(userDepartmentId);
+  }
+  for (const departmentId of userExtraDepartmentIds) {
+    if (departmentId) {
+      allowedDepartmentIds.add(departmentId);
+    }
   }
 
   for (const department of departments) {

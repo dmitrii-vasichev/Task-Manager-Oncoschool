@@ -38,6 +38,9 @@ export function MemberCreateModal({ open, departments, currentUser, onCreated, o
   const [telegramId, setTelegramId] = useState("");
   const [telegramUsername, setTelegramUsername] = useState("");
   const [departmentId, setDepartmentId] = useState<string>("__none__");
+  const [extraDepartmentIds, setExtraDepartmentIds] = useState<string[]>([]);
+  const [newExtraDepartmentId, setNewExtraDepartmentId] =
+    useState<string>("__none__");
   const [position, setPosition] = useState("");
   const [email, setEmail] = useState("");
   const [birthday, setBirthday] = useState("");
@@ -54,6 +57,8 @@ export function MemberCreateModal({ open, departments, currentUser, onCreated, o
     setTelegramId("");
     setTelegramUsername("");
     setDepartmentId("__none__");
+    setExtraDepartmentIds([]);
+    setNewExtraDepartmentId("__none__");
     setPosition("");
     setEmail("");
     setBirthday("");
@@ -79,6 +84,7 @@ export function MemberCreateModal({ open, departments, currentUser, onCreated, o
         full_name: fullName.trim(),
         role,
         department_id: departmentId === "__none__" ? null : departmentId,
+        extra_department_ids: extraDepartmentIds,
         name_variants: nameVariants,
       };
       if (telegramId.trim()) {
@@ -119,6 +125,39 @@ export function MemberCreateModal({ open, departments, currentUser, onCreated, o
   const removeVariant = (index: number) => {
     setNameVariants((prev) => prev.filter((_, i) => i !== index));
   };
+
+  const handleDepartmentChange = (value: string) => {
+    setDepartmentId(value);
+    if (value !== "__none__") {
+      setExtraDepartmentIds((prev) => prev.filter((id) => id !== value));
+      if (newExtraDepartmentId === value) {
+        setNewExtraDepartmentId("__none__");
+      }
+    }
+  };
+
+  const addExtraDepartment = () => {
+    if (newExtraDepartmentId === "__none__") return;
+    if (newExtraDepartmentId === departmentId) return;
+    if (extraDepartmentIds.includes(newExtraDepartmentId)) return;
+    setExtraDepartmentIds((prev) => [...prev, newExtraDepartmentId]);
+    setNewExtraDepartmentId("__none__");
+  };
+
+  const removeExtraDepartment = (departmentIdToRemove: string) => {
+    setExtraDepartmentIds((prev) =>
+      prev.filter((deptId) => deptId !== departmentIdToRemove)
+    );
+  };
+
+  const selectedExtraDepartments = extraDepartmentIds
+    .map((id) => departments.find((dept) => dept.id === id))
+    .filter((dept): dept is Department => Boolean(dept));
+
+  const availableExtraDepartments = departments.filter(
+    (dept) =>
+      dept.id !== departmentId && !extraDepartmentIds.includes(dept.id)
+  );
 
   // Available roles based on current user
   const availableRoles: { value: MemberRole; label: string }[] = isAdmin
@@ -179,7 +218,7 @@ export function MemberCreateModal({ open, departments, currentUser, onCreated, o
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Отдел
               </Label>
-              <Select value={departmentId} onValueChange={setDepartmentId}>
+              <Select value={departmentId} onValueChange={handleDepartmentChange}>
                 <SelectTrigger className="mt-1.5 rounded-xl">
                   <SelectValue />
                 </SelectTrigger>
@@ -198,6 +237,66 @@ export function MemberCreateModal({ open, departments, currentUser, onCreated, o
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          {/* Extra department access */}
+          <div>
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Дополнительные отделы доступа
+            </Label>
+            <div className="flex gap-2 mt-1.5">
+              <Select
+                value={newExtraDepartmentId}
+                onValueChange={setNewExtraDepartmentId}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Выберите отдел" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Не выбрано</SelectItem>
+                  {availableExtraDepartments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="h-2 w-2 rounded-full shrink-0"
+                          style={{ backgroundColor: dept.color || "#6B7280" }}
+                        />
+                        {dept.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="shrink-0 rounded-xl"
+                onClick={addExtraDepartment}
+                disabled={newExtraDepartmentId === "__none__"}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-2 min-h-[32px]">
+              {selectedExtraDepartments.length > 0 ? (
+                selectedExtraDepartments.map((dept) => (
+                  <Badge
+                    key={dept.id}
+                    variant="secondary"
+                    className="cursor-pointer rounded-lg gap-1 hover:bg-destructive/10 hover:text-destructive group/chip"
+                    onClick={() => removeExtraDepartment(dept.id)}
+                  >
+                    {dept.name}
+                    <X className="h-3 w-3 opacity-50 group-hover/chip:opacity-100" />
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-xs text-muted-foreground/60 self-center">
+                  Нет дополнительных отделов
+                </span>
+              )}
             </div>
           </div>
 

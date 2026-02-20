@@ -50,6 +50,10 @@ export default function TasksPage() {
   const defaultScopeUserIdRef = useRef<string | null>(null);
   const userId = user?.id || "";
   const userDepartmentId = user?.department_id || "";
+  const userExtraDepartmentIds = useMemo(
+    () => user?.extra_department_ids || [],
+    [user?.extra_department_ids]
+  );
   const userRole = user?.role || "";
 
   // Native DnD state
@@ -63,8 +67,9 @@ export default function TasksPage() {
         userId,
         userRole,
         userDepartmentId: userDepartmentId || null,
+        userExtraDepartmentIds,
       }),
-    [departments, userDepartmentId, userId, userRole]
+    [departments, userDepartmentId, userExtraDepartmentIds, userId, userRole]
   );
   const accessibleDepartmentIds = useMemo(
     () => new Set(accessibleDepartments.map((department) => department.id)),
@@ -112,13 +117,15 @@ export default function TasksPage() {
   useEffect(() => {
     if (!user?.id) return;
     if (defaultScopeUserIdRef.current === user.id) return;
+    const defaultDepartmentId =
+      user.department_id || user.extra_department_ids?.[0] || "";
     setFilters(
-      user.department_id
-        ? { ...EMPTY_FILTERS, department_id: user.department_id }
+      defaultDepartmentId
+        ? { ...EMPTY_FILTERS, department_id: defaultDepartmentId }
         : { ...EMPTY_FILTERS, assignee_id: user.id }
     );
     defaultScopeUserIdRef.current = user.id;
-  }, [user?.department_id, user?.id]);
+  }, [user?.department_id, user?.extra_department_ids, user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;

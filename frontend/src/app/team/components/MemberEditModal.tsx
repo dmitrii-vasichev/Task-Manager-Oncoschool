@@ -65,6 +65,9 @@ export function MemberEditModal({
     useState<MemberDeactivationStrategy>("unassign");
   const [reassignToMemberId, setReassignToMemberId] = useState("__none__");
   const [departmentId, setDepartmentId] = useState<string>("__none__");
+  const [extraDepartmentIds, setExtraDepartmentIds] = useState<string[]>([]);
+  const [newExtraDepartmentId, setNewExtraDepartmentId] =
+    useState<string>("__none__");
   const [telegramId, setTelegramId] = useState("");
   const [telegramUsername, setTelegramUsername] = useState("");
   const [position, setPosition] = useState("");
@@ -92,6 +95,12 @@ export function MemberEditModal({
       setRole(member.role);
       setIsActive(member.is_active);
       setDepartmentId(member.department_id || "__none__");
+      setExtraDepartmentIds(
+        (member.extra_department_ids || []).filter(
+          (id) => id !== member.department_id
+        )
+      );
+      setNewExtraDepartmentId("__none__");
       setTelegramId(member.telegram_id != null ? String(member.telegram_id) : "");
       setTelegramUsername(member.telegram_username || "");
       setPosition(member.position || "");
@@ -118,6 +127,7 @@ export function MemberEditModal({
       full_name: fullName,
       is_active: isActive,
       department_id: departmentId === "__none__" ? null : departmentId,
+      extra_department_ids: extraDepartmentIds,
       position: position || null,
       email: email || null,
       birthday: birthday || null,
@@ -222,6 +232,30 @@ export function MemberEditModal({
     setNameVariants((prev) => prev.filter((_, i) => i !== index));
   };
 
+  const handleDepartmentChange = (value: string) => {
+    setDepartmentId(value);
+    if (value !== "__none__") {
+      setExtraDepartmentIds((prev) => prev.filter((id) => id !== value));
+      if (newExtraDepartmentId === value) {
+        setNewExtraDepartmentId("__none__");
+      }
+    }
+  };
+
+  const addExtraDepartment = () => {
+    if (newExtraDepartmentId === "__none__") return;
+    if (newExtraDepartmentId === departmentId) return;
+    if (extraDepartmentIds.includes(newExtraDepartmentId)) return;
+    setExtraDepartmentIds((prev) => [...prev, newExtraDepartmentId]);
+    setNewExtraDepartmentId("__none__");
+  };
+
+  const removeExtraDepartment = (departmentIdToRemove: string) => {
+    setExtraDepartmentIds((prev) =>
+      prev.filter((deptId) => deptId !== departmentIdToRemove)
+    );
+  };
+
   if (!member) return null;
 
   const isDeactivationFlow = member.is_active && !isActive;
@@ -241,6 +275,13 @@ export function MemberEditModal({
     (previewTasksCount ?? 0) > 0
       ? `После деактивации эти задачи ${deactivationResultLabel}.`
       : "Незавершённых задач нет, перенос не потребуется.";
+  const selectedExtraDepartments = extraDepartmentIds
+    .map((id) => departments.find((dept) => dept.id === id))
+    .filter((dept): dept is Department => Boolean(dept));
+  const availableExtraDepartments = departments.filter(
+    (dept) =>
+      dept.id !== departmentId && !extraDepartmentIds.includes(dept.id)
+  );
 
   return (
     <Dialog open={!!member} onOpenChange={(open) => !open && onClose()}>
@@ -392,7 +433,7 @@ export function MemberEditModal({
             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Отдел
             </Label>
-            <Select value={departmentId} onValueChange={setDepartmentId}>
+            <Select value={departmentId} onValueChange={handleDepartmentChange}>
               <SelectTrigger className="mt-1.5 rounded-xl">
                 <SelectValue />
               </SelectTrigger>
@@ -411,6 +452,66 @@ export function MemberEditModal({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Extra department access */}
+          <div>
+            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              Дополнительные отделы доступа
+            </Label>
+            <div className="flex gap-2 mt-1.5">
+              <Select
+                value={newExtraDepartmentId}
+                onValueChange={setNewExtraDepartmentId}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue placeholder="Выберите отдел" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Не выбрано</SelectItem>
+                  {availableExtraDepartments.map((dept) => (
+                    <SelectItem key={dept.id} value={dept.id}>
+                      <span className="flex items-center gap-2">
+                        <span
+                          className="h-2 w-2 rounded-full shrink-0"
+                          style={{ backgroundColor: dept.color || "#6B7280" }}
+                        />
+                        {dept.name}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="shrink-0 rounded-xl"
+                onClick={addExtraDepartment}
+                disabled={newExtraDepartmentId === "__none__"}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex flex-wrap gap-1.5 mt-2 min-h-[32px]">
+              {selectedExtraDepartments.length > 0 ? (
+                selectedExtraDepartments.map((dept) => (
+                  <Badge
+                    key={dept.id}
+                    variant="secondary"
+                    className="cursor-pointer rounded-lg gap-1 hover:bg-destructive/10 hover:text-destructive group/chip"
+                    onClick={() => removeExtraDepartment(dept.id)}
+                  >
+                    {dept.name}
+                    <X className="h-3 w-3 opacity-50 group-hover/chip:opacity-100" />
+                  </Badge>
+                ))
+              ) : (
+                <span className="text-xs text-muted-foreground/60 self-center">
+                  Нет дополнительных отделов
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Telegram ID + Username */}

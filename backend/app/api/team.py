@@ -7,13 +7,13 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, File, Query
 from PIL import Image
 from pydantic import BaseModel
-from sqlalchemy import func, select, update as sa_update
+from sqlalchemy import delete as sa_delete, func, select, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.auth import get_current_user, require_moderator
 from app.db.database import get_session
-from app.db.models import Department, Task, TeamMember
+from app.db.models import Department, Task, TeamMember, TeamMemberDepartmentAccess
 from app.db.repositories import DepartmentRepository, TeamMemberRepository
 from app.db.schemas import TeamMemberCreate, TeamMemberResponse, TeamMemberUpdate
 from app.services.permission_service import PermissionService
@@ -38,6 +38,64 @@ class MemberDeactivationPreviewResponse(BaseModel):
     open_tasks_preview: list[MemberDeactivationPreviewTaskItem]
 
 
+async def _normalize_extra_department_ids(
+    session: AsyncSession,
+    department_ids: list[uuid.UUID] | None,
+    *,
+    primary_department_id: uuid.UUID | None,
+) -> list[uuid.UUID]:
+    if not department_ids:
+        return []
+
+    unique_ids: list[uuid.UUID] = []
+    for department_id in department_ids:
+        if department_id == primary_department_id:
+            continue
+        if department_id not in unique_ids:
+            unique_ids.append(department_id)
+
+    if not unique_ids:
+        return []
+
+    stmt = select(Department.id).where(
+        Department.id.in_(unique_ids),
+        Department.is_active.is_(True),
+    )
+    existing_ids = set((await session.execute(stmt)).scalars().all())
+    if len(existing_ids) != len(unique_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="Один или несколько дополнительных отделов недоступны",
+        )
+
+    return unique_ids
+
+
+async def _sync_extra_department_access(
+    session: AsyncSession,
+    member_id: uuid.UUID,
+    *,
+    department_ids: list[uuid.UUID],
+    granted_by_id: uuid.UUID,
+) -> None:
+    await session.execute(
+        sa_delete(TeamMemberDepartmentAccess).where(
+            TeamMemberDepartmentAccess.member_id == member_id
+        )
+    )
+
+    for department_id in department_ids:
+        session.add(
+            TeamMemberDepartmentAccess(
+                member_id=member_id,
+                department_id=department_id,
+                granted_by_id=granted_by_id,
+            )
+        )
+
+    await session.flush()
+
+
 @router.get("/tree")
 async def get_team_tree(
     include_inactive: bool = Query(False),
@@ -48,7 +106,11 @@ async def get_team_tree(
     # Fetch departments with members eager-loaded
     stmt = (
         select(Department)
-        .options(selectinload(Department.members))
+        .options(
+            selectinload(Department.members).selectinload(
+                TeamMember.extra_department_accesses
+            )
+        )
         .where(Department.is_active.is_(True))
         .order_by(Department.sort_order, Department.name)
     )
@@ -77,6 +139,7 @@ async def get_team_tree(
             "full_name": m.full_name,
             "name_variants": m.name_variants,
             "department_id": str(m.department_id) if m.department_id else None,
+            "extra_department_ids": [str(dept_id) for dept_id in m.extra_department_ids],
             "position": m.position,
             "email": m.email,
             "birthday": m.birthday.isoformat() if m.birthday else None,
@@ -152,10 +215,22 @@ async def create_team_member(
             )
 
     create_data = data.model_dump(exclude_unset=True)
+    extra_department_ids = create_data.pop("extra_department_ids", [])
+    normalized_extra_department_ids = await _normalize_extra_department_ids(
+        session,
+        extra_department_ids,
+        primary_department_id=create_data.get("department_id"),
+    )
+
     new_member = await member_repo.create(session, **create_data)
+    await _sync_extra_department_access(
+        session,
+        new_member.id,
+        department_ids=normalized_extra_department_ids,
+        granted_by_id=member.id,
+    )
     await session.commit()
-    await session.refresh(new_member)
-    return new_member
+    return await member_repo.get_by_id(session, new_member.id)
 
 
 @router.get("/{member_id}", response_model=TeamMemberResponse)
@@ -230,6 +305,7 @@ async def update_team_member(
 
     deactivation_strategy = update_data.pop("deactivation_strategy", None)
     reassign_to_member_id = update_data.pop("reassign_to_member_id", None)
+    extra_department_ids = update_data.pop("extra_department_ids", None)
 
     # Role change requires admin
     if "role" in update_data and update_data["role"] != target.role:
@@ -322,9 +398,40 @@ async def update_team_member(
             .values(head_id=None)
         )
 
+    effective_primary_department_id = (
+        update_data["department_id"]
+        if "department_id" in update_data
+        else target.department_id
+    )
+    normalized_extra_department_ids: list[uuid.UUID] | None = None
+    if extra_department_ids is not None:
+        normalized_extra_department_ids = await _normalize_extra_department_ids(
+            session,
+            extra_department_ids,
+            primary_department_id=effective_primary_department_id,
+        )
+
     updated = await member_repo.update(session, member_id, **update_data)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Участник не найден")
+
+    if normalized_extra_department_ids is not None:
+        await _sync_extra_department_access(
+            session,
+            member_id,
+            department_ids=normalized_extra_department_ids,
+            granted_by_id=member.id,
+        )
+    elif "department_id" in update_data and update_data["department_id"] is not None:
+        await session.execute(
+            sa_delete(TeamMemberDepartmentAccess).where(
+                TeamMemberDepartmentAccess.member_id == member_id,
+                TeamMemberDepartmentAccess.department_id == update_data["department_id"],
+            )
+        )
+
     await session.commit()
-    return updated
+    return await member_repo.get_by_id(session, member_id)
 
 
 @router.post("/{member_id}/avatar")

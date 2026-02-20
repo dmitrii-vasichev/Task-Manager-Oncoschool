@@ -30,17 +30,36 @@ from app.db.models import (
 
 class TeamMemberRepository:
     async def get_by_id(self, session: AsyncSession, member_id: uuid.UUID) -> TeamMember | None:
-        return await session.get(TeamMember, member_id)
+        stmt = (
+            select(TeamMember)
+            .options(
+                selectinload(TeamMember.department),
+                selectinload(TeamMember.extra_department_accesses),
+            )
+            .where(TeamMember.id == member_id)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
 
     async def get_by_telegram_id(self, session: AsyncSession, telegram_id: int) -> TeamMember | None:
-        stmt = select(TeamMember).where(TeamMember.telegram_id == telegram_id)
+        stmt = (
+            select(TeamMember)
+            .options(
+                selectinload(TeamMember.department),
+                selectinload(TeamMember.extra_department_accesses),
+            )
+            .where(TeamMember.telegram_id == telegram_id)
+        )
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def get_all_active(self, session: AsyncSession) -> list[TeamMember]:
         stmt = (
             select(TeamMember)
-            .options(selectinload(TeamMember.department))
+            .options(
+                selectinload(TeamMember.department),
+                selectinload(TeamMember.extra_department_accesses),
+            )
             .where(TeamMember.is_active.is_(True))
             .order_by(TeamMember.full_name)
         )
@@ -50,15 +69,23 @@ class TeamMemberRepository:
     async def get_all(self, session: AsyncSession) -> list[TeamMember]:
         stmt = (
             select(TeamMember)
-            .options(selectinload(TeamMember.department))
+            .options(
+                selectinload(TeamMember.department),
+                selectinload(TeamMember.extra_department_accesses),
+            )
             .order_by(TeamMember.full_name)
         )
         result = await session.execute(stmt)
         return list(result.scalars().all())
 
     async def get_by_telegram_username(self, session: AsyncSession, username: str) -> TeamMember | None:
-        stmt = select(TeamMember).where(
-            func.lower(TeamMember.telegram_username) == username.lower()
+        stmt = (
+            select(TeamMember)
+            .options(
+                selectinload(TeamMember.department),
+                selectinload(TeamMember.extra_department_accesses),
+            )
+            .where(func.lower(TeamMember.telegram_username) == username.lower())
         )
         result = await session.execute(stmt)
         return result.scalar_one_or_none()

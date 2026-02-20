@@ -1,9 +1,10 @@
 import uuid
+from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Department, Task, TeamMember
+from app.db.models import Department, Task, TeamMember, TeamMemberDepartmentAccess
 
 
 def is_moderator_or_admin(member: TeamMember | None) -> bool:
@@ -24,6 +25,34 @@ async def get_headed_department_ids(
         select(Department.id)
         .where(Department.head_id == member_id)
         .order_by(Department.id)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def get_extra_department_ids(
+    session: AsyncSession, member_id: uuid.UUID | None
+) -> list[uuid.UUID]:
+    """Return extra department IDs explicitly granted to this member."""
+    if member_id is None:
+        return []
+
+    now_utc = datetime.utcnow()
+    stmt = (
+        select(TeamMemberDepartmentAccess.department_id)
+        .join(Department, Department.id == TeamMemberDepartmentAccess.department_id)
+        .where(
+            TeamMemberDepartmentAccess.member_id == member_id,
+            Department.is_active.is_(True),
+            or_(
+                TeamMemberDepartmentAccess.expires_at.is_(None),
+                TeamMemberDepartmentAccess.expires_at > now_utc,
+            ),
+        )
+        .order_by(
+            TeamMemberDepartmentAccess.created_at,
+            TeamMemberDepartmentAccess.department_id,
+        )
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
@@ -105,6 +134,11 @@ async def resolve_visible_department_ids(
 
     headed_department_ids = await get_headed_department_ids(session, member.id)
     for department_id in headed_department_ids:
+        if department_id not in visible_ids:
+            visible_ids.append(department_id)
+
+    extra_department_ids = await get_extra_department_ids(session, member.id)
+    for department_id in extra_department_ids:
         if department_id not in visible_ids:
             visible_ids.append(department_id)
 

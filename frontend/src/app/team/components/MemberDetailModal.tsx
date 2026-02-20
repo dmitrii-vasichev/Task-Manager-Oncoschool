@@ -32,6 +32,11 @@ export function MemberDetailModal({ member, stats, departments, onClose }: Membe
   if (!member) return null;
 
   const dept = departments.find((d) => d.id === member.department_id);
+  const extraDepartments = departments.filter(
+    (d) =>
+      (member.extra_department_ids || []).includes(d.id) &&
+      d.id !== member.department_id
+  );
 
   return (
     <Dialog open={!!member} onOpenChange={(open) => !open && onClose()}>
@@ -125,6 +130,33 @@ export function MemberDetailModal({ member, stats, departments, onClose }: Membe
                       />
                       {dept.name}
                     </span>
+                  </div>
+                )}
+                {extraDepartments.length > 0 && (
+                  <div className="flex items-start gap-2 text-sm">
+                    <Building2 className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                    <div className="flex flex-wrap gap-1.5">
+                      {extraDepartments.map((extraDept) => (
+                        <span
+                          key={extraDept.id}
+                          className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium"
+                          style={{
+                            backgroundColor: extraDept.color
+                              ? `${extraDept.color}18`
+                              : undefined,
+                            color: extraDept.color || undefined,
+                          }}
+                        >
+                          <span
+                            className="h-2 w-2 rounded-full shrink-0"
+                            style={{
+                              backgroundColor: extraDept.color || "#6B7280",
+                            }}
+                          />
+                          {extraDept.name}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
                 {member.birthday && (

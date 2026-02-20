@@ -25,6 +25,7 @@ class TeamMemberCreate(BaseModel):
     telegram_username: str | None = None
     name_variants: list[str] = []
     department_id: uuid.UUID | None = None
+    extra_department_ids: list[uuid.UUID] = Field(default_factory=list)
     position: str | None = None
     email: str | None = None
     birthday: date | None = None
@@ -37,6 +38,7 @@ class TeamMemberUpdate(BaseModel):
     role: MemberRoleType | None = None
     is_active: bool | None = None
     department_id: uuid.UUID | None = None
+    extra_department_ids: list[uuid.UUID] | None = None
     position: str | None = None
     email: str | None = None
     birthday: date | None = None
@@ -53,6 +55,7 @@ class TeamMemberResponse(BaseModel):
     full_name: str
     name_variants: list[str]
     department_id: uuid.UUID | None
+    extra_department_ids: list[uuid.UUID] = Field(default_factory=list)
     position: str | None
     email: str | None
     birthday: date | None

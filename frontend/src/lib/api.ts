@@ -470,6 +470,7 @@ class ApiClient {
     telegram_id?: number | null;
     telegram_username?: string;
     department_id?: string | null;
+    extra_department_ids?: string[];
     position?: string;
     email?: string;
     birthday?: string;
