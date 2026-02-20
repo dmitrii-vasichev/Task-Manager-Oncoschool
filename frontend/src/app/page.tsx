@@ -637,8 +637,8 @@ export default function DashboardPage() {
   const taskListTitle = currentScope === "department" ? "Задачи отдела" : "Мои задачи";
   const overdueListTitle =
     currentScope === "department"
-      ? "Просроченные отдела"
-      : "Просроченные";
+      ? "Просроченные задачи отдела"
+      : "Просроченные задачи";
   const emptyTaskTitle =
     currentScope === "department"
       ? "В отделе нет активных задач"
