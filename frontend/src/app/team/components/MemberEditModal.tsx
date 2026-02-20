@@ -127,7 +127,7 @@ export function MemberEditModal({
       full_name: fullName,
       is_active: isActive,
       department_id: departmentId === "__none__" ? null : departmentId,
-      extra_department_ids: extraDepartmentIds,
+      extra_department_ids: getEffectiveExtraDepartmentIds(),
       position: position || null,
       email: email || null,
       birthday: birthday || null,
@@ -242,11 +242,26 @@ export function MemberEditModal({
     }
   };
 
-  const addExtraDepartment = () => {
-    if (newExtraDepartmentId === "__none__") return;
-    if (newExtraDepartmentId === departmentId) return;
-    if (extraDepartmentIds.includes(newExtraDepartmentId)) return;
-    setExtraDepartmentIds((prev) => [...prev, newExtraDepartmentId]);
+  const getEffectiveExtraDepartmentIds = () => {
+    const ids = [...extraDepartmentIds];
+    if (
+      newExtraDepartmentId !== "__none__" &&
+      newExtraDepartmentId !== departmentId &&
+      !ids.includes(newExtraDepartmentId)
+    ) {
+      ids.push(newExtraDepartmentId);
+    }
+    return ids;
+  };
+
+  const handleExtraDepartmentSelect = (value: string) => {
+    setNewExtraDepartmentId(value);
+    if (value === "__none__") return;
+    if (value === departmentId || extraDepartmentIds.includes(value)) {
+      setNewExtraDepartmentId("__none__");
+      return;
+    }
+    setExtraDepartmentIds((prev) => [...prev, value]);
     setNewExtraDepartmentId("__none__");
   };
 
@@ -462,7 +477,7 @@ export function MemberEditModal({
             <div className="flex gap-2 mt-1.5">
               <Select
                 value={newExtraDepartmentId}
-                onValueChange={setNewExtraDepartmentId}
+                onValueChange={handleExtraDepartmentSelect}
               >
                 <SelectTrigger className="rounded-xl">
                   <SelectValue placeholder="Выберите отдел" />
@@ -482,16 +497,6 @@ export function MemberEditModal({
                   ))}
                 </SelectContent>
               </Select>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                className="shrink-0 rounded-xl"
-                onClick={addExtraDepartment}
-                disabled={newExtraDepartmentId === "__none__"}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
             </div>
             <div className="flex flex-wrap gap-1.5 mt-2 min-h-[32px]">
               {selectedExtraDepartments.length > 0 ? (
