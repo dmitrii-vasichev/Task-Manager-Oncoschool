@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -20,6 +21,7 @@ from app.services.task_service import TaskService
 from app.services.zoom_service import sanitize_zoom_join_url
 
 router = APIRouter(prefix="/meetings", tags=["meetings"])
+logger = logging.getLogger(__name__)
 meeting_service = MeetingService()
 ai_service = AIService()
 member_repo = TeamMemberRepository()
@@ -450,16 +452,21 @@ async def parse_summary(
 
     try:
         parsed = await ai_service.parse_meeting_summary(session, text, team_members)
+        return ParseSummaryResponse(
+            title=parsed.title,
+            summary=parsed.summary,
+            decisions=parsed.decisions,
+            tasks=[t.model_dump() for t in parsed.tasks],
+            participants=parsed.participants,
+        )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
-
-    return ParseSummaryResponse(
-        title=parsed.title,
-        summary=parsed.summary,
-        decisions=parsed.decisions,
-        tasks=[t.model_dump() for t in parsed.tasks],
-        participants=parsed.participants,
-    )
+    except Exception as e:
+        logger.exception("AI parse-summary failed for meeting %s", meeting_id)
+        raise HTTPException(
+            status_code=502,
+            detail=f"Ошибка AI-провайдера: {e}",
+        )
 
 
 @router.post("/{meeting_id}/apply-summary", response_model=MeetingWithTasksResponse)
