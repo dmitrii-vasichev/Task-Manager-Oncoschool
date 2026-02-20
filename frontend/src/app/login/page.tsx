@@ -72,6 +72,24 @@ type TelegramWindow = Window & {
   };
 };
 
+function readTelegramInitData(): string | null {
+  const telegramWebApp = (window as TelegramWindow).Telegram?.WebApp;
+  const sdkInitData = telegramWebApp?.initData?.trim();
+  if (sdkInitData) return sdkInitData;
+
+  const readFromParams = (params: URLSearchParams) =>
+    params.get("tgWebAppData")?.trim() || null;
+
+  const searchInitData = readFromParams(new URLSearchParams(window.location.search));
+  if (searchInitData) return searchInitData;
+
+  const hash = window.location.hash.startsWith("#")
+    ? window.location.hash.slice(1)
+    : window.location.hash;
+  if (!hash) return null;
+  return readFromParams(new URLSearchParams(hash));
+}
+
 export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -120,11 +138,11 @@ export default function LoginPage() {
     if (configLoading || debugMode || step !== "username") return;
 
     const telegramWebApp = (window as TelegramWindow).Telegram?.WebApp;
-    const initData = telegramWebApp?.initData?.trim();
-    if (!telegramWebApp || !initData) return;
+    const initData = readTelegramInitData();
+    if (!initData) return;
 
-    telegramWebApp.ready?.();
-    telegramWebApp.expand?.();
+    telegramWebApp?.ready?.();
+    telegramWebApp?.expand?.();
 
     let cancelled = false;
     setLoading(true);

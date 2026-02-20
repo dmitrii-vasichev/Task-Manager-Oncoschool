@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope, Commissioner } from "next/font/google";
 import localFont from "next/font/local";
+import Script from "next/script";
 import "./globals.css";
 import { AuthProvider } from "@/components/layout/AuthProvider";
 import { AppShell } from "@/components/layout/AppShell";
@@ -43,6 +44,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ru">
+      <head>
+        <Script
+          src="https://telegram.org/js/telegram-web-app.js"
+          strategy="beforeInteractive"
+        />
+      </head>
       <body
         className={`${manrope.variable} ${commissioner.variable} ${geistMono.variable} antialiased`}
       >
