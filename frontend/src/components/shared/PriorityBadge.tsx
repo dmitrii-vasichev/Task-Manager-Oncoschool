@@ -10,7 +10,6 @@ import {
   ArrowUp,
   Minus,
   ArrowDown,
-  Flag,
 } from "lucide-react";
 
 const PRIORITY_CONFIG: Record<
@@ -25,25 +24,25 @@ const PRIORITY_CONFIG: Record<
     icon: AlertTriangle,
     badgeClassName: "bg-priority-urgent-bg text-priority-urgent-fg",
     iconContainerClassName:
-      "bg-priority-urgent-bg text-priority-urgent-fg ring-1 ring-inset ring-priority-urgent-dot/40",
+      "bg-priority-urgent-bg text-priority-urgent-fg ring-1 ring-inset ring-priority-urgent-dot/70 shadow-[0_0_0_1px_hsl(var(--priority-urgent-dot)/0.24)_inset]",
   },
   high: {
     icon: ArrowUp,
     badgeClassName: "bg-priority-high-bg text-priority-high-fg",
     iconContainerClassName:
-      "bg-priority-high-bg text-priority-high-fg ring-1 ring-inset ring-priority-high-dot/40",
+      "bg-priority-high-bg text-priority-high-fg ring-1 ring-inset ring-priority-high-dot/70 shadow-[0_0_0_1px_hsl(var(--priority-high-dot)/0.24)_inset]",
   },
   medium: {
     icon: Minus,
     badgeClassName: "bg-priority-medium-bg text-priority-medium-fg",
     iconContainerClassName:
-      "bg-priority-medium-bg text-priority-medium-fg ring-1 ring-inset ring-priority-medium-dot/40",
+      "bg-priority-medium-bg text-priority-medium-fg ring-1 ring-inset ring-priority-medium-dot/70 shadow-[0_0_0_1px_hsl(var(--priority-medium-dot)/0.24)_inset]",
   },
   low: {
     icon: ArrowDown,
     badgeClassName: "bg-priority-low-bg text-priority-low-fg",
     iconContainerClassName:
-      "bg-priority-low-bg text-priority-low-fg ring-1 ring-inset ring-priority-low-dot/40",
+      "bg-priority-low-bg text-priority-low-fg ring-1 ring-inset ring-priority-low-dot/70 shadow-[0_0_0_1px_hsl(var(--priority-low-dot)/0.2)_inset]",
   },
 };
 
@@ -67,7 +66,7 @@ export function PriorityIcon({
   priority: TaskPriority;
   className?: string;
 }) {
-  const { iconContainerClassName } = PRIORITY_CONFIG[priority];
+  const { icon: Icon, iconContainerClassName } = PRIORITY_CONFIG[priority];
 
   return (
     <Tooltip>
@@ -79,7 +78,7 @@ export function PriorityIcon({
             className
           )}
         >
-          <Flag className="h-3.5 w-3.5" />
+          <Icon className="h-3.5 w-3.5" />
         </span>
       </TooltipTrigger>
       <TooltipContent side="top">

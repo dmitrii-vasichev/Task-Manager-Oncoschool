@@ -105,8 +105,8 @@ function DashboardSkeleton() {
         <Skeleton className="h-9 w-[240px]" />
       </div>
 
-      {/* Two-column skeleton */}
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* Three-column skeleton */}
+      <div className="grid gap-4 lg:grid-cols-3">
         <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-3">
           <div className="flex items-center justify-between">
             <Skeleton className="h-5 w-28" />
@@ -118,6 +118,10 @@ function DashboardSkeleton() {
         </div>
         <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-3">
           <Skeleton className="h-5 w-36" />
+          <Skeleton className="h-24 rounded-lg" />
+        </div>
+        <div className="rounded-2xl border border-border/60 bg-card p-5 space-y-3">
+          <Skeleton className="h-5 w-40" />
           <Skeleton className="h-24 rounded-lg" />
         </div>
       </div>
@@ -150,12 +154,12 @@ function TaskListItem({
 }) {
   const overdue = variant === "overdue" || isOverdue(task);
   const borderClass = overdue
-    ? "border-destructive/35 bg-destructive/[0.06] hover:bg-destructive/[0.1] shadow-[0_0_0_1px_hsl(var(--destructive)/0.12)_inset]"
+    ? "border border-destructive/35 bg-destructive/[0.06] hover:bg-destructive/[0.1] shadow-[0_0_0_1px_hsl(var(--destructive)/0.12)_inset]"
     : variant === "unassigned"
-      ? "border-dashed border-muted-foreground/20 hover:bg-secondary/50"
+      ? "border border-dashed border-muted-foreground/20 hover:bg-secondary/50"
       : variant === "stale"
-        ? "border-amber-500/25 bg-amber-500/[0.03] hover:bg-amber-500/[0.07]"
-        : "border hover:bg-secondary/50";
+        ? "border border-amber-500/25 bg-amber-500/[0.03] hover:bg-amber-500/[0.07]"
+        : "border border-border/60 hover:bg-secondary/50";
 
   const sourceIcon =
     task.source === "voice" ? (
@@ -170,26 +174,28 @@ function TaskListItem({
     <TooltipProvider delayDuration={120}>
       <Link
         href={`/tasks/${task.short_id}`}
-        className={`flex items-center gap-3 rounded-lg p-3 transition-all duration-150 ${borderClass}`}
+        className={`block rounded-xl p-3 transition-all duration-150 ${borderClass}`}
       >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-start justify-between gap-2.5">
-            <div className="min-w-0 flex items-center gap-1.5">
+        <div className="flex items-start gap-2.5">
+          <div className="mt-0.5 flex items-center gap-1.5 shrink-0">
+            <StatusIcon
+              status={task.status}
+              className={`h-6 w-6 rounded-[10px] ${overdue ? "ring-destructive/35" : ""}`}
+            />
+            <PriorityIcon priority={task.priority} className="h-6 w-6 rounded-[10px]" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="min-w-0 flex items-start gap-1.5">
               {sourceIcon}
               <span
-                className={`text-sm font-semibold truncate ${
+                className={`text-sm font-semibold leading-tight line-clamp-2 ${
                   overdue ? "text-destructive" : ""
                 }`}
               >
                 {task.title}
               </span>
             </div>
-            <div className="flex items-center gap-1 shrink-0">
-              <StatusIcon status={task.status} />
-              <PriorityIcon priority={task.priority} />
-            </div>
-          </div>
-          <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+            <div className="mt-2 flex items-center gap-x-2 gap-y-1.5 flex-wrap">
             {overdue && (
               <span className="inline-flex items-center rounded-full bg-destructive/12 px-2 py-0.5 text-[11px] font-medium text-destructive">
                 Просрочено
@@ -242,11 +248,9 @@ function TaskListItem({
                 </span>
               )
             )}
+            </div>
           </div>
         </div>
-        <ArrowRight
-          className={`h-4 w-4 shrink-0 ${overdue ? "text-destructive/45" : "text-muted-foreground/40"}`}
-        />
       </Link>
     </TooltipProvider>
   );
@@ -424,7 +428,6 @@ export default function DashboardPage() {
   const [departmentUpcomingMeetings, setDepartmentUpcomingMeetings] = useState<Meeting[]>([]);
   const [departmentUpcomingMeetingsTotal, setDepartmentUpcomingMeetingsTotal] = useState(0);
   const [unassignedTasks, setUnassignedTasks] = useState<Task[]>([]);
-  const [staleTasks, setStaleTasks] = useState<Task[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
   const isModerator = user ? PermissionService.isModerator(user) : false;
@@ -540,15 +543,6 @@ export default function DashboardPage() {
                 })
                 .catch(catchLog("getUnassignedTasks"))
             : Promise.resolve(emptyTasksPage),
-          isModerator
-            ? api
-                .getTasks({
-                  status: "in_progress,review",
-                  per_page: "50",
-                  sort: "created_at_asc",
-                })
-                .catch(catchLog("getStaleTasks"))
-            : Promise.resolve(emptyTasksPage),
         ]);
 
         if (cancelled) return;
@@ -561,25 +555,24 @@ export default function DashboardPage() {
         const deptMeetingsData = results[5] as Meeting[] | null;
         const teamData = results[6] as TeamMember[] | null;
         const unassignedData = results[7] as { items: Task[] } | null;
-        const staleData = results[8] as { items: Task[] } | null;
 
         const hasError = results.some((r) => r === null);
 
         setDashboardTasksAnalytics(dashboardData);
         setTeamMembers(teamData ?? []);
 
-        // My tasks — first 5 for display
+        // Keep full lists for derived slices (overdue/stale/preview)
         if (myTasksData) {
-          setMyTasks(myTasksData.items.slice(0, 5));
+          setMyTasks(myTasksData.items);
           setMyOverdueTasks(myTasksData.items.filter(isOverdue));
         } else {
           setMyTasks([]);
           setMyOverdueTasks([]);
         }
 
-        // Department tasks — first 5 for display
+        // Department tasks
         if (departmentTasksData) {
-          setDepartmentTasks(departmentTasksData.items.slice(0, 5));
+          setDepartmentTasks(departmentTasksData.items);
           setDepartmentOverdueTasks(departmentTasksData.items.filter(isOverdue));
         } else {
           setDepartmentTasks([]);
@@ -600,10 +593,8 @@ export default function DashboardPage() {
               ? unassignedData.items.filter((t) => !t.assignee_id).slice(0, 5)
               : []
           );
-          setStaleTasks(staleData ? staleData.items.filter(isStale).slice(0, 5) : []);
         } else {
           setUnassignedTasks([]);
-          setStaleTasks([]);
         }
 
         if (hasError) toastError("Не удалось загрузить часть данных");
@@ -637,6 +628,9 @@ export default function DashboardPage() {
   const scopedTasks = currentScope === "department" ? departmentTasks : myTasks;
   const scopedOverdueTasks =
     currentScope === "department" ? departmentOverdueTasks : myOverdueTasks;
+  const scopedStaleTasks = scopedTasks
+    .filter((task) => task.status === "in_progress" || task.status === "review")
+    .filter(isStale);
 
   const scopedMeetings = currentScope === "department" ? departmentUpcomingMeetings : myUpcomingMeetings;
 
@@ -786,9 +780,9 @@ export default function DashboardPage() {
 
       {/* ═══════════ Task Blocks ═══════════ */}
       <section className="animate-fade-in-up stagger-2">
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-3">
           {/* Active Tasks */}
-          <div className="rounded-2xl border border-border/60 bg-card p-5">
+          <div className="rounded-2xl border border-border/60 bg-card p-4">
             <SectionHeader
               title={taskListTitle}
               icon={Zap}
@@ -806,7 +800,7 @@ export default function DashboardPage() {
               />
             ) : (
               <div className="space-y-2">
-                {scopedTasks.map((task) => (
+                {scopedTasks.slice(0, 5).map((task) => (
                   <TaskListItem
                     key={task.id}
                     task={task}
@@ -820,7 +814,7 @@ export default function DashboardPage() {
 
           {/* Overdue Tasks */}
           <div
-            className={`rounded-2xl border p-5 ${
+            className={`rounded-2xl border p-4 ${
               scopedOverdueTasks.length > 0
                 ? "border-destructive/20 bg-destructive/[0.02]"
                 : "border-border/60 bg-card"
@@ -858,32 +852,53 @@ export default function DashboardPage() {
               </div>
             )}
           </div>
-        </div>
-      </section>
 
-      {/* ═══════════ Moderator: Stale Tasks ═══════════ */}
-      {isModerator && staleTasks.length > 0 && (
-        <section className="animate-fade-in-up stagger-3">
-          <div className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.02] p-5">
+          {/* Stale Tasks */}
+          <div
+            className={`rounded-2xl border p-4 ${
+              scopedStaleTasks.length > 0
+                ? "border-amber-500/25 bg-amber-500/[0.03]"
+                : "border-border/60 bg-card"
+            }`}
+          >
             <SectionHeader
-              title="Не обновлялись >3 дней"
+              title="Не обновлялись"
               icon={AlertOctagon}
               iconColor="hsl(38, 80%, 52%)"
-              count={staleTasks.length}
+              count={scopedStaleTasks.length}
               linkHref="/tasks"
               linkLabel="Все задачи"
             />
-            <div className="space-y-2">
-              {staleTasks.map((task) => (
-                <TaskListItem key={task.id} task={task} variant="stale" />
-              ))}
-            </div>
+            {scopedStaleTasks.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-status-done-bg">
+                  <CheckCircle2 className="h-5 w-5 text-status-done-fg" />
+                </div>
+                <p className="mb-0.5 text-sm font-heading font-semibold text-foreground">
+                  Актуально
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Задач без обновлений более 3 дней нет
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {scopedStaleTasks.slice(0, 5).map((task) => (
+                  <TaskListItem
+                    key={task.id}
+                    task={task}
+                    variant="stale"
+                    showAssignee={currentScope === "department"}
+                  />
+                ))}
+              </div>
+            )}
           </div>
-        </section>
-      )}
+        </div>
+      </section>
 
       {/* ═══════════ Upcoming Meetings ═══════════ */}
-      <section className="animate-fade-in-up stagger-4">
+      <section className="animate-fade-in-up stagger-3">
         <div className="rounded-2xl border border-border/60 bg-card p-5">
           <SectionHeader
             title={currentScope === "department" ? "Встречи отдела" : "Мои встречи"}
@@ -916,7 +931,7 @@ export default function DashboardPage() {
 
       {/* ═══════════ Upcoming Birthdays ═══════════ */}
       {teamMembers.length > 0 && (
-        <section className="animate-fade-in-up stagger-5">
+        <section className="animate-fade-in-up stagger-4">
           <UpcomingBirthdays
             members={teamMembers}
             className=""
@@ -926,7 +941,7 @@ export default function DashboardPage() {
 
       {/* ═══════════ Moderator: Unassigned ═══════════ */}
       {isModerator && unassignedTasks.length > 0 && (
-        <section className="animate-fade-in-up stagger-6">
+        <section className="animate-fade-in-up stagger-5">
           <div className="rounded-2xl border border-dashed border-muted-foreground/20 bg-card p-5">
             <SectionHeader
               title="Ожидают назначения"

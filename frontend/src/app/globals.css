@@ -49,9 +49,9 @@
     --chart-5: 200 65% 48%;
 
     /* --- Task statuses --- */
-    --status-new-bg: 210 30% 94%;
-    --status-new-fg: 210 30% 38%;
-    --status-new-ring: 210 30% 78%;
+    --status-new-bg: 211 92% 95%;
+    --status-new-fg: 217 76% 38%;
+    --status-new-ring: 217 78% 80%;
     --status-progress-bg: 174 50% 92%;
     --status-progress-fg: 174 62% 24%;
     --status-progress-ring: 174 50% 70%;
@@ -66,18 +66,18 @@
     --status-cancelled-ring: 210 10% 78%;
 
     /* --- Priorities --- */
-    --priority-urgent-bg: 0 80% 94%;
-    --priority-urgent-fg: 0 72% 44%;
-    --priority-urgent-dot: 0 72% 51%;
-    --priority-high-bg: 24 85% 93%;
-    --priority-high-fg: 20 70% 40%;
-    --priority-high-dot: 24 80% 52%;
-    --priority-medium-bg: 43 75% 92%;
-    --priority-medium-fg: 38 60% 36%;
-    --priority-medium-dot: 43 82% 52%;
-    --priority-low-bg: 210 12% 93%;
-    --priority-low-fg: 210 10% 50%;
-    --priority-low-dot: 210 10% 68%;
+    --priority-urgent-bg: 0 100% 95%;
+    --priority-urgent-fg: 0 74% 38%;
+    --priority-urgent-dot: 0 84% 52%;
+    --priority-high-bg: 18 100% 93%;
+    --priority-high-fg: 15 84% 35%;
+    --priority-high-dot: 14 90% 48%;
+    --priority-medium-bg: 46 100% 90%;
+    --priority-medium-fg: 34 88% 30%;
+    --priority-medium-dot: 38 96% 46%;
+    --priority-low-bg: 210 18% 92%;
+    --priority-low-fg: 214 22% 34%;
+    --priority-low-dot: 214 16% 56%;
 
     /* --- Roles --- */
     --role-admin-bg: 270 60% 96%;
@@ -125,9 +125,9 @@
     --chart-5: 200 58% 52%;
 
     /* --- Task statuses (dark) --- */
-    --status-new-bg: 210 25% 16%;
-    --status-new-fg: 210 25% 72%;
-    --status-new-ring: 210 20% 30%;
+    --status-new-bg: 215 42% 18%;
+    --status-new-fg: 215 78% 72%;
+    --status-new-ring: 215 32% 34%;
     --status-progress-bg: 174 40% 14%;
     --status-progress-fg: 174 50% 62%;
     --status-progress-ring: 174 35% 28%;
@@ -142,18 +142,18 @@
     --status-cancelled-ring: 210 10% 28%;
 
     /* --- Priorities (dark) --- */
-    --priority-urgent-bg: 0 55% 15%;
-    --priority-urgent-fg: 0 65% 65%;
-    --priority-urgent-dot: 0 65% 55%;
-    --priority-high-bg: 24 55% 14%;
-    --priority-high-fg: 24 65% 62%;
-    --priority-high-dot: 24 60% 52%;
-    --priority-medium-bg: 43 45% 14%;
-    --priority-medium-fg: 43 55% 62%;
-    --priority-medium-dot: 43 55% 50%;
-    --priority-low-bg: 210 12% 15%;
-    --priority-low-fg: 210 10% 55%;
-    --priority-low-dot: 210 10% 42%;
+    --priority-urgent-bg: 0 62% 16%;
+    --priority-urgent-fg: 0 84% 72%;
+    --priority-urgent-dot: 0 80% 60%;
+    --priority-high-bg: 16 70% 16%;
+    --priority-high-fg: 18 90% 70%;
+    --priority-high-dot: 18 85% 58%;
+    --priority-medium-bg: 42 62% 16%;
+    --priority-medium-fg: 44 92% 72%;
+    --priority-medium-dot: 44 84% 58%;
+    --priority-low-bg: 215 16% 18%;
+    --priority-low-fg: 214 20% 72%;
+    --priority-low-dot: 214 14% 52%;
 
     /* --- Roles (dark) --- */
     --role-admin-bg: 270 40% 20%;

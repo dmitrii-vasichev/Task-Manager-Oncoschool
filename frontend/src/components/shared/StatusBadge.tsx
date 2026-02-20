@@ -6,33 +6,33 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  Circle,
-  Loader2,
-  Eye,
+  CirclePlus,
+  Clock3,
+  Search,
   CheckCircle2,
   XCircle,
 } from "lucide-react";
 
 const STATUS_CONFIG: Record<
   TaskStatus,
-  { icon: typeof Circle; badgeClassName: string; iconContainerClassName: string }
+  { icon: typeof CirclePlus; badgeClassName: string; iconContainerClassName: string }
 > = {
   new: {
-    icon: Circle,
+    icon: CirclePlus,
     badgeClassName:
       "bg-status-new-bg text-status-new-fg ring-1 ring-inset ring-status-new-ring",
     iconContainerClassName:
       "bg-status-new-bg text-status-new-fg ring-1 ring-inset ring-status-new-ring",
   },
   in_progress: {
-    icon: Loader2,
+    icon: Clock3,
     badgeClassName:
       "bg-status-progress-bg text-status-progress-fg ring-1 ring-inset ring-status-progress-ring",
     iconContainerClassName:
       "bg-status-progress-bg text-status-progress-fg ring-1 ring-inset ring-status-progress-ring",
   },
   review: {
-    icon: Eye,
+    icon: Search,
     badgeClassName:
       "bg-status-review-bg text-status-review-fg ring-1 ring-inset ring-status-review-ring",
     iconContainerClassName:
@@ -61,9 +61,7 @@ export function StatusBadge({ status }: { status: TaskStatus }) {
     <span
       className={`badge-animated inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${badgeClassName}`}
     >
-      <Icon
-        className={`h-3 w-3 shrink-0 ${status === "in_progress" ? "animate-spin" : ""}`}
-      />
+      <Icon className="h-3 w-3 shrink-0" />
       {TASK_STATUS_LABELS[status]}
     </span>
   );
@@ -88,7 +86,7 @@ export function StatusIcon({
             className
           )}
         >
-          <Icon className={`h-3.5 w-3.5 ${status === "in_progress" ? "animate-spin" : ""}`} />
+          <Icon className="h-3.5 w-3.5" />
         </span>
       </TooltipTrigger>
       <TooltipContent side="top">
