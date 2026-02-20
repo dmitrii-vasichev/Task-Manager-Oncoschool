@@ -1167,6 +1167,8 @@ function ReminderEditDialog({
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const hasAnyDigestSectionEnabled =
+    includeOverdue || includeUpcoming || includeInProgress || includeNew;
 
   const toggleDay = (day: number) => {
     setDays((prev) =>
@@ -1174,6 +1176,28 @@ function ReminderEditDialog({
         ? prev.filter((d) => d !== day)
         : [...prev, day].sort()
     );
+  };
+
+  useEffect(() => {
+    if (!hasAnyDigestSectionEnabled && isEnabled) {
+      setIsEnabled(false);
+    }
+  }, [hasAnyDigestSectionEnabled, isEnabled]);
+
+  const setAllDigestSections = (value: boolean) => {
+    setIncludeOverdue(value);
+    setIncludeUpcoming(value);
+    setIncludeInProgress(value);
+    setIncludeNew(value);
+    setIsEnabled(value);
+  };
+
+  const handleReminderEnabledToggle = (value: boolean) => {
+    if (value && !hasAnyDigestSectionEnabled) {
+      setAllDigestSections(true);
+      return;
+    }
+    setIsEnabled(value);
   };
 
   const handleSave = async () => {
@@ -1224,7 +1248,7 @@ function ReminderEditDialog({
                 {isEnabled ? "Включено" : "Выключено"}
               </Label>
             </div>
-            <Switch checked={isEnabled} onCheckedChange={setIsEnabled} />
+            <Switch checked={isEnabled} onCheckedChange={handleReminderEnabledToggle} />
           </div>
 
           {/* Time */}
@@ -1270,9 +1294,33 @@ function ReminderEditDialog({
 
           {/* Content toggles */}
           <div className="space-y-3">
-            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Что включить в дайджест
-            </Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                Что включить в дайджест
+              </Label>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 rounded-lg px-2 text-xs"
+                  disabled={saving}
+                  onClick={() => setAllDigestSections(true)}
+                >
+                  Включить всё
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 rounded-lg px-2 text-xs"
+                  disabled={saving}
+                  onClick={() => setAllDigestSections(false)}
+                >
+                  Выключить всё
+                </Button>
+              </div>
+            </div>
             <div className="space-y-1">
               <div className="flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-muted/40">
                 <div className="flex items-center gap-2">
