@@ -51,7 +51,6 @@ MENU_BTN_SUBSCRIBE = "🔔 Подписки"
 MENU_BTN_SUMMARY = "🧠 Summary"
 MENU_BTN_AI_MODEL = "🤖 AI-модель"
 MENU_BTN_TEAM_REMINDERS = "⚙️ Напоминания команды"
-MENU_BTN_RESTART = "🔄 Перезапустить бота"
 
 
 def main_menu_reply_keyboard(
@@ -119,9 +118,6 @@ def main_menu_reply_keyboard(
     rows.extend([
         [
             KeyboardButton(text=MENU_BTN_HELP),
-        ],
-        [
-            KeyboardButton(text=MENU_BTN_RESTART),
         ],
     ])
 

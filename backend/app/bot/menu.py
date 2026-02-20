@@ -25,7 +25,7 @@ COMMON_PRIVATE_COMMANDS: list[BotCommand] = [
     BotCommand(command="blocker", description="Сообщить блокер: /blocker <id> <текст>"),
     BotCommand(command="nextmeeting", description="Следующая встреча"),
     BotCommand(command="myreminder", description="Мои напоминания"),
-    BotCommand(command="start", description="Перезапустить бота"),
+    BotCommand(command="start", description="Открыть главное меню"),
 ]
 
 MODERATOR_EXTRA_COMMANDS: list[BotCommand] = [

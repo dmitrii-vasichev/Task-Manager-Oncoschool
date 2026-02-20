@@ -1,5 +1,7 @@
 import asyncio
+import hashlib
 import io
+import json
 import logging
 import time
 from pathlib import Path
@@ -8,6 +10,12 @@ from typing import Any, Awaitable, Callable
 from aiogram import BaseMiddleware, Bot
 from aiogram.types import TelegramObject, Update
 
+from app.bot.keyboards import main_menu_reply_keyboard
+from app.bot.menu import (
+    build_private_commands,
+    build_private_menu_button,
+    configure_chat_menu,
+)
 from app.config import settings
 from app.db.database import async_session
 from app.db.repositories import TeamMemberRepository
@@ -15,6 +23,7 @@ from app.db.repositories import TeamMemberRepository
 logger = logging.getLogger(__name__)
 
 AVATAR_CHECK_INTERVAL = 86400  # 24 hours
+UI_SYNC_COOLDOWN_SECONDS = 5
 AVATARS_DIR = Path(__file__).resolve().parents[2] / "static" / "avatars"
 
 
@@ -30,7 +39,14 @@ class AuthMiddleware(BaseMiddleware):
     def __init__(self, storage_service=None):
         self.member_repo = TeamMemberRepository()
         self._avatar_last_checked: dict[int, float] = {}
+        self._ui_sync_last_attempt: dict[int, float] = {}
         self.storage_service = storage_service
+        self._current_ui_version = self._resolve_ui_version()
+        logger.info(
+            "Telegram UI version resolved: %s (mode=%s)",
+            self._current_ui_version,
+            "manual" if settings.BOT_UI_VERSION > 0 else "auto",
+        )
 
     def _needs_avatar_check(self, telegram_id: int, avatar_url: str | None) -> bool:
         """Check if we should fetch avatar for this user."""
@@ -121,14 +137,155 @@ class AuthMiddleware(BaseMiddleware):
         except Exception:
             logger.warning("Failed to save avatar to DB for tg_id=%s", telegram_id, exc_info=True)
 
+    @staticmethod
+    def _commands_signature(is_moderator: bool, is_admin: bool) -> list[tuple[str, str]]:
+        return [
+            (command.command, command.description)
+            for command in build_private_commands(
+                is_moderator=is_moderator,
+                is_admin=is_admin,
+            )
+        ]
+
+    @staticmethod
+    def _reply_keyboard_signature(is_moderator: bool, is_admin: bool) -> list[list[str]]:
+        keyboard = main_menu_reply_keyboard(
+            is_moderator=is_moderator,
+            is_admin=is_admin,
+        )
+        return [[button.text for button in row] for row in keyboard.keyboard]
+
+    def _compute_ui_version(self) -> int:
+        signature = {
+            "commands": {
+                "member": self._commands_signature(False, False),
+                "moderator": self._commands_signature(True, False),
+                "admin": self._commands_signature(True, True),
+            },
+            "reply_keyboard": {
+                "member": self._reply_keyboard_signature(False, False),
+                "moderator": self._reply_keyboard_signature(True, False),
+                "admin": self._reply_keyboard_signature(True, True),
+            },
+            "menu_button": build_private_menu_button().model_dump(exclude_none=True),
+        }
+        payload = json.dumps(
+            signature,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        return int(digest[:8], 16)
+
+    def _resolve_ui_version(self) -> int:
+        if settings.BOT_UI_VERSION > 0:
+            return settings.BOT_UI_VERSION
+        return self._compute_ui_version()
+
+    @staticmethod
+    def _extract_chat_context(update: Update, event: TelegramObject) -> tuple[int | None, str | None, str | None]:
+        """Return (chat_id, chat_type, text) for message/callback events."""
+        if isinstance(update, Update):
+            if update.message:
+                return (
+                    update.message.chat.id,
+                    update.message.chat.type,
+                    update.message.text,
+                )
+            if update.callback_query and update.callback_query.message:
+                msg = update.callback_query.message
+                return (
+                    msg.chat.id,
+                    msg.chat.type,
+                    msg.text,
+                )
+
+        if hasattr(event, "chat") and event.chat:
+            return (
+                event.chat.id,
+                event.chat.type,
+                getattr(event, "text", None),
+            )
+
+        return None, None, None
+
+    @staticmethod
+    def _should_suppress_ui_sync_notice(text: str | None) -> bool:
+        """Avoid sending an extra sync message when /start already refreshes UI."""
+        if not text:
+            return False
+
+        stripped = text.strip()
+        command = stripped.split(maxsplit=1)[0].lower()
+        return command.startswith("/start")
+
+    def _can_sync_ui_now(self, telegram_id: int) -> bool:
+        now = time.time()
+        last_attempt = self._ui_sync_last_attempt.get(telegram_id, 0)
+        if (now - last_attempt) < UI_SYNC_COOLDOWN_SECONDS:
+            return False
+        self._ui_sync_last_attempt[telegram_id] = now
+        return True
+
+    async def _sync_private_ui(
+        self,
+        bot: Bot,
+        *,
+        chat_id: int,
+        telegram_id: int,
+        is_moderator: bool,
+        is_admin: bool,
+        suppress_notice: bool,
+    ) -> None:
+        if not self._can_sync_ui_now(telegram_id):
+            return
+
+        try:
+            await configure_chat_menu(
+                bot,
+                chat_id=chat_id,
+                is_moderator=is_moderator,
+                is_admin=is_admin,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to configure menu during ui sync for chat_id=%s",
+                chat_id,
+                exc_info=True,
+            )
+
+        if suppress_notice:
+            return
+
+        try:
+            await bot.send_message(
+                chat_id=chat_id,
+                text="🔄 Обновил меню кнопок.",
+                reply_markup=main_menu_reply_keyboard(
+                    is_moderator=is_moderator,
+                    is_admin=is_admin,
+                ),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to send reply keyboard during ui sync for chat_id=%s",
+                chat_id,
+                exc_info=True,
+            )
+
     async def __call__(
         self,
         handler: Callable[[TelegramObject, dict[str, Any]], Awaitable[Any]],
         event: TelegramObject,
         data: dict[str, Any],
     ) -> Any:
-        # Извлекаем user из события
         update: Update = data.get("event_update") or event
+        chat_id, chat_type, message_text = self._extract_chat_context(update, event)
+        is_private_chat = chat_type == "private"
+        suppress_ui_sync_notice = self._should_suppress_ui_sync_notice(message_text)
+
+        # Извлекаем user из события
         user = None
 
         if hasattr(event, "from_user") and event.from_user:
@@ -141,6 +298,10 @@ class AuthMiddleware(BaseMiddleware):
 
         if not user:
             return await handler(event, data)
+
+        needs_ui_sync = False
+        is_admin = False
+        is_moderator = False
 
         async with async_session() as session:
             async with session.begin():
@@ -178,17 +339,28 @@ class AuthMiddleware(BaseMiddleware):
                     and member.role != "admin"
                 ):
                     member.role = "admin"
+                    member.bot_ui_version = 0
                     updated = True
+
+                is_admin = member.role == "admin"
+                is_moderator = is_admin or member.role == "moderator"
+
+                if is_private_chat and (member.bot_ui_version or 0) < self._current_ui_version:
+                    member.bot_ui_version = self._current_ui_version
+                    needs_ui_sync = True
+                    updated = True
+
                 if updated:
                     await session.flush()
 
             data["member"] = member
             data["session_maker"] = async_session
 
+        bot_instance: Bot | None = data.get("bot")
+
         # Fetch Telegram avatar in background (non-blocking)
-        if self._needs_avatar_check(user.id, member.avatar_url):
+        if bot_instance and self._needs_avatar_check(user.id, member.avatar_url):
             self._avatar_last_checked[user.id] = time.time()
-            bot_instance: Bot = data["bot"]
             logger.info(
                 "Starting avatar fetch for tg_id=%s (current=%s)",
                 user.id, member.avatar_url,
@@ -197,4 +369,21 @@ class AuthMiddleware(BaseMiddleware):
                 self._update_avatar_bg(bot_instance, user.id, str(member.id), member.avatar_url)
             )
 
-        return await handler(event, data)
+        result = await handler(event, data)
+
+        if (
+            needs_ui_sync
+            and bot_instance
+            and is_private_chat
+            and chat_id is not None
+        ):
+            await self._sync_private_ui(
+                bot_instance,
+                chat_id=chat_id,
+                telegram_id=user.id,
+                is_moderator=is_moderator,
+                is_admin=is_admin,
+                suppress_notice=suppress_ui_sync_notice,
+            )
+
+        return result

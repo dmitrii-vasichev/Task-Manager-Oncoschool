@@ -18,7 +18,6 @@ from app.bot.keyboards import (
     MENU_BTN_MY_REMINDER,
     MENU_BTN_MY_TASKS,
     MENU_BTN_NEXT_MEETING,
-    MENU_BTN_RESTART,
     MENU_BTN_STATS,
     MENU_BTN_SUBSCRIBE,
     MENU_BTN_SUMMARY,
@@ -132,11 +131,6 @@ async def menu_btn_create_task(
 @router.message(StateFilter(None), F.chat.type == "private", F.text == MENU_BTN_HELP)
 async def menu_btn_help(message: Message, member: TeamMember) -> None:
     await cmd_help(message, member)
-
-
-@router.message(StateFilter(None), F.chat.type == "private", F.text == MENU_BTN_RESTART)
-async def menu_btn_restart(message: Message, member: TeamMember) -> None:
-    await cmd_start(message, member)
 
 
 @router.message(StateFilter(None), F.chat.type == "private", F.text == MENU_BTN_ALL_TASKS_DEPARTMENT)
@@ -310,6 +304,8 @@ async def cmd_setrole(
 
             old_role = target.role
             target.role = new_role
+            # Force Telegram menu refresh for the updated user.
+            target.bot_ui_version = 0
 
     role_labels = {"admin": "\U0001f451 Администратор", "moderator": "\U0001f6e1\ufe0f Модератор", "member": "\U0001f464 Участник"}
     await message.answer(

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     BOT_TOKEN: str
     ADMIN_TELEGRAM_IDS: list[int] = []
     ALLOWED_CHAT_IDS: list[int] = []
+    BOT_UI_VERSION: int = 0  # 0 = auto-compute from bot UI schema
 
     # Database
     DATABASE_URL: str

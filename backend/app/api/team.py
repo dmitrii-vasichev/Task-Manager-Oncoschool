@@ -306,14 +306,17 @@ async def update_team_member(
     deactivation_strategy = update_data.pop("deactivation_strategy", None)
     reassign_to_member_id = update_data.pop("reassign_to_member_id", None)
     extra_department_ids = update_data.pop("extra_department_ids", None)
+    role_changed = "role" in update_data and update_data["role"] != target.role
 
     # Role change requires admin
-    if "role" in update_data and update_data["role"] != target.role:
+    if role_changed:
         if not PermissionService.can_manage_roles(member):
             raise HTTPException(
                 status_code=403,
                 detail="Только администратор может менять роли",
             )
+        # Force Telegram menu refresh on the next interaction.
+        update_data["bot_ui_version"] = 0
 
     # Deactivation workflow:
     # - block self-deactivation to avoid accidental lockout
