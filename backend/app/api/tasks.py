@@ -2,7 +2,7 @@ import math
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +13,7 @@ from app.db.database import get_session
 from app.db.models import Task, TaskUpdate, TeamMember
 from app.db.schemas import TaskCreate, TaskEdit, TaskResponse
 from app.services.in_app_notification_service import InAppNotificationService
+from app.services.notification_service import NotificationService
 from app.services.permission_service import PermissionService
 from app.services.task_service import TaskService
 from app.services.task_visibility_service import (
@@ -150,6 +151,7 @@ async def get_task(
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
+    request: Request,
     data: TaskCreate,
     member: TeamMember = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
@@ -168,6 +170,10 @@ async def create_task(
             source=data.source or "web",
             meeting_id=data.meeting_id,
         )
+        bot = getattr(request.app.state, "bot", None)
+        if bot:
+            notification_service = NotificationService(bot)
+            await notification_service.notify_task_created(session, task, member)
         await session.commit()
         return task
     except PermissionError as e:
@@ -178,6 +184,7 @@ async def create_task(
 
 @router.patch("/{short_id}", response_model=TaskResponse)
 async def update_task(
+    request: Request,
     short_id: int,
     data: TaskEdit,
     member: TeamMember = Depends(get_current_user),
@@ -234,9 +241,17 @@ async def update_task(
                         session, task, member
                     )
             else:
+                old_assignee_id = task.assignee_id
                 task = await task_service.assign_task(
                     session, task, member, new_assignee_id
                 )
+                if old_assignee_id != new_assignee_id:
+                    bot = getattr(request.app.state, "bot", None)
+                    if bot and task.assignee:
+                        notification_service = NotificationService(bot)
+                        await notification_service.notify_task_assigned(
+                            session, task, member, task.assignee
+                        )
 
         if update_fields:
             from app.db.repositories import TaskRepository
