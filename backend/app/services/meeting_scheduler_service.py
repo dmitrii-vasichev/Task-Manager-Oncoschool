@@ -12,6 +12,7 @@ from app.db.repositories import MeetingScheduleRepository
 from app.services.zoom_service import extract_zoom_join_url, sanitize_zoom_join_url
 
 logger = logging.getLogger(__name__)
+DEFAULT_REMINDER_ZOOM_MISSING_TEXT = "Ссылка на Zoom появится позже."
 
 
 class MeetingSchedulerService:
@@ -368,8 +369,16 @@ class MeetingSchedulerService:
             raw_join_url,
             zoom_meeting_id=meeting.zoom_meeting_id,
         )
-        if safe_join_url:
-            text += f"\n\nСсылка для подключения: {safe_join_url}"
+        include_zoom_link = getattr(schedule, "reminder_include_zoom_link", True)
+        missing_behavior = getattr(schedule, "reminder_zoom_missing_behavior", "hide")
+        missing_text = getattr(schedule, "reminder_zoom_missing_text", None)
+
+        if include_zoom_link:
+            if safe_join_url:
+                text += f"\n\nСсылка для подключения: {safe_join_url}"
+            elif missing_behavior == "fallback":
+                fallback_text = (missing_text or "").strip() or DEFAULT_REMINDER_ZOOM_MISSING_TEXT
+                text += f"\n\n{fallback_text}"
 
         # Deduplicate targets by chat_id+thread_id to avoid sending twice
         seen_targets: set[str] = set()

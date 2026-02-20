@@ -123,6 +123,13 @@ class MeetingSchedule(Base):
     reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     reminder_minutes_before: Mapped[int] = mapped_column(Integer, default=60, server_default="60")
     reminder_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reminder_include_zoom_link: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
+    reminder_zoom_missing_behavior: Mapped[str] = mapped_column(
+        String(20), default="hide", server_default="hide"
+    )
+    reminder_zoom_missing_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     telegram_targets: Mapped[list] = mapped_column(JSONB, default=list, server_default="[]")
     participant_ids: Mapped[list[uuid.UUID]] = mapped_column(
         ARRAY(UUID(as_uuid=True)), default=list, server_default="{}"

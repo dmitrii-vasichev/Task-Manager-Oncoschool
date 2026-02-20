@@ -12,6 +12,7 @@ MemberRoleType = Literal["admin", "moderator", "member"]
 MemberDeactivationStrategyType = Literal["unassign", "reassign"]
 UpdateTypeType = Literal["progress", "status_change", "comment", "blocker", "completion"]
 TelegramBroadcastStatusType = Literal["scheduled", "sent", "failed", "cancelled"]
+MeetingReminderZoomMissingBehaviorType = Literal["hide", "fallback"]
 
 
 # ── TeamMember ──
@@ -225,6 +226,9 @@ class MeetingScheduleCreate(BaseModel):
     reminder_enabled: bool = True
     reminder_minutes_before: int = 60
     reminder_text: str | None = None
+    reminder_include_zoom_link: bool = True
+    reminder_zoom_missing_behavior: MeetingReminderZoomMissingBehaviorType = "hide"
+    reminder_zoom_missing_text: str | None = None
     telegram_targets: list[dict] = []  # [{"chat_id": ..., "thread_id": ...}]
     participant_ids: list[uuid.UUID] = []
     zoom_enabled: bool = True
@@ -240,6 +244,9 @@ class MeetingScheduleUpdate(BaseModel):
     reminder_enabled: bool | None = None
     reminder_minutes_before: int | None = None
     reminder_text: str | None = None
+    reminder_include_zoom_link: bool | None = None
+    reminder_zoom_missing_behavior: MeetingReminderZoomMissingBehaviorType | None = None
+    reminder_zoom_missing_text: str | None = None
     telegram_targets: list[dict] | None = None
     participant_ids: list[uuid.UUID] | None = None
     zoom_enabled: bool | None = None
@@ -261,6 +268,9 @@ class MeetingScheduleResponse(BaseModel):
     reminder_enabled: bool
     reminder_minutes_before: int
     reminder_text: str | None
+    reminder_include_zoom_link: bool
+    reminder_zoom_missing_behavior: MeetingReminderZoomMissingBehaviorType
+    reminder_zoom_missing_text: str | None
     telegram_targets: list[dict]
     participant_ids: list[uuid.UUID]
     zoom_enabled: bool

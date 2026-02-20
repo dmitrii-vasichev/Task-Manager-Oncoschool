@@ -9,6 +9,7 @@ export type UpdateType = "progress" | "status_change" | "comment" | "blocker" | 
 export type MemberRole = "admin" | "moderator" | "member";
 export type MemberDeactivationStrategy = "unassign" | "reassign";
 export type MeetingRecurrence = "weekly" | "biweekly" | "monthly_last_workday";
+export type MeetingReminderZoomMissingBehavior = "hide" | "fallback";
 export type MeetingStatus = "scheduled" | "in_progress" | "completed" | "cancelled";
 export type TelegramBroadcastStatus = "scheduled" | "sent" | "failed" | "cancelled";
 
@@ -196,6 +197,9 @@ export interface MeetingSchedule {
   reminder_enabled: boolean;
   reminder_minutes_before: number;
   reminder_text: string | null;
+  reminder_include_zoom_link: boolean;
+  reminder_zoom_missing_behavior: MeetingReminderZoomMissingBehavior;
+  reminder_zoom_missing_text: string | null;
   telegram_targets: TelegramTargetRef[];
   participant_ids: string[];
   zoom_enabled: boolean;
@@ -218,6 +222,9 @@ export interface MeetingScheduleCreateRequest {
   reminder_enabled?: boolean;
   reminder_minutes_before?: number;
   reminder_text?: string | null;
+  reminder_include_zoom_link?: boolean;
+  reminder_zoom_missing_behavior?: MeetingReminderZoomMissingBehavior;
+  reminder_zoom_missing_text?: string | null;
   telegram_targets?: TelegramTargetRef[];
   participant_ids?: string[];
   zoom_enabled?: boolean;

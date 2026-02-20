@@ -26,6 +26,7 @@ target_repo = TelegramTargetRepository()
 member_repo = TeamMemberRepository()
 
 VALID_RECURRENCES = {"weekly", "biweekly", "monthly_last_workday"}
+DEFAULT_REMINDER_ZOOM_MISSING_TEXT = "Ссылка на Zoom появится позже."
 
 
 def _is_last_selected_weekday_in_month(dt_local: datetime, day_of_week: int) -> bool:
@@ -188,6 +189,19 @@ async def create_schedule(
             for t in active_targets
         ]
 
+    reminder_text = (data.reminder_text or "").strip() or None
+    reminder_zoom_missing_text = (data.reminder_zoom_missing_text or "").strip() or None
+
+    reminder_include_zoom_link = data.reminder_include_zoom_link
+    reminder_zoom_missing_behavior = data.reminder_zoom_missing_behavior
+    if not reminder_include_zoom_link:
+        reminder_zoom_missing_behavior = "hide"
+        reminder_zoom_missing_text = None
+    elif reminder_zoom_missing_behavior == "hide":
+        reminder_zoom_missing_text = None
+    elif reminder_zoom_missing_behavior == "fallback" and reminder_zoom_missing_text is None:
+        reminder_zoom_missing_text = DEFAULT_REMINDER_ZOOM_MISSING_TEXT
+
     schedule = await schedule_repo.create(
         session,
         title=data.title,
@@ -198,7 +212,10 @@ async def create_schedule(
         recurrence=data.recurrence,
         reminder_enabled=data.reminder_enabled,
         reminder_minutes_before=data.reminder_minutes_before,
-        reminder_text=data.reminder_text,
+        reminder_text=reminder_text,
+        reminder_include_zoom_link=reminder_include_zoom_link,
+        reminder_zoom_missing_behavior=reminder_zoom_missing_behavior,
+        reminder_zoom_missing_text=reminder_zoom_missing_text,
         telegram_targets=telegram_targets,
         participant_ids=data.participant_ids,
         zoom_enabled=data.zoom_enabled,
@@ -273,6 +290,14 @@ async def update_schedule(
                 detail=f"recurrence должен быть одним из: {', '.join(VALID_RECURRENCES)}",
             )
 
+    # Normalize optional free text fields
+    if "reminder_text" in update_data:
+        update_data["reminder_text"] = (update_data["reminder_text"] or "").strip() or None
+    if "reminder_zoom_missing_text" in update_data:
+        update_data["reminder_zoom_missing_text"] = (
+            (update_data["reminder_zoom_missing_text"] or "").strip() or None
+        )
+
     # Convert time_local -> time_utc if provided
     if "time_local" in update_data:
         tz = update_data.get("timezone", schedule.timezone)
@@ -304,6 +329,25 @@ async def update_schedule(
     # Mutual exclusivity: skip=True clears time override
     if update_data.get("next_occurrence_skip") is True:
         update_data["next_occurrence_time_override"] = None
+
+    # Normalize reminder Zoom block options
+    effective_include_zoom = update_data.get(
+        "reminder_include_zoom_link", schedule.reminder_include_zoom_link
+    )
+    effective_missing_behavior = update_data.get(
+        "reminder_zoom_missing_behavior", schedule.reminder_zoom_missing_behavior
+    )
+    effective_missing_text = update_data.get(
+        "reminder_zoom_missing_text", schedule.reminder_zoom_missing_text
+    )
+
+    if not effective_include_zoom:
+        update_data["reminder_zoom_missing_behavior"] = "hide"
+        update_data["reminder_zoom_missing_text"] = None
+    elif effective_missing_behavior == "hide":
+        update_data["reminder_zoom_missing_text"] = None
+    elif effective_missing_behavior == "fallback" and not (effective_missing_text or "").strip():
+        update_data["reminder_zoom_missing_text"] = DEFAULT_REMINDER_ZOOM_MISSING_TEXT
 
     schedule = await schedule_repo.update(session, schedule_id, **update_data)
     await session.commit()
