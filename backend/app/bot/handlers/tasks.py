@@ -103,6 +103,19 @@ class TaskCommandFSM(StatesGroup):
     waiting_status_payload = State()
 
 
+NEW_TASK_PROMPT_TEXT = (
+    "📝 Введите текст новой задачи.\n"
+    "Модификаторы: !urgent !high !low @ДД.ММ\n"
+    "Для отмены отправьте /cancel"
+)
+
+
+async def start_new_task_flow(message: Message, state: FSMContext) -> None:
+    """Enter FSM state for creating a text task."""
+    await state.set_state(TaskCommandFSM.waiting_new_text)
+    await message.answer(NEW_TASK_PROMPT_TEXT)
+
+
 def _parse_short_id(raw_value: str) -> int | None:
     try:
         return int(raw_value.strip().lstrip("#"))
@@ -968,12 +981,7 @@ async def cmd_new(
 ) -> None:
     args = (message.text or "").split(maxsplit=1)
     if len(args) < 2:
-        await state.set_state(TaskCommandFSM.waiting_new_text)
-        await message.answer(
-            "📝 Введите текст новой задачи.\n"
-            "Модификаторы: !urgent !high !low @ДД.ММ\n"
-            "Для отмены отправьте /cancel"
-        )
+        await start_new_task_flow(message, state)
         return
 
     await state.clear()

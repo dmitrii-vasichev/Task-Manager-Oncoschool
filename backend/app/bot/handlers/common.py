@@ -12,11 +12,13 @@ from app.bot.keyboards import (
     MENU_BTN_ALL_TASKS_COMPANY,
     MENU_BTN_ALL_TASKS_DEPARTMENT,
     MENU_BTN_ALL_TASKS_LEGACY,
+    MENU_BTN_CREATE_TASK,
     MENU_BTN_HELP,
     MENU_BTN_MEETINGS,
     MENU_BTN_MY_REMINDER,
     MENU_BTN_MY_TASKS,
     MENU_BTN_NEXT_MEETING,
+    MENU_BTN_RESTART,
     MENU_BTN_STATS,
     MENU_BTN_SUBSCRIBE,
     MENU_BTN_SUMMARY,
@@ -117,9 +119,24 @@ async def menu_btn_my_tasks(
     await cmd_tasks(message, member, session_maker)
 
 
+@router.message(StateFilter(None), F.chat.type == "private", F.text == MENU_BTN_CREATE_TASK)
+async def menu_btn_create_task(
+    message: Message,
+    state: FSMContext,
+) -> None:
+    from app.bot.handlers.tasks import start_new_task_flow
+
+    await start_new_task_flow(message, state)
+
+
 @router.message(StateFilter(None), F.chat.type == "private", F.text == MENU_BTN_HELP)
 async def menu_btn_help(message: Message, member: TeamMember) -> None:
     await cmd_help(message, member)
+
+
+@router.message(StateFilter(None), F.chat.type == "private", F.text == MENU_BTN_RESTART)
+async def menu_btn_restart(message: Message, member: TeamMember) -> None:
+    await cmd_start(message, member)
 
 
 @router.message(StateFilter(None), F.chat.type == "private", F.text == MENU_BTN_ALL_TASKS_DEPARTMENT)
