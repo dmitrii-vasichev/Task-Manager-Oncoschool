@@ -66,8 +66,7 @@ export function MemberEditModal({
   const [reassignToMemberId, setReassignToMemberId] = useState("__none__");
   const [departmentId, setDepartmentId] = useState<string>("__none__");
   const [extraDepartmentIds, setExtraDepartmentIds] = useState<string[]>([]);
-  const [newExtraDepartmentId, setNewExtraDepartmentId] =
-    useState<string>("__none__");
+  const [newExtraDepartmentId, setNewExtraDepartmentId] = useState<string>("");
   const [telegramId, setTelegramId] = useState("");
   const [telegramUsername, setTelegramUsername] = useState("");
   const [position, setPosition] = useState("");
@@ -100,7 +99,7 @@ export function MemberEditModal({
           (id) => id !== member.department_id
         )
       );
-      setNewExtraDepartmentId("__none__");
+      setNewExtraDepartmentId("");
       setTelegramId(member.telegram_id != null ? String(member.telegram_id) : "");
       setTelegramUsername(member.telegram_username || "");
       setPosition(member.position || "");
@@ -237,7 +236,7 @@ export function MemberEditModal({
     if (value !== "__none__") {
       setExtraDepartmentIds((prev) => prev.filter((id) => id !== value));
       if (newExtraDepartmentId === value) {
-        setNewExtraDepartmentId("__none__");
+        setNewExtraDepartmentId("");
       }
     }
   };
@@ -245,7 +244,7 @@ export function MemberEditModal({
   const getEffectiveExtraDepartmentIds = () => {
     const ids = [...extraDepartmentIds];
     if (
-      newExtraDepartmentId !== "__none__" &&
+      newExtraDepartmentId &&
       newExtraDepartmentId !== departmentId &&
       !ids.includes(newExtraDepartmentId)
     ) {
@@ -256,13 +255,12 @@ export function MemberEditModal({
 
   const handleExtraDepartmentSelect = (value: string) => {
     setNewExtraDepartmentId(value);
-    if (value === "__none__") return;
     if (value === departmentId || extraDepartmentIds.includes(value)) {
-      setNewExtraDepartmentId("__none__");
+      setNewExtraDepartmentId("");
       return;
     }
     setExtraDepartmentIds((prev) => [...prev, value]);
-    setNewExtraDepartmentId("__none__");
+    setNewExtraDepartmentId("");
   };
 
   const removeExtraDepartment = (departmentIdToRemove: string) => {
@@ -476,14 +474,13 @@ export function MemberEditModal({
             </Label>
             <div className="flex gap-2 mt-1.5">
               <Select
-                value={newExtraDepartmentId}
+                value={newExtraDepartmentId || undefined}
                 onValueChange={handleExtraDepartmentSelect}
               >
                 <SelectTrigger className="rounded-xl">
-                  <SelectValue placeholder="Выберите отдел" />
+                  <SelectValue placeholder="Добавить отдел" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none__">Не выбрано</SelectItem>
                   {availableExtraDepartments.map((dept) => (
                     <SelectItem key={dept.id} value={dept.id}>
                       <span className="flex items-center gap-2">
