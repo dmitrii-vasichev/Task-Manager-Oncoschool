@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Loader2,
   Video,
@@ -67,6 +67,12 @@ const REMINDER_OPTIONS = [
 ];
 
 const DEFAULT_ZOOM_MISSING_TEXT = "Ссылка на Zoom появится позже.";
+const REMINDER_TEMPLATE_VARIABLES = [
+  { token: "{время}", label: "Время (МСК)" },
+  { token: "{название}", label: "Название встречи" },
+  { token: "{дата}", label: "Дата (МСК)" },
+  { token: "{день_недели}", label: "День недели" },
+];
 
 function utcTimeToLocal(timeUtc: string, timezone: string): string {
   try {
@@ -80,6 +86,21 @@ function utcTimeToLocal(timeUtc: string, timezone: string): string {
   } catch {
     return timeUtc.slice(0, 5);
   }
+}
+
+function applyReminderTemplate(
+  template: string,
+  values: { time: string; title: string; date: string; weekday: string }
+): string {
+  return template
+    .replaceAll("{время}", values.time)
+    .replaceAll("{название}", values.title)
+    .replaceAll("{дата}", values.date)
+    .replaceAll("{день_недели}", values.weekday)
+    .replaceAll("{time_msk}", values.time)
+    .replaceAll("{title}", values.title)
+    .replaceAll("{date_msk}", values.date)
+    .replaceAll("{weekday_ru}", values.weekday);
 }
 
 interface ScheduleFormProps {
@@ -174,6 +195,7 @@ export function ScheduleForm({
   );
 
   const hiddenSelectedCount = participantIds.length - selectedMembers.length;
+  const reminderTextRef = useRef<HTMLTextAreaElement | null>(null);
 
   const participantMentionsPreview = useMemo(
     () =>
@@ -190,12 +212,27 @@ export function ScheduleForm({
     [selectedMembers]
   );
 
-  const baseReminderPreview = useMemo(() => {
-    if (reminderText.trim()) return reminderText.trim();
-    const previewTitle = title.trim() || "Название встречи";
+  const previewTemplateValues = useMemo(() => {
     const previewTime = timeLocal || "15:00";
-    return `Доброго времени ❤️\n\nНапоминаем, сегодня в ${previewTime} по МСК ${previewTitle}`;
-  }, [reminderText, title, timeLocal]);
+    const previewTitle = title.trim() || "Название встречи";
+    const previewDate = new Date().toLocaleDateString("ru-RU", {
+      timeZone: "Europe/Moscow",
+    });
+    const previewWeekday = DAY_OF_WEEK_LABELS[Number(dayOfWeek)] || "понедельник";
+    return {
+      time: previewTime,
+      title: previewTitle,
+      date: previewDate,
+      weekday: previewWeekday.toLowerCase(),
+    };
+  }, [dayOfWeek, timeLocal, title]);
+
+  const baseReminderPreview = useMemo(() => {
+    if (reminderText.trim()) {
+      return applyReminderTemplate(reminderText.trim(), previewTemplateValues);
+    }
+    return `Доброго времени ❤️\n\nНапоминаем, сегодня в ${previewTemplateValues.time} по МСК ${previewTemplateValues.title}`;
+  }, [reminderText, previewTemplateValues]);
 
   const reminderPreviewWithZoom = useMemo(() => {
     let text = baseReminderPreview;
@@ -224,6 +261,23 @@ export function ScheduleForm({
     reminderZoomMissingBehavior,
     reminderZoomMissingText,
   ]);
+
+  const insertReminderVariable = (token: string) => {
+    const textarea = reminderTextRef.current;
+    if (!textarea) {
+      setReminderText((prev) => `${prev}${token}`);
+      return;
+    }
+    const start = textarea.selectionStart ?? reminderText.length;
+    const end = textarea.selectionEnd ?? reminderText.length;
+    const next = `${reminderText.slice(0, start)}${token}${reminderText.slice(end)}`;
+    setReminderText(next);
+    requestAnimationFrame(() => {
+      textarea.focus();
+      const cursor = start + token.length;
+      textarea.setSelectionRange(cursor, cursor);
+    });
+  };
 
   const toggleTarget = (id: string) => {
     setSelectedTargetIds((prev) =>
@@ -533,15 +587,49 @@ export function ScheduleForm({
                     Текст напоминания (необязательно)
                   </Label>
                   <Textarea
+                    ref={reminderTextRef}
                     value={reminderText}
                     onChange={(e) => setReminderText(e.target.value)}
-                    placeholder="Доброго времени! Напоминаем, сегодня в 15:00 по МСК Планерка по контенту"
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const token = e.dataTransfer.getData("text/reminder-variable");
+                      if (token) {
+                        insertReminderVariable(token);
+                      }
+                    }}
+                    placeholder="Здравствуйте! Напоминаем, сегодня в {время} по МСК встреча «{название}»."
                     rows={2}
                     className="mt-1 rounded-lg text-sm resize-none"
                   />
                   <p className="text-2xs text-muted-foreground/70 mt-1">
                     Участники и Zoom-блок добавляются отдельно, внизу сообщения.
                   </p>
+                  <div className="mt-2">
+                    <Label className="text-2xs text-muted-foreground">
+                      Вставить переменную
+                    </Label>
+                    <div className="flex flex-wrap gap-1.5 mt-1">
+                      {REMINDER_TEMPLATE_VARIABLES.map((item) => (
+                        <button
+                          key={item.token}
+                          type="button"
+                          draggable
+                          onDragStart={(e) =>
+                            e.dataTransfer.setData("text/reminder-variable", item.token)
+                          }
+                          onClick={() => insertReminderVariable(item.token)}
+                          className="inline-flex items-center gap-1 rounded-md border border-border/60 bg-card px-2 py-1 text-2xs hover:border-border transition-colors"
+                        >
+                          <span className="text-muted-foreground">{item.label}</span>
+                          <code className="font-mono text-[10px]">{item.token}</code>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-2xs text-muted-foreground/60 mt-1">
+                      Нажмите на переменную или перетащите ее в текст.
+                    </p>
+                  </div>
                 </div>
 
                 <div className="rounded-lg border border-border/60 bg-card px-2.5 py-2 space-y-2">

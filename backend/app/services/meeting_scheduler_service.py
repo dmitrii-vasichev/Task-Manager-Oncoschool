@@ -13,6 +13,15 @@ from app.services.zoom_service import extract_zoom_join_url, sanitize_zoom_join_
 
 logger = logging.getLogger(__name__)
 DEFAULT_REMINDER_ZOOM_MISSING_TEXT = "Ссылка на Zoom появится позже."
+RUSSIAN_WEEKDAYS = {
+    1: "понедельник",
+    2: "вторник",
+    3: "среда",
+    4: "четверг",
+    5: "пятница",
+    6: "суббота",
+    7: "воскресенье",
+}
 
 
 class MeetingSchedulerService:
@@ -351,7 +360,11 @@ class MeetingSchedulerService:
         self, session, schedule: MeetingSchedule, meeting: Meeting, zoom_data
     ) -> None:
         """Send reminders to all telegram_targets, including participant @mentions."""
-        text = schedule.reminder_text or self._default_reminder_text(schedule, meeting)
+        custom_template = (schedule.reminder_text or "").strip()
+        if custom_template:
+            text = self._render_custom_reminder_text(custom_template, schedule, meeting)
+        else:
+            text = self._default_reminder_text(schedule, meeting)
 
         # Add participant @username mentions
         if schedule.participant_ids:
@@ -416,17 +429,52 @@ class MeetingSchedulerService:
     @staticmethod
     def _default_reminder_text(schedule: MeetingSchedule, meeting: Meeting) -> str:
         """Default reminder text if reminder_text is not set."""
-        try:
-            # meeting_date is stored as naive UTC — explicitly localize to UTC first
-            meeting_utc = meeting.meeting_date.replace(tzinfo=ZoneInfo("UTC"))
-            # Always show Moscow time since the notification says "по МСК"
-            moscow_time = meeting_utc.astimezone(ZoneInfo("Europe/Moscow"))
-            time_str = moscow_time.strftime("%H:%M")
-        except Exception:
-            time_str = schedule.time_utc.strftime("%H:%M")
+        time_str, _, _ = MeetingSchedulerService._meeting_time_parts(schedule, meeting)
 
         return (
             f"Доброго времени ❤️\n\n"
             f"Напоминаем, сегодня в {time_str} по МСК "
             f"{schedule.title}"
         )
+
+    @staticmethod
+    def _meeting_time_parts(schedule: MeetingSchedule, meeting: Meeting) -> tuple[str, str, str]:
+        """Return (time_msk, date_msk, weekday_ru) for reminder templates."""
+        try:
+            # meeting_date is stored as naive UTC — explicitly localize to UTC first
+            meeting_utc = meeting.meeting_date.replace(tzinfo=ZoneInfo("UTC"))
+            # Always show Moscow time since the notification says "по МСК"
+            moscow_time = meeting_utc.astimezone(ZoneInfo("Europe/Moscow"))
+            time_str = moscow_time.strftime("%H:%M")
+            date_str = moscow_time.strftime("%d.%m.%Y")
+            weekday_str = RUSSIAN_WEEKDAYS.get(moscow_time.isoweekday(), "")
+        except Exception:
+            time_str = schedule.time_utc.strftime("%H:%M")
+            date_str = datetime.now(ZoneInfo("Europe/Moscow")).strftime("%d.%m.%Y")
+            weekday_str = ""
+        return time_str, date_str, weekday_str
+
+    @staticmethod
+    def _render_custom_reminder_text(
+        template: str,
+        schedule: MeetingSchedule,
+        meeting: Meeting,
+    ) -> str:
+        """Render template placeholders for custom reminder text."""
+        time_str, date_str, weekday_str = MeetingSchedulerService._meeting_time_parts(
+            schedule, meeting
+        )
+        replacements = {
+            "{время}": time_str,
+            "{название}": schedule.title,
+            "{дата}": date_str,
+            "{день_недели}": weekday_str,
+            "{time_msk}": time_str,
+            "{title}": schedule.title,
+            "{date_msk}": date_str,
+            "{weekday_ru}": weekday_str,
+        }
+        rendered = template
+        for token, value in replacements.items():
+            rendered = rendered.replace(token, value)
+        return rendered
