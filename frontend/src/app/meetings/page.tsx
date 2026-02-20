@@ -230,7 +230,7 @@ export default function MeetingsPage() {
           SECTION 1: Расписание встреч
           ============================================ */}
       <section>
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center">
               <Calendar className="h-4.5 w-4.5 text-primary" />
@@ -240,7 +240,7 @@ export default function MeetingsPage() {
           {isModerator && (
             <Button
               size="sm"
-              className="rounded-xl gap-1.5"
+              className="w-full rounded-xl gap-1.5 sm:w-auto"
               onClick={() => {
                 setEditSchedule(null);
                 setShowScheduleForm(true);
@@ -290,8 +290,8 @@ export default function MeetingsPage() {
           ============================================ */}
       <section>
         <Tabs value={activeTab} onValueChange={handleTabChange}>
-          <div className="flex items-center justify-between mb-4">
-            <TabsList className="rounded-xl">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <TabsList className="w-full overflow-x-auto rounded-xl sm:w-auto">
               <TabsTrigger value="upcoming" className="rounded-lg gap-1.5 text-sm">
                 <Video className="h-3.5 w-3.5" />
                 Предстоящие
@@ -311,7 +311,7 @@ export default function MeetingsPage() {
               <Button
                 size="sm"
                 variant="outline"
-                className="rounded-xl gap-1.5"
+                className="w-full rounded-xl gap-1.5 sm:w-auto"
                 onClick={() => setShowCreateMeeting(true)}
               >
                 <CalendarPlus className="h-4 w-4" />
@@ -345,7 +345,7 @@ export default function MeetingsPage() {
           {/* Past tab */}
           <TabsContent value="past" className="mt-0 space-y-4">
             {/* Search */}
-            <div className="relative max-w-sm">
+            <div className="relative w-full max-w-sm">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 value={search}
@@ -383,7 +383,7 @@ export default function MeetingsPage() {
 
                 {/* Pagination */}
                 {totalPages > 1 && (
-                  <div className="flex items-center justify-center gap-1 pt-2">
+                  <div className="flex items-center justify-center gap-1 overflow-x-auto pb-1 pt-2">
                     <button
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
                       disabled={currentPage <= 1}
@@ -570,7 +570,7 @@ function CreateMeetingDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 items-end gap-3">
+          <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
             <div>
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Дата
@@ -623,7 +623,7 @@ function CreateMeetingDialog({
               Участники
             </Label>
             <div className="mt-1.5 rounded-xl border border-border/60 bg-card p-3 space-y-3">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <p className="text-sm font-medium">
                   {participantIds.length > 0
                     ? `Выбрано: ${participantIds.length}`
@@ -648,7 +648,7 @@ function CreateMeetingDialog({
                       className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/20 px-2 py-1"
                     >
                       <UserAvatar name={member.full_name} avatarUrl={member.avatar_url} size="sm" />
-                      <span className="text-xs font-medium text-foreground truncate max-w-[140px]">
+                      <span className="text-xs font-medium text-foreground truncate max-w-[120px] sm:max-w-[140px]">
                         {member.full_name}
                       </span>
                     </div>
@@ -672,7 +672,7 @@ function CreateMeetingDialog({
             />
           </div>
 
-          <div className="flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border/40">
+          <div className="flex flex-col gap-2 rounded-xl border border-border/40 bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               <Video className="h-4 w-4 text-blue-500" />
               <span className="text-sm font-medium">Создать Zoom-конференцию</span>
@@ -686,16 +686,16 @@ function CreateMeetingDialog({
             </div>
           )}
 
-          <div className="flex gap-2 justify-end pt-2">
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
             <Button
               variant="outline"
-              className="rounded-xl"
+              className="w-full rounded-xl sm:w-auto"
               onClick={onClose}
               disabled={saving}
             >
               Отмена
             </Button>
-            <Button className="rounded-xl" onClick={handleCreate} disabled={saving}>
+            <Button className="w-full rounded-xl sm:w-auto" onClick={handleCreate} disabled={saving}>
               {saving ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

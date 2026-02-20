@@ -178,7 +178,7 @@ export function MemberDetailModal({ member, stats, departments, onClose }: Membe
                 <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
                   Статистика задач
                 </h4>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   <div className="rounded-xl bg-muted/50 p-2.5 text-center">
                     <span className="font-heading font-bold text-lg">{stats.tasks_in_progress}</span>
                     <p className="text-2xs text-muted-foreground">В работе</p>

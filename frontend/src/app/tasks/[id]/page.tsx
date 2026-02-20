@@ -146,12 +146,12 @@ export default function TaskDetailPage() {
     return (
       <div className="max-w-4xl animate-fade-in-up">
         <Skeleton className="h-5 w-24 mb-8" />
-        <Skeleton className="h-10 w-96 mb-4" />
+        <Skeleton className="mb-4 h-10 w-full max-w-md" />
         <div className="flex gap-2 mb-8">
           <Skeleton className="h-6 w-20 rounded-full" />
           <Skeleton className="h-6 w-20 rounded-full" />
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 py-6 border-y border-border/50">
+        <div className="grid grid-cols-1 gap-6 border-y border-border/50 py-6 sm:grid-cols-2 lg:grid-cols-4">
           {[...Array(4)].map((_, i) => (
             <div key={i}>
               <Skeleton className="h-3 w-16 mb-2" />
@@ -290,11 +290,11 @@ export default function TaskDetailPage() {
         </button>
 
         {/* ── Hero header ── */}
-        <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <h1 className="text-2xl sm:text-3xl font-bold font-heading tracking-tight leading-tight">
             {task.title}
           </h1>
-          <span className="text-2xs text-muted-foreground/70 font-mono rounded-md bg-muted/50 px-1.5 py-0.5">
+          <span className="self-start rounded-md bg-muted/50 px-1.5 py-0.5 font-mono text-2xs text-muted-foreground/70 sm:self-auto">
             #{task.short_id}
           </span>
         </div>
@@ -407,7 +407,7 @@ export default function TaskDetailPage() {
                 value={task.assignee_id || "none"}
                 onValueChange={handleReassign}
               >
-                <SelectTrigger className="w-[200px] h-9 text-sm">
+                <SelectTrigger className="h-9 w-full text-sm sm:w-[200px]">
                   <div className="flex items-center gap-1.5">
                     <UserPlus className="h-3.5 w-3.5 opacity-60" />
                     <SelectValue placeholder="Назначить" />
@@ -436,7 +436,7 @@ export default function TaskDetailPage() {
                         variant="ghost"
                         size="sm"
                         disabled={deleting}
-                        className="ml-auto text-destructive hover:text-destructive hover:bg-destructive/10"
+                        className="text-destructive hover:bg-destructive/10 hover:text-destructive sm:ml-auto"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -467,7 +467,7 @@ export default function TaskDetailPage() {
         )}
 
         {/* ── Meta grid ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-8 gap-y-5 py-6 border-y border-border/50">
+        <div className="grid grid-cols-1 gap-x-8 gap-y-5 border-y border-border/50 py-6 sm:grid-cols-2 lg:grid-cols-4">
           {/* Assignee */}
           <div>
             <dt className="text-2xs uppercase tracking-wider text-muted-foreground font-medium mb-1.5 flex items-center gap-1">

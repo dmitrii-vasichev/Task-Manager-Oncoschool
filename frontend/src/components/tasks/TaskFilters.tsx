@@ -113,9 +113,9 @@ export function TaskFilters({
   return (
     <div className="flex-1 space-y-3">
       {/* Main filter row */}
-      <div className="flex items-center gap-3 flex-wrap">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
         {/* Search */}
-        <div className="relative group">
+        <div className="relative group w-full sm:w-auto">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary" />
           <Input
             placeholder="Найти задачу..."
@@ -123,7 +123,7 @@ export function TaskFilters({
             onChange={(e) =>
               onFiltersChange({ ...filters, search: e.target.value })
             }
-            className="pl-9 h-10 w-56 bg-card border-border/60 shadow-sm focus:shadow-md focus:border-primary/40"
+            className="h-10 w-full bg-card pl-9 shadow-sm focus:border-primary/40 focus:shadow-md sm:w-56"
           />
           {filters.search && (
             <button
@@ -140,7 +140,7 @@ export function TaskFilters({
           variant="outline"
           size="sm"
           onClick={() => setFiltersExpanded(!filtersExpanded)}
-          className="h-10 gap-2 border-border/60 shadow-sm lg:hidden"
+          className="h-10 w-full gap-2 border-border/60 shadow-sm sm:w-auto lg:hidden"
         >
           <SlidersHorizontal className="h-4 w-4" />
           Фильтры
@@ -151,7 +151,11 @@ export function TaskFilters({
 
         {/* Desktop filters — always visible */}
         <div
-          className={`flex items-center gap-2 flex-wrap ${filtersExpanded ? "flex" : "hidden lg:flex"}`}
+          className={`
+            w-full flex-col gap-2
+            sm:w-auto sm:flex-row sm:flex-wrap sm:items-center
+            ${filtersExpanded ? "flex" : "hidden lg:flex"}
+          `}
         >
           {/* Priority */}
           <Select
@@ -160,7 +164,7 @@ export function TaskFilters({
               onFiltersChange({ ...filters, priority: v === "all" ? "" : v })
             }
           >
-            <SelectTrigger className="h-10 w-[150px] bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md">
+            <SelectTrigger className="h-10 w-full bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md sm:w-[150px]">
               <SelectValue placeholder="Приоритет" />
             </SelectTrigger>
             <SelectContent>
@@ -187,7 +191,7 @@ export function TaskFilters({
               onFiltersChange({ ...filters, source: v === "all" ? "" : v })
             }
           >
-            <SelectTrigger className="h-10 w-[150px] bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md">
+            <SelectTrigger className="h-10 w-full bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md sm:w-[150px]">
               <SelectValue placeholder="Источник" />
             </SelectTrigger>
             <SelectContent>
@@ -226,7 +230,7 @@ export function TaskFilters({
                 });
               }}
             >
-              <SelectTrigger className="h-10 w-[180px] bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md">
+              <SelectTrigger className="h-10 w-full bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md sm:w-[180px]">
                 <SelectValue placeholder="Отдел" />
               </SelectTrigger>
               <SelectContent>
@@ -250,7 +254,7 @@ export function TaskFilters({
               })
             }
           >
-            <SelectTrigger className="h-10 w-[170px] bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md">
+            <SelectTrigger className="h-10 w-full bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md sm:w-[170px]">
               <SelectValue placeholder="Исполнитель" />
             </SelectTrigger>
             <SelectContent>

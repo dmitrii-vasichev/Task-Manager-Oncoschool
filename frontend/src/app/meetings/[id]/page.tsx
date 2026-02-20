@@ -183,11 +183,11 @@ export default function MeetingDetailPage() {
         <Skeleton className="h-6 w-20 rounded-lg" />
         <Skeleton className="h-10 w-80 rounded-lg" />
         <Skeleton className="h-6 w-48 rounded-lg" />
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Skeleton className="h-24 rounded-2xl" />
           <Skeleton className="h-24 rounded-2xl" />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-1">
           <Skeleton className="h-10 w-28 rounded-xl" />
           <Skeleton className="h-10 w-24 rounded-xl" />
           <Skeleton className="h-10 w-28 rounded-xl" />
@@ -254,7 +254,8 @@ export default function MeetingDetailPage() {
 
       {/* Custom tabs */}
       <div className="animate-fade-in-up stagger-3">
-        <div className="flex gap-1 p-1 bg-muted/50 rounded-2xl w-fit">
+        <div className="overflow-x-auto pb-1">
+          <div className="flex min-w-max gap-1 rounded-2xl bg-muted/50 p-1">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -267,7 +268,7 @@ export default function MeetingDetailPage() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`
-                  flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all
+                  flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-all sm:px-4
                   ${
                     isActive
                       ? "bg-card text-foreground shadow-sm"
@@ -295,6 +296,7 @@ export default function MeetingDetailPage() {
               </button>
             );
           })}
+          </div>
         </div>
       </div>
 

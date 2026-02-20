@@ -188,7 +188,7 @@ export function CreateTaskDialog({
           {/* Priority — visual buttons */}
           <div className="space-y-2">
             <Label className="text-sm font-medium">Приоритет</Label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {PRIORITY_OPTIONS.map(({ value, icon: Icon, color, activeColor, ringColor }) => (
                 <button
                   key={value}
@@ -212,7 +212,7 @@ export function CreateTaskDialog({
           </div>
 
           {/* Deadline + Assignee row */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label className="text-sm font-medium">
                 <CalendarDays className="inline h-3.5 w-3.5 mr-1 -mt-0.5" />

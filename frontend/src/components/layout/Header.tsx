@@ -226,7 +226,7 @@ function NotificationBell() {
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent align="end" className="w-[360px] overflow-hidden p-0">
+      <PopoverContent align="end" className="w-[calc(100vw-1rem)] max-w-[360px] overflow-hidden p-0 sm:w-[360px]">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div>
             <h3 className="text-sm font-semibold">Уведомления</h3>

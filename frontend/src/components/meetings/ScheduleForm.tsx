@@ -343,7 +343,7 @@ export function ScheduleForm({
           </div>
 
           {/* Day + Time row */}
-          <div className="grid grid-cols-2 items-end gap-3">
+          <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
             <div>
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 День недели
@@ -374,7 +374,7 @@ export function ScheduleForm({
           </div>
 
           {/* Duration + Recurrence */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Длительность
@@ -426,7 +426,7 @@ export function ScheduleForm({
               Участники
             </Label>
             <div className="mt-2 rounded-xl border border-border/60 bg-card p-3 space-y-3">
-              <div className="flex items-start justify-between gap-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-sm font-medium">
                     {participantIds.length > 0
@@ -457,7 +457,7 @@ export function ScheduleForm({
                       className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/20 px-2 py-1"
                     >
                       <UserAvatar name={member.full_name} avatarUrl={member.avatar_url} size="sm" />
-                      <span className="text-xs font-medium text-foreground truncate max-w-[140px]">
+                      <span className="text-xs font-medium text-foreground truncate max-w-[120px] sm:max-w-[140px]">
                         {member.full_name}
                       </span>
                     </div>
@@ -495,7 +495,7 @@ export function ScheduleForm({
           <div className="h-px bg-border/60" />
 
           {/* Zoom toggle */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-muted/40 border border-border/40">
+          <div className="flex flex-col gap-2 rounded-xl border border-border/40 bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-2">
               <Video className="h-4 w-4 text-blue-500" />
               <span className="text-sm font-medium">Создавать Zoom автоматически</span>
@@ -513,7 +513,7 @@ export function ScheduleForm({
 
           {/* Reminder toggle + settings */}
           <div className="rounded-xl bg-muted/40 border border-border/40 overflow-hidden">
-            <div className="flex items-center justify-between p-3">
+            <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2">
                 <Bell className="h-4 w-4 text-amber-500" />
                 <span className="text-sm font-medium">Напоминание в Telegram</span>

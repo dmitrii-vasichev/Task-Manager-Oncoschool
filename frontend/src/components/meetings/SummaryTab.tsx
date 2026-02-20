@@ -421,7 +421,7 @@ export function SummaryTab({
                     className="h-10 font-medium rounded-lg border-border/40"
                   />
 
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <div>
                       <Label className="text-2xs text-muted-foreground/70 uppercase tracking-wider">
                         Приоритет

@@ -202,7 +202,7 @@ function DistributionBars({
 function AnalyticsSkeleton() {
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
-      <div className="grid gap-4 grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {[...Array(5)].map((_, i) => (
           <div key={i} className="rounded-2xl border bg-card p-5 space-y-3">
             <Skeleton className="h-4 w-24" />
@@ -525,7 +525,7 @@ export default function AnalyticsPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 grid-cols-2 xl:grid-cols-5">
+      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard
           label="Активные задачи"
           value={activeTasks}

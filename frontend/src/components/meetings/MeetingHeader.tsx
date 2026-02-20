@@ -82,7 +82,7 @@ export function MeetingHeader({
       </Link>
 
       {/* Title + Status row */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex-1 min-w-0">
           {editingTitle && isModerator ? (
             <div className="flex items-center gap-2">
@@ -173,10 +173,10 @@ export function MeetingHeader({
         )}
 
         {isModerator && onDelete && (
-          <div className="ml-auto">
+          <div className="w-full sm:ml-auto sm:w-auto">
             {confirmDelete ? (
-              <div className="flex items-center gap-2 rounded-xl bg-destructive/10 border border-destructive/20 px-3 py-1.5">
-                <span className="text-xs text-destructive font-medium">
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-destructive/20 bg-destructive/10 px-3 py-1.5">
+                <span className="text-[11px] font-medium text-destructive sm:text-xs">
                   {meeting.zoom_meeting_id ? "Удалить встречу и Zoom-конференцию?" : "Удалить встречу?"}
                 </span>
                 <button

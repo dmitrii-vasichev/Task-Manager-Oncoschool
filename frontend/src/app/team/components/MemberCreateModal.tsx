@@ -208,7 +208,7 @@ export function MemberCreateModal({ open, departments, currentUser, onCreated, o
           </div>
 
           {/* Role + Department */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Роль
@@ -303,7 +303,7 @@ export function MemberCreateModal({ open, departments, currentUser, onCreated, o
           </div>
 
           {/* Telegram ID + Username */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Telegram ID
@@ -345,7 +345,7 @@ export function MemberCreateModal({ open, departments, currentUser, onCreated, o
           </div>
 
           {/* Email + Birthday */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Email

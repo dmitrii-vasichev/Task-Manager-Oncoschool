@@ -169,7 +169,7 @@ function AIModelSection() {
     return (
       <div className="rounded-2xl border border-border/60 bg-card p-6 space-y-4">
         <Skeleton className="h-6 w-48" />
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {[...Array(3)].map((_, i) => (
             <Skeleton key={i} className="h-24 rounded-xl" />
           ))}
@@ -1379,7 +1379,7 @@ function ReminderEditDialog({
             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
               Дни недели
             </Label>
-            <div className="flex gap-1.5 mt-2">
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {[1, 2, 3, 4, 5, 6, 7].map((day) => (
                 <button
                   key={day}
@@ -1405,11 +1405,11 @@ function ReminderEditDialog({
 
           {/* Content toggles */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Что включить в дайджест
               </Label>
-              <div className="flex items-center gap-1.5">
+              <div className="flex w-full flex-wrap items-center gap-1.5 sm:w-auto">
                 <Button
                   type="button"
                   variant="outline"
@@ -1482,17 +1482,17 @@ function ReminderEditDialog({
             </div>
           )}
 
-          <div className="flex gap-2 justify-end pt-2">
+          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
             <Button
               variant="outline"
-              className="rounded-xl"
+              className="w-full rounded-xl sm:w-auto"
               onClick={onClose}
               disabled={saving}
             >
               Отмена
             </Button>
             <Button
-              className="rounded-xl"
+              className="w-full rounded-xl sm:w-auto"
               onClick={handleSave}
               disabled={saving}
             >

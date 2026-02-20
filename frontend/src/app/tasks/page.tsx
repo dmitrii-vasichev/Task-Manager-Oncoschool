@@ -279,7 +279,7 @@ export default function TasksPage() {
   return (
     <div className="space-y-5 animate-in fade-in duration-300">
       {/* Header: filters + create button */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <TaskFilters
           filters={filters}
           onFiltersChange={setFilters}
@@ -289,7 +289,7 @@ export default function TasksPage() {
         />
         <Button
           onClick={() => setCreateOpen(true)}
-          className="shrink-0 h-10 gap-2 bg-accent hover:bg-accent/90 text-accent-foreground shadow-sm"
+          className="h-10 w-full gap-2 bg-accent text-accent-foreground shadow-sm hover:bg-accent/90 sm:w-auto lg:shrink-0"
         >
           <Plus className="h-4 w-4" />
           Новая задача

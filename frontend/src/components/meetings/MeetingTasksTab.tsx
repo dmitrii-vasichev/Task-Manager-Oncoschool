@@ -62,7 +62,7 @@ export function MeetingTasksTab({
   return (
     <div className="space-y-4">
       {/* Progress bar */}
-      <div className="flex items-center gap-3 mb-2">
+      <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
         <div className="flex-1">
           <Progress value={taskProgress} className="h-1.5" />
         </div>
@@ -83,7 +83,7 @@ export function MeetingTasksTab({
               className="rounded-xl border border-border/60 bg-card p-4 hover:shadow-md hover:shadow-primary/5 hover:-translate-y-px transition-all animate-fade-in-up"
               style={{ animationDelay: `${i * 40}ms` }}
             >
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <span className="text-2xs font-mono text-muted-foreground bg-muted/60 rounded px-1.5 py-0.5">
                     #{task.short_id}
@@ -100,7 +100,7 @@ export function MeetingTasksTab({
               </div>
 
               {task.assignee && (
-                <div className="flex items-center gap-2 mt-2 ml-12">
+                <div className="mt-2 flex items-center gap-2 sm:ml-12">
                   <UserAvatar name={task.assignee.full_name} avatarUrl={task.assignee.avatar_url} size="sm" />
                   <span className="text-xs text-muted-foreground">
                     {task.assignee.full_name}

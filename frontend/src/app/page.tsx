@@ -97,12 +97,12 @@ function DashboardSkeleton() {
   return (
     <div className="space-y-6">
       {/* Compact header skeleton */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <Skeleton className="h-5 w-32" />
           <Skeleton className="h-4 w-48" />
         </div>
-        <Skeleton className="h-9 w-[240px]" />
+        <Skeleton className="h-9 w-full sm:w-[240px]" />
       </div>
 
       {/* Three-column skeleton */}
@@ -291,7 +291,7 @@ function SectionHeader({
   };
 
   return (
-    <div className="flex items-center justify-between mb-4">
+    <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-2 flex-wrap">
         {Icon && (
           <Icon
@@ -321,7 +321,7 @@ function SectionHeader({
       {linkHref && (
         <Link
           href={linkHref}
-          className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors shrink-0"
+          className="flex items-center gap-1 self-start text-sm text-muted-foreground transition-colors hover:text-foreground sm:self-auto"
         >
           {linkLabel || "Смотреть все"}
           <ArrowRight className="h-3.5 w-3.5" />
@@ -712,7 +712,7 @@ export default function DashboardPage() {
       <section className="animate-fade-in-up stagger-1">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-3 min-w-0">
-            <h1 className="text-lg font-bold font-heading tracking-tight whitespace-nowrap">
+            <h1 className="truncate text-lg font-bold font-heading tracking-tight">
               {firstName(user.full_name)}
             </h1>
             <span className="text-sm text-muted-foreground capitalize hidden sm:inline">
@@ -720,7 +720,7 @@ export default function DashboardPage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap sm:gap-3">
             {canUseDepartmentView && (
               <div className="inline-flex rounded-lg border border-border/60 bg-card p-0.5">
                 <button
@@ -759,7 +759,7 @@ export default function DashboardPage() {
                   setSelectedDepartmentId(value);
                 }}
               >
-                <SelectTrigger className="h-8 w-[200px] border-border/60 bg-card shadow-sm text-sm">
+                <SelectTrigger className="h-8 w-full border-border/60 bg-card text-sm shadow-sm sm:w-[200px]">
                   <SelectValue placeholder="Отдел" />
                 </SelectTrigger>
                 <SelectContent>
