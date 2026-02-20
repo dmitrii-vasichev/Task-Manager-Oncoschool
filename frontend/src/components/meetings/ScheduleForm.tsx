@@ -231,7 +231,7 @@ export function ScheduleForm({
     if (reminderText.trim()) {
       return applyReminderTemplate(reminderText.trim(), previewTemplateValues);
     }
-    return `Доброго времени ❤️\n\nНапоминаем, сегодня в ${previewTemplateValues.time} по МСК ${previewTemplateValues.title}`;
+    return `Здравствуйте! Напоминаю, сегодня в ${previewTemplateValues.time} по МСК встреча ${previewTemplateValues.title}`;
   }, [reminderText, previewTemplateValues]);
 
   const reminderPreviewWithZoom = useMemo(() => {
@@ -598,7 +598,7 @@ export function ScheduleForm({
                         insertReminderVariable(token);
                       }
                     }}
-                    placeholder="Здравствуйте! Напоминаем, сегодня в {время} по МСК встреча «{название}»."
+                    placeholder="Здравствуйте! Напоминаю, сегодня в {время} по МСК встреча {название}"
                     rows={2}
                     className="mt-1 rounded-lg text-sm resize-none"
                   />

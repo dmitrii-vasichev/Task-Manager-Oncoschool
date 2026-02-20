@@ -432,9 +432,8 @@ class MeetingSchedulerService:
         time_str, _, _ = MeetingSchedulerService._meeting_time_parts(schedule, meeting)
 
         return (
-            f"Доброго времени ❤️\n\n"
-            f"Напоминаем, сегодня в {time_str} по МСК "
-            f"{schedule.title}"
+            f"Здравствуйте! Напоминаю, сегодня в {time_str} по МСК "
+            f"встреча {schedule.title}"
         )
 
     @staticmethod
