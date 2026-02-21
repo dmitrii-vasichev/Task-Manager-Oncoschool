@@ -1,6 +1,6 @@
 import re
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -128,7 +128,7 @@ class TaskService:
             session,
             task.id,
             status="done",
-            completed_at=datetime.now(timezone.utc),
+            completed_at=datetime.utcnow(),
         )
 
         # Auto task update
@@ -168,7 +168,7 @@ class TaskService:
 
         update_kwargs = {"status": new_status}
         if new_status == "done":
-            update_kwargs["completed_at"] = datetime.now(timezone.utc)
+            update_kwargs["completed_at"] = datetime.utcnow()
 
         task = await self.task_repo.update(session, task.id, **update_kwargs)
 
