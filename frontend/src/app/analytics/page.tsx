@@ -10,7 +10,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { UserAvatar } from "@/components/shared/UserAvatar";
-import { RoleBadge } from "@/components/shared/RoleBadge";
 import { useToast } from "@/components/shared/Toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useDepartments } from "@/hooks/useDepartments";
@@ -235,6 +234,39 @@ function EmptyPanel({
       <p className="text-sm font-medium text-foreground">{title}</p>
       <p className="mt-1 text-xs text-muted-foreground">{description}</p>
     </div>
+  );
+}
+
+function MemberDepartmentBadge({
+  name,
+  color,
+}: {
+  name: string | null;
+  color: string | null;
+}) {
+  const label = name || "Без отдела";
+
+  if (!color) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+        <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
+        {label}
+      </span>
+    );
+  }
+
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium"
+      style={{
+        backgroundColor: `${color}18`,
+        borderColor: `${color}55`,
+        color,
+      }}
+    >
+      <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+      {label}
+    </span>
   );
 }
 
@@ -798,7 +830,10 @@ export default function AnalyticsPage() {
                               size="sm"
                             />
                             <span className="font-medium">{member.full_name}</span>
-                            <RoleBadge role={member.role} />
+                            <MemberDepartmentBadge
+                              name={member.department_name}
+                              color={member.department_color}
+                            />
                           </div>
                         </td>
                         <td className="px-2 py-2 text-center font-mono text-xs text-status-done-fg">

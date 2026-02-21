@@ -535,6 +535,8 @@ export interface MemberStats {
   full_name: string;
   avatar_url: string | null;
   role: MemberRole;
+  department_name: string | null;
+  department_color: string | null;
   total_tasks: number;
   tasks_done: number;
   tasks_in_progress: number;

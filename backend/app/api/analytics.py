@@ -89,6 +89,8 @@ class MemberStats(BaseModel):
     full_name: str
     avatar_url: str | None
     role: str
+    department_name: str | None
+    department_color: str | None
     total_tasks: int
     tasks_done: int
     tasks_in_progress: int
@@ -535,7 +537,12 @@ async def analytics_members(
     today = date.today()
 
     members_stmt = (
-        select(TeamMember)
+        select(
+            TeamMember,
+            Department.name.label("department_name"),
+            Department.color.label("department_color"),
+        )
+        .outerjoin(Department, TeamMember.department_id == Department.id)
         .where(
             TeamMember.is_active.is_(True),
             TeamMember.is_test.is_(False),
@@ -545,11 +552,11 @@ async def analytics_members(
     if department_id is not None:
         members_stmt = members_stmt.where(TeamMember.department_id == department_id)
 
-    all_members = list((await session.execute(members_stmt)).scalars().all())
-    if not all_members:
+    member_rows = (await session.execute(members_stmt)).all()
+    if not member_rows:
         return MembersAnalyticsResponse(members=[])
 
-    member_ids = [m.id for m in all_members]
+    member_ids = [m.id for m, _, _ in member_rows]
 
     task_stats_stmt = select(
         Task.assignee_id,
@@ -588,7 +595,7 @@ async def analytics_members(
     last_updates = {row.author_id: row.last_update for row in last_update_result.all()}
 
     member_stats = []
-    for m in all_members:
+    for m, department_name, department_color in member_rows:
         row = stats_by_assignee.get(m.id)
         member_stats.append(
             MemberStats(
@@ -596,6 +603,8 @@ async def analytics_members(
                 full_name=m.full_name,
                 avatar_url=m.avatar_url,
                 role=m.role,
+                department_name=department_name,
+                department_color=department_color,
                 total_tasks=int(row.total or 0) if row else 0,
                 tasks_done=int(row.done or 0) if row else 0,
                 tasks_in_progress=int(row.in_progress or 0) if row else 0,
