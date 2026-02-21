@@ -66,6 +66,34 @@ def _normalize_reminder_offsets(
     return sorted(normalized, reverse=True)
 
 
+def _normalize_reminder_texts_by_offset(
+    reminder_texts_by_offset: dict[str, str] | None,
+    reminder_offsets_minutes: list[int],
+    fallback_text: str | None = None,
+) -> dict[str, str]:
+    normalized: dict[str, str] = {}
+    source = reminder_texts_by_offset if isinstance(reminder_texts_by_offset, dict) else {}
+    allowed_offsets = set(reminder_offsets_minutes)
+
+    for raw_key, raw_value in source.items():
+        try:
+            offset = int(raw_key)
+        except (TypeError, ValueError):
+            continue
+        if offset not in ALLOWED_REMINDER_OFFSETS_MINUTES or offset not in allowed_offsets:
+            continue
+        text = str(raw_value or "").strip()
+        if text:
+            normalized[str(offset)] = text
+
+    fallback = (fallback_text or "").strip()
+    first_offset_key = str(reminder_offsets_minutes[0]) if reminder_offsets_minutes else None
+    if fallback and first_offset_key and first_offset_key not in normalized:
+        normalized[first_offset_key] = fallback
+
+    return normalized
+
+
 def _is_last_selected_weekday_in_month(dt_local: datetime, day_of_week: int) -> bool:
     """Check that local date is the last selected weekday in its month."""
     if dt_local.isoweekday() != day_of_week:
@@ -217,6 +245,12 @@ def _enrich_response(schedule: MeetingSchedule) -> MeetingScheduleResponse:
         fallback_minutes=resp.reminder_minutes_before,
     )
     resp.reminder_minutes_before = resp.reminder_offsets_minutes[0]
+    resp.reminder_texts_by_offset = _normalize_reminder_texts_by_offset(
+        resp.reminder_texts_by_offset,
+        resp.reminder_offsets_minutes,
+        fallback_text=resp.reminder_text,
+    )
+    resp.reminder_text = resp.reminder_texts_by_offset.get(str(resp.reminder_minutes_before))
     if resp.next_occurrence_at and resp.next_occurrence_at.tzinfo is None:
         resp.next_occurrence_at = resp.next_occurrence_at.replace(tzinfo=ZoneInfo("UTC"))
     resp.next_occurrence_date = _calc_next_occurrence_date(schedule)
@@ -387,7 +421,13 @@ async def create_schedule(
         data.reminder_offsets_minutes,
         fallback_minutes=data.reminder_minutes_before,
     )
+    reminder_texts_by_offset = _normalize_reminder_texts_by_offset(
+        data.reminder_texts_by_offset,
+        reminder_offsets_minutes,
+        fallback_text=reminder_text,
+    )
     reminder_minutes_before = reminder_offsets_minutes[0]
+    reminder_text = reminder_texts_by_offset.get(str(reminder_minutes_before))
     reminder_include_zoom_link = True
     reminder_zoom_missing_behavior = "hide"
     reminder_zoom_missing_text = None
@@ -406,6 +446,7 @@ async def create_schedule(
         reminder_minutes_before=reminder_minutes_before,
         reminder_offsets_minutes=reminder_offsets_minutes,
         reminder_text=reminder_text,
+        reminder_texts_by_offset=reminder_texts_by_offset,
         reminder_include_zoom_link=reminder_include_zoom_link,
         reminder_zoom_missing_behavior=reminder_zoom_missing_behavior,
         reminder_zoom_missing_text=reminder_zoom_missing_text,
@@ -497,6 +538,11 @@ async def update_schedule(
 
     if "reminder_text" in update_data:
         update_data["reminder_text"] = (update_data["reminder_text"] or "").strip() or None
+    if "reminder_texts_by_offset" in update_data and not isinstance(
+        update_data["reminder_texts_by_offset"],
+        dict,
+    ):
+        update_data["reminder_texts_by_offset"] = {}
     if "reminder_zoom_missing_text" in update_data:
         update_data["reminder_zoom_missing_text"] = (
             (update_data["reminder_zoom_missing_text"] or "").strip() or None
@@ -606,6 +652,18 @@ async def update_schedule(
     )
     update_data["reminder_offsets_minutes"] = effective_offsets
     update_data["reminder_minutes_before"] = effective_offsets[0]
+    existing_reminder_texts = getattr(schedule, "reminder_texts_by_offset", None) or {}
+    effective_reminder_texts = _normalize_reminder_texts_by_offset(
+        update_data.get("reminder_texts_by_offset", existing_reminder_texts),
+        effective_offsets,
+        fallback_text=(
+            update_data["reminder_text"]
+            if "reminder_text" in update_data
+            else schedule.reminder_text
+        ),
+    )
+    update_data["reminder_texts_by_offset"] = effective_reminder_texts
+    update_data["reminder_text"] = effective_reminder_texts.get(str(effective_offsets[0]))
 
     # Zoom link in reminders is mandatory for schedules.
     update_data["reminder_include_zoom_link"] = True

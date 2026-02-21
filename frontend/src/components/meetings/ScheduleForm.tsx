@@ -147,6 +147,38 @@ function normalizeReminderOffsets(
   return normalized.sort((a, b) => b - a);
 }
 
+function normalizeReminderTextsByOffset(
+  textsByOffset: Record<string, string> | null | undefined,
+  offsets: number[],
+  fallbackText?: string | null
+): Record<string, string> {
+  const normalized: Record<string, string> = {};
+  const source = textsByOffset ?? {};
+  for (const offset of offsets) {
+    const key = String(offset);
+    const text = String(source[key] ?? "").trim();
+    if (text) {
+      normalized[key] = text;
+    }
+  }
+  const firstOffsetKey = offsets.length > 0 ? String(offsets[0]) : null;
+  const fallback = String(fallbackText ?? "").trim();
+  if (firstOffsetKey && fallback && !normalized[firstOffsetKey]) {
+    normalized[firstOffsetKey] = fallback;
+  }
+  return normalized;
+}
+
+function getDefaultReminderText(
+  offsetMinutes: number,
+  values: { time: string; title: string }
+): string {
+  if (offsetMinutes === 0) {
+    return `Здравствуйте! Встреча ${values.title} начинается сейчас (${values.time} МСК)`;
+  }
+  return `Здравствуйте! Напоминаю, сегодня в ${values.time} по МСК встреча ${values.title}`;
+}
+
 function hasZoomPlaceholder(template: string): boolean {
   const lower = template.toLowerCase();
   return (
@@ -207,6 +239,10 @@ export function ScheduleForm({
   onClose,
 }: ScheduleFormProps) {
   const isEdit = !!schedule;
+  const initialReminderOffsets = normalizeReminderOffsets(
+    schedule?.reminder_offsets_minutes,
+    schedule?.reminder_minutes_before ?? 60
+  );
 
   const [title, setTitle] = useState(schedule?.title ?? "");
   const [dayOfWeek, setDayOfWeek] = useState(String(schedule?.day_of_week ?? 1));
@@ -229,13 +265,20 @@ export function ScheduleForm({
   const [reminderEnabled, setReminderEnabled] = useState(
     schedule?.reminder_enabled ?? true
   );
-  const [reminderOffsets, setReminderOffsets] = useState<number[]>(() =>
-    normalizeReminderOffsets(
-      schedule?.reminder_offsets_minutes,
-      schedule?.reminder_minutes_before ?? 60
-    )
+  const [reminderOffsets, setReminderOffsets] = useState<number[]>(() => [
+    ...initialReminderOffsets,
+  ]);
+  const [reminderTextsByOffset, setReminderTextsByOffset] = useState<Record<string, string>>(
+    () =>
+      normalizeReminderTextsByOffset(
+        schedule?.reminder_texts_by_offset,
+        initialReminderOffsets,
+        schedule?.reminder_text
+      )
   );
-  const [reminderText, setReminderText] = useState(schedule?.reminder_text ?? "");
+  const [activeReminderOffset, setActiveReminderOffset] = useState<number>(
+    initialReminderOffsets[0] ?? DEFAULT_REMINDER_OFFSETS[0]
+  );
   const [reminderEditorOpen, setReminderEditorOpen] = useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("https://");
@@ -282,6 +325,21 @@ export function ScheduleForm({
 
   const hiddenSelectedCount = participantIds.length - selectedMembers.length;
   const reminderTextRef = useRef<HTMLTextAreaElement | null>(null);
+  const activeReminderOffsetKey = String(activeReminderOffset);
+  const activeReminderText = reminderTextsByOffset[activeReminderOffsetKey] ?? "";
+
+  const setReminderTextForOffset = (offset: number, text: string) => {
+    setReminderTextsByOffset((prev) => {
+      const key = String(offset);
+      const next = { ...prev };
+      if (text.trim()) {
+        next[key] = text;
+      } else {
+        delete next[key];
+      }
+      return normalizeReminderTextsByOffset(next, reminderOffsets);
+    });
+  };
 
   const participantMentionsPreview = useMemo(
     () =>
@@ -326,58 +384,91 @@ export function ScheduleForm({
   }, [dayOfWeek, meetingDate, timeMsk, title]);
 
   const baseReminderPreview = useMemo(() => {
-    if (reminderText.trim()) {
-      return applyReminderTemplate(reminderText.trim(), previewTemplateValues);
+    if (activeReminderText.trim()) {
+      return applyReminderTemplate(activeReminderText.trim(), previewTemplateValues);
     }
-    return `Здравствуйте! Напоминаю, сегодня в ${previewTemplateValues.time} по МСК встреча ${previewTemplateValues.title}`;
-  }, [reminderText, previewTemplateValues]);
+    return getDefaultReminderText(activeReminderOffset, {
+      time: previewTemplateValues.time,
+      title: previewTemplateValues.title,
+    });
+  }, [activeReminderOffset, activeReminderText, previewTemplateValues]);
 
   const reminderPreviewWithZoom = useMemo(() => {
     let text = baseReminderPreview;
     if (participantMentionsPreview) {
       text += `\n\n${participantMentionsPreview}`;
     }
-    if (!hasZoomPlaceholder(reminderText)) {
+    if (!hasZoomPlaceholder(activeReminderText)) {
       text += "\n\nСсылка для подключения: https://zoom.us/j/1234567890";
     }
     return text;
-  }, [baseReminderPreview, participantMentionsPreview, reminderText]);
+  }, [activeReminderText, baseReminderPreview, participantMentionsPreview]);
 
   const updateReminderOffset = (index: number, value: number) => {
-    setReminderOffsets((prev) => {
-      const next = [...prev];
-      next[index] = value;
-      return normalizeReminderOffsets(next);
+    const previousOffsets = [...reminderOffsets];
+    const currentValue = previousOffsets[index];
+    if (currentValue === value) return;
+    const nextOffsetsRaw = [...previousOffsets];
+    nextOffsetsRaw[index] = value;
+    const nextOffsets = normalizeReminderOffsets(nextOffsetsRaw);
+    setReminderOffsets(nextOffsets);
+    setReminderTextsByOffset((prev) => {
+      const next = { ...prev };
+      const oldKey = String(currentValue);
+      const newKey = String(value);
+      const oldText = String(next[oldKey] ?? "").trim();
+      if (oldText && !String(next[newKey] ?? "").trim()) {
+        next[newKey] = next[oldKey];
+      }
+      if (oldKey !== newKey) {
+        delete next[oldKey];
+      }
+      return normalizeReminderTextsByOffset(next, nextOffsets);
     });
+    setActiveReminderOffset((current) =>
+      nextOffsets.includes(current) ? current : (nextOffsets[0] ?? DEFAULT_REMINDER_OFFSETS[0])
+    );
   };
 
   const addReminderOffset = () => {
-    setReminderOffsets((prev) => {
-      const next = normalizeReminderOffsets(prev);
-      const candidate = REMINDER_OPTIONS.find((value) => !next.includes(value));
-      if (candidate == null) return next;
-      return normalizeReminderOffsets([...next, candidate]);
-    });
+    const next = normalizeReminderOffsets(reminderOffsets);
+    const candidate = REMINDER_OPTIONS.find((value) => !next.includes(value));
+    if (candidate == null) return;
+    const nextOffsets = normalizeReminderOffsets([...next, candidate]);
+    setReminderOffsets(nextOffsets);
+    setReminderTextsByOffset((prev) => normalizeReminderTextsByOffset(prev, nextOffsets));
+    setActiveReminderOffset(candidate);
   };
 
   const removeReminderOffset = (index: number) => {
-    setReminderOffsets((prev) => {
-      if (prev.length <= 1) return prev;
-      const next = prev.filter((_, idx) => idx !== index);
-      return normalizeReminderOffsets(next);
+    if (reminderOffsets.length <= 1) return;
+    const removedOffset = reminderOffsets[index];
+    const nextOffsets = normalizeReminderOffsets(
+      reminderOffsets.filter((_, idx) => idx !== index)
+    );
+    setReminderOffsets(nextOffsets);
+    setReminderTextsByOffset((prev) => {
+      const next = { ...prev };
+      delete next[String(removedOffset)];
+      return normalizeReminderTextsByOffset(next, nextOffsets);
     });
+    setActiveReminderOffset((current) =>
+      current === removedOffset
+        ? (nextOffsets[0] ?? DEFAULT_REMINDER_OFFSETS[0])
+        : current
+    );
   };
 
   const replaceReminderSelection = (replacement: string, cursorOffset = replacement.length) => {
     const textarea = reminderTextRef.current;
     if (!textarea) {
-      setReminderText((prev) => `${prev}${replacement}`);
+      setReminderTextForOffset(activeReminderOffset, `${activeReminderText}${replacement}`);
       return;
     }
-    const start = textarea.selectionStart ?? reminderText.length;
-    const end = textarea.selectionEnd ?? reminderText.length;
-    const next = `${reminderText.slice(0, start)}${replacement}${reminderText.slice(end)}`;
-    setReminderText(next);
+    const start = textarea.selectionStart ?? activeReminderText.length;
+    const end = textarea.selectionEnd ?? activeReminderText.length;
+    const next = `${activeReminderText.slice(0, start)}${replacement}${activeReminderText.slice(end)}`;
+    setReminderTextForOffset(activeReminderOffset, next);
     requestAnimationFrame(() => {
       textarea.focus();
       const cursor = start + cursorOffset;
@@ -393,14 +484,14 @@ export function ScheduleForm({
     }
     const start = textarea.selectionStart ?? 0;
     const end = textarea.selectionEnd ?? 0;
-    const selected = reminderText.slice(start, end) || fallback;
+    const selected = activeReminderText.slice(start, end) || fallback;
     const next =
-      reminderText.slice(0, start) +
+      activeReminderText.slice(0, start) +
       openTag +
       selected +
       closeTag +
-      reminderText.slice(end);
-    setReminderText(next);
+      activeReminderText.slice(end);
+    setReminderTextForOffset(activeReminderOffset, next);
     requestAnimationFrame(() => {
       textarea.focus();
       const selectionStart = start + openTag.length;
@@ -411,9 +502,9 @@ export function ScheduleForm({
 
   const openLinkDialog = () => {
     const textarea = reminderTextRef.current;
-    const start = textarea?.selectionStart ?? reminderText.length;
-    const end = textarea?.selectionEnd ?? reminderText.length;
-    const selectedText = reminderText.slice(start, end).trim();
+    const start = textarea?.selectionStart ?? activeReminderText.length;
+    const end = textarea?.selectionEnd ?? activeReminderText.length;
+    const selectedText = activeReminderText.slice(start, end).trim();
 
     setLinkSelection({ start, end });
     setLinkLabel(selectedText || "");
@@ -433,10 +524,13 @@ export function ScheduleForm({
 
     const label = linkLabel.trim() || "ссылка";
     const replacement = `<a href="${href}">${label}</a>`;
-    const start = Math.max(0, Math.min(linkSelection?.start ?? reminderText.length, reminderText.length));
-    const end = Math.max(start, Math.min(linkSelection?.end ?? start, reminderText.length));
-    const next = reminderText.slice(0, start) + replacement + reminderText.slice(end);
-    setReminderText(next);
+    const start = Math.max(
+      0,
+      Math.min(linkSelection?.start ?? activeReminderText.length, activeReminderText.length)
+    );
+    const end = Math.max(start, Math.min(linkSelection?.end ?? start, activeReminderText.length));
+    const next = activeReminderText.slice(0, start) + replacement + activeReminderText.slice(end);
+    setReminderTextForOffset(activeReminderOffset, next);
     setLinkDialogOpen(false);
 
     const textarea = reminderTextRef.current;
@@ -498,6 +592,10 @@ export function ScheduleForm({
           chat_id: String(t.chat_id),
           thread_id: t.thread_id,
         }));
+      const normalizedReminderTextsByOffset = normalizeReminderTextsByOffset(
+        reminderTextsByOffset,
+        reminderOffsets
+      );
 
       const data: MeetingScheduleCreateRequest = {
         title: title.trim(),
@@ -507,7 +605,9 @@ export function ScheduleForm({
         reminder_enabled: reminderEnabled,
         reminder_minutes_before: reminderOffsets[0] ?? 60,
         reminder_offsets_minutes: reminderOffsets,
-        reminder_text: reminderText.trim() || null,
+        reminder_text:
+          normalizedReminderTextsByOffset[String(reminderOffsets[0] ?? 60)]?.trim() || null,
+        reminder_texts_by_offset: normalizedReminderTextsByOffset,
         reminder_include_zoom_link: true,
         reminder_zoom_missing_behavior: "hide",
         reminder_zoom_missing_text: null,
@@ -810,32 +910,48 @@ export function ScheduleForm({
                 </div>
 
                 <div className="rounded-lg border border-border/60 bg-card px-2.5 py-2 space-y-2">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <Label className="text-xs font-medium">Текст напоминания</Label>
-                      <p className="text-2xs text-muted-foreground/70 mt-0.5">
-                        Откройте редактор, чтобы настроить форматирование, переменные и ссылку.
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="h-8 rounded-lg"
-                      onClick={() => setReminderEditorOpen(true)}
-                    >
-                      <PencilLine className="h-3.5 w-3.5 mr-1.5" />
-                      Редактировать
-                    </Button>
+                  <div>
+                    <Label className="text-xs font-medium">Текст по каждому таймингу</Label>
+                    <p className="text-2xs text-muted-foreground/70 mt-0.5">
+                      У каждого пункта свой шаблон. Для «в момент начала» используется отдельный дефолт.
+                    </p>
                   </div>
-                  <p className="text-xs text-muted-foreground line-clamp-2">
-                    {reminderText.trim()
-                      ? reminderText
-                          .replace(/<[^>]*>/g, " ")
-                          .replace(/\s+/g, " ")
-                          .trim()
-                      : "Будет использован стандартный текст напоминания."}
-                  </p>
+                  <div className="space-y-1.5">
+                    {reminderOffsets.map((offset) => {
+                      const key = String(offset);
+                      const currentText = reminderTextsByOffset[key] ?? "";
+                      const summary = currentText.trim()
+                        ? currentText.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+                        : "Будет использован стандартный текст.";
+                      const isActive = offset === activeReminderOffset;
+                      return (
+                        <div
+                          key={key}
+                          className={`rounded-lg border px-2 py-2 ${isActive ? "border-primary/40 bg-primary/5" : "border-border/60 bg-background/60"}`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium">{formatReminderOffsetLabel(offset)}</p>
+                              <p className="text-2xs text-muted-foreground line-clamp-2">{summary}</p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant={isActive ? "default" : "outline"}
+                              size="sm"
+                              className="h-7 rounded-lg shrink-0"
+                              onClick={() => {
+                                setActiveReminderOffset(offset);
+                                setReminderEditorOpen(true);
+                              }}
+                            >
+                              <PencilLine className="h-3 w-3 mr-1.5" />
+                              Редактировать
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div className="rounded-lg border border-border/60 bg-card px-2.5 py-2 space-y-2">
@@ -854,7 +970,7 @@ export function ScheduleForm({
                   <div className="space-y-1.5 text-xs">
                     <div className="rounded-md border border-border/50 bg-card p-2">
                       <p className="text-2xs font-medium text-muted-foreground mb-1">
-                        Итоговый текст напоминания
+                        {`Итоговый текст (${formatReminderOffsetLabel(activeReminderOffset)})`}
                       </p>
                       <div
                         className="whitespace-pre-wrap"
@@ -937,6 +1053,25 @@ export function ScheduleForm({
 
               <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-2xs text-muted-foreground">Редактируемый тайминг</Label>
+                    <Select
+                      value={String(activeReminderOffset)}
+                      onValueChange={(value) => setActiveReminderOffset(Number(value))}
+                    >
+                      <SelectTrigger className="h-8 rounded-lg">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {reminderOffsets.map((offset) => (
+                          <SelectItem key={offset} value={String(offset)}>
+                            {formatReminderOffsetLabel(offset)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
                   <div className="rounded-xl border border-border/60 bg-muted/20 p-2">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <Button
@@ -1042,8 +1177,8 @@ export function ScheduleForm({
 
                   <Textarea
                     ref={reminderTextRef}
-                    value={reminderText}
-                    onChange={(e) => setReminderText(e.target.value)}
+                    value={activeReminderText}
+                    onChange={(e) => setReminderTextForOffset(activeReminderOffset, e.target.value)}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={(e) => {
                       e.preventDefault();
@@ -1052,7 +1187,10 @@ export function ScheduleForm({
                         insertReminderVariable(token);
                       }
                     }}
-                    placeholder="Здравствуйте! Напоминаю, сегодня в {время} по МСК встреча {название}"
+                    placeholder={getDefaultReminderText(activeReminderOffset, {
+                      time: "{время}",
+                      title: "{название}",
+                    })}
                     rows={10}
                     className="rounded-xl text-sm font-body"
                   />
@@ -1089,7 +1227,7 @@ export function ScheduleForm({
                 <div className="rounded-2xl border border-border/60 bg-card p-4">
                   <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
                     <Eye className="h-3.5 w-3.5" />
-                    Предпросмотр
+                    {`Предпросмотр (${formatReminderOffsetLabel(activeReminderOffset)})`}
                   </div>
                   <div className="max-h-[360px] overflow-auto rounded-xl border border-border/40 bg-muted/20 p-4">
                     <div

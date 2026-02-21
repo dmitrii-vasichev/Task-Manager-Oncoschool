@@ -189,6 +189,9 @@ class MeetingSchedule(Base):
         ARRAY(Integer), default=list, server_default="{}"
     )
     reminder_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    reminder_texts_by_offset: Mapped[dict[str, str]] = mapped_column(
+        JSONB, default=dict, server_default="{}"
+    )
     reminder_include_zoom_link: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
     )

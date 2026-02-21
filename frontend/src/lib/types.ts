@@ -208,6 +208,7 @@ export interface MeetingSchedule {
   reminder_minutes_before: number;
   reminder_offsets_minutes: number[];
   reminder_text: string | null;
+  reminder_texts_by_offset: Record<string, string>;
   reminder_include_zoom_link: boolean;
   reminder_zoom_missing_behavior: MeetingReminderZoomMissingBehavior;
   reminder_zoom_missing_text: string | null;
@@ -235,6 +236,7 @@ export interface MeetingScheduleCreateRequest {
   reminder_minutes_before?: number;
   reminder_offsets_minutes?: number[];
   reminder_text?: string | null;
+  reminder_texts_by_offset?: Record<string, string>;
   reminder_include_zoom_link?: boolean;
   reminder_zoom_missing_behavior?: MeetingReminderZoomMissingBehavior;
   reminder_zoom_missing_text?: string | null;

@@ -161,6 +161,53 @@ class MeetingSchedulerZoomRulesTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('<a href="https://zoom.us/j/987654321">Подключиться ↗</a>', text)
         self.assertNotIn("Ссылка для подключения:", text)
 
+    async def test_send_reminders_uses_per_offset_template(self) -> None:
+        bot = SimpleNamespace(send_message=AsyncMock())
+        scheduler = MeetingSchedulerService(
+            bot=bot,
+            session_maker=SimpleNamespace(),
+            zoom_service=None,
+        )
+        schedule = SimpleNamespace(
+            id=uuid.uuid4(),
+            title="Планерка",
+            reminder_text="legacy text",
+            reminder_texts_by_offset={"0": "Начинаем: <a href=\"{zoom_link}\">Подключиться ↗</a>"},
+            participant_ids=[],
+            reminder_include_zoom_link=True,
+            telegram_targets=[{"chat_id": "12345", "thread_id": None}],
+            time_utc=datetime(2026, 2, 21, 12, 0).time(),
+        )
+        meeting = SimpleNamespace(
+            zoom_meeting_id="987654321",
+            zoom_join_url=None,
+            meeting_date=datetime(2026, 2, 21, 12, 0),
+        )
+
+        await scheduler._send_reminders(
+            session=SimpleNamespace(),
+            schedule=schedule,
+            meeting=meeting,
+            zoom_data=None,
+            reminder_offset_minutes=0,
+        )
+
+        bot.send_message.assert_awaited_once()
+        text = bot.send_message.await_args.kwargs["text"]
+        self.assertIn("Начинаем:", text)
+        self.assertIn("https://zoom.us/j/987654321", text)
+        self.assertNotIn("legacy text", text)
+
+    def test_default_reminder_text_for_start_offset(self) -> None:
+        schedule = SimpleNamespace(title="Планерка", time_utc=datetime(2026, 2, 21, 12, 0).time())
+        meeting = SimpleNamespace(meeting_date=datetime(2026, 2, 21, 12, 0))
+        text = MeetingSchedulerService._default_reminder_text(
+            schedule,
+            meeting,
+            reminder_offset_minutes=0,
+        )
+        self.assertIn("начинается сейчас", text)
+
     def test_get_schedule_reminder_offsets_normalizes_data(self) -> None:
         schedule = SimpleNamespace(
             reminder_offsets_minutes=[60, 0, 60, 999],

@@ -358,6 +358,18 @@ class MeetingSchedulerService:
         )
 
     @staticmethod
+    def _get_custom_reminder_template(
+        schedule: MeetingSchedule,
+        reminder_offset_minutes: int | None,
+    ) -> str:
+        if reminder_offset_minutes is not None:
+            by_offset = getattr(schedule, "reminder_texts_by_offset", None) or {}
+            template = str(by_offset.get(str(reminder_offset_minutes), "")).strip()
+            if template:
+                return template
+        return str(getattr(schedule, "reminder_text", "") or "").strip()
+
+    @staticmethod
     def _resolve_zoom_join_url(raw_join_url: str | None, zoom_meeting_id: str | None) -> str | None:
         safe_join_url = sanitize_zoom_join_url(
             raw_join_url,
@@ -618,7 +630,10 @@ class MeetingSchedulerService:
                 f"Cannot send reminder for schedule {schedule.id}: Zoom link is missing"
             )
 
-        custom_template = (schedule.reminder_text or "").strip()
+        custom_template = self._get_custom_reminder_template(
+            schedule,
+            reminder_offset_minutes=reminder_offset_minutes,
+        )
         contains_zoom_placeholder = self._contains_zoom_link_placeholder(custom_template)
         if custom_template:
             text = self._render_custom_reminder_text(
@@ -628,7 +643,11 @@ class MeetingSchedulerService:
                 zoom_link=safe_join_url if include_zoom_link else None,
             )
         else:
-            text = self._default_reminder_text(schedule, meeting)
+            text = self._default_reminder_text(
+                schedule,
+                meeting,
+                reminder_offset_minutes=reminder_offset_minutes,
+            )
 
         # Add participant @username mentions
         if schedule.participant_ids:
@@ -685,9 +704,18 @@ class MeetingSchedulerService:
         return list(result.scalars().all())
 
     @staticmethod
-    def _default_reminder_text(schedule: MeetingSchedule, meeting: Meeting) -> str:
+    def _default_reminder_text(
+        schedule: MeetingSchedule,
+        meeting: Meeting,
+        reminder_offset_minutes: int | None = None,
+    ) -> str:
         """Default reminder text if reminder_text is not set."""
         time_str, _, _ = MeetingSchedulerService._meeting_time_parts(schedule, meeting)
+        if reminder_offset_minutes == 0:
+            return (
+                f"Здравствуйте! Встреча {schedule.title} начинается сейчас "
+                f"({time_str} МСК)"
+            )
 
         return (
             f"Здравствуйте! Напоминаю, сегодня в {time_str} по МСК "

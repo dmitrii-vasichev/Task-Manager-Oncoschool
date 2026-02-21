@@ -233,6 +233,7 @@ class MeetingScheduleCreate(BaseModel):
     reminder_minutes_before: int = 60
     reminder_offsets_minutes: list[int] = Field(default_factory=lambda: [60])
     reminder_text: str | None = None
+    reminder_texts_by_offset: dict[str, str] = Field(default_factory=dict)
     reminder_include_zoom_link: bool = True
     reminder_zoom_missing_behavior: MeetingReminderZoomMissingBehaviorType = "hide"
     reminder_zoom_missing_text: str | None = None
@@ -253,6 +254,7 @@ class MeetingScheduleUpdate(BaseModel):
     reminder_minutes_before: int | None = None
     reminder_offsets_minutes: list[int] | None = None
     reminder_text: str | None = None
+    reminder_texts_by_offset: dict[str, str] | None = None
     reminder_include_zoom_link: bool | None = None
     reminder_zoom_missing_behavior: MeetingReminderZoomMissingBehaviorType | None = None
     reminder_zoom_missing_text: str | None = None
@@ -281,6 +283,7 @@ class MeetingScheduleResponse(BaseModel):
     reminder_minutes_before: int
     reminder_offsets_minutes: list[int]
     reminder_text: str | None
+    reminder_texts_by_offset: dict[str, str]
     reminder_include_zoom_link: bool
     reminder_zoom_missing_behavior: MeetingReminderZoomMissingBehaviorType
     reminder_zoom_missing_text: str | None
