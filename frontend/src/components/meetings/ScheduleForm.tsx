@@ -3,7 +3,6 @@
 import { useMemo, useRef, useState } from "react";
 import {
   Loader2,
-  Video,
   Bell,
   Users,
   Link as LinkIcon,
@@ -152,7 +151,6 @@ export function ScheduleForm({
   const [participantIds, setParticipantIds] = useState<string[]>(
     schedule?.participant_ids ?? []
   );
-  const [zoomEnabled, setZoomEnabled] = useState(schedule?.zoom_enabled ?? true);
   const [reminderEnabled, setReminderEnabled] = useState(
     schedule?.reminder_enabled ?? true
   );
@@ -161,9 +159,7 @@ export function ScheduleForm({
   );
   const [reminderText, setReminderText] = useState(schedule?.reminder_text ?? "");
   const [reminderIncludeZoomLink, setReminderIncludeZoomLink] = useState(
-    schedule?.zoom_enabled === false
-      ? false
-      : (schedule?.reminder_include_zoom_link ?? true)
+    schedule?.reminder_include_zoom_link ?? true
   );
   const [reminderZoomMissingBehavior, setReminderZoomMissingBehavior] =
     useState<MeetingReminderZoomMissingBehavior>(
@@ -367,7 +363,7 @@ export function ScheduleForm({
             : null,
         telegram_targets: tgTargets,
         participant_ids: participantIds,
-        zoom_enabled: zoomEnabled,
+        zoom_enabled: true,
       };
 
       if (isRecurringMode) {
@@ -403,7 +399,7 @@ export function ScheduleForm({
       <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-heading">
-            {isEdit ? "Редактировать расписание" : "Новое расписание"}
+            {isEdit ? "Редактировать встречу" : "Новая встреча"}
           </DialogTitle>
         </DialogHeader>
 
@@ -586,23 +582,6 @@ export function ScheduleForm({
           {/* Divider */}
           <div className="h-px bg-border/60" />
 
-          {/* Zoom toggle */}
-          <div className="flex flex-col gap-2 rounded-xl border border-border/40 bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <Video className="h-4 w-4 text-blue-500" />
-              <span className="text-sm font-medium">Создавать Zoom автоматически</span>
-            </div>
-            <Switch
-              checked={zoomEnabled}
-              onCheckedChange={(checked) => {
-                setZoomEnabled(checked);
-                if (!checked) {
-                  setReminderIncludeZoomLink(false);
-                }
-              }}
-            />
-          </div>
-
           {/* Reminder toggle + settings */}
           <div className="rounded-xl bg-muted/40 border border-border/40 overflow-hidden">
             <div className="flex flex-col gap-2 p-3 sm:flex-row sm:items-center sm:justify-between">
@@ -697,17 +676,10 @@ export function ScheduleForm({
                     <Switch
                       checked={reminderIncludeZoomLink}
                       onCheckedChange={setReminderIncludeZoomLink}
-                      disabled={!zoomEnabled}
                     />
                   </div>
 
-                  {!zoomEnabled && (
-                    <p className="text-2xs text-muted-foreground/80">
-                      Сначала включите пункт «Создавать Zoom автоматически».
-                    </p>
-                  )}
-
-                  {zoomEnabled && reminderIncludeZoomLink && (
+                  {reminderIncludeZoomLink && (
                     <div className="space-y-2 border-t border-border/50 pt-2">
                       <div>
                         <Label className="text-2xs text-muted-foreground">Если ссылки нет к моменту отправки</Label>
