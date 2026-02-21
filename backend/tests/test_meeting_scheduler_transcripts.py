@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.services.meeting_scheduler_service import MeetingSchedulerService
 
@@ -54,5 +54,31 @@ class MeetingSchedulerTranscriptTests(unittest.TestCase):
                 duration_minutes=60,
                 status="completed",
                 now_utc_naive=now_utc_naive,
+            )
+        )
+
+    def test_has_meeting_finished_handles_aware_meeting_datetime(self) -> None:
+        meeting_date_aware = datetime(2026, 2, 19, 10, 0, tzinfo=timezone.utc)
+        now_utc_naive = datetime(2026, 2, 19, 11, 1)
+
+        self.assertTrue(
+            MeetingSchedulerService._has_meeting_finished(
+                meeting_date=meeting_date_aware,
+                duration_minutes=60,
+                status="scheduled",
+                now_utc_naive=now_utc_naive,
+            )
+        )
+
+    def test_has_meeting_finished_handles_aware_now_datetime(self) -> None:
+        meeting_date_naive = datetime(2026, 2, 19, 10, 0)
+        now_utc_aware = datetime(2026, 2, 19, 11, 1, tzinfo=timezone.utc)
+
+        self.assertTrue(
+            MeetingSchedulerService._has_meeting_finished(
+                meeting_date=meeting_date_naive,
+                duration_minutes=60,
+                status="scheduled",
+                now_utc_naive=now_utc_aware,
             )
         )

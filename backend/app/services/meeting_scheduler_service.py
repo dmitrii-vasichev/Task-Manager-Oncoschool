@@ -111,11 +111,25 @@ class MeetingSchedulerService:
         status: str | None,
         now_utc_naive: datetime,
     ) -> bool:
-        """Check if a meeting has ended (all datetimes are naive UTC)."""
+        """Check if a meeting has ended.
+
+        Accepts either timezone-aware or naive datetimes.
+        Naive values are treated as UTC.
+        """
         if status == "completed":
             return True
         if not meeting_date:
             return False
+
+        def _to_utc_naive(value: datetime) -> datetime:
+            if value.tzinfo is None or value.tzinfo.utcoffset(value) is None:
+                return value
+            return value.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+
+        # Normalize both values to comparable naive UTC datetimes.
+        meeting_date = _to_utc_naive(meeting_date)
+        now_utc_naive = _to_utc_naive(now_utc_naive)
+
         duration = duration_minutes or 60
         end_time = meeting_date + timedelta(minutes=duration)
         return now_utc_naive >= end_time

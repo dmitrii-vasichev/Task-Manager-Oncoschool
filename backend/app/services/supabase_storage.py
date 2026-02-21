@@ -40,8 +40,22 @@ class SupabaseStorageService:
         if resp.status_code == 200:
             logger.info("Created Supabase bucket '%s'", self.BUCKET)
         elif resp.status_code == 409:
-            # Already exists
+            # Already exists.
             pass
+        elif resp.status_code == 400:
+            # Supabase may wrap duplicate bucket as HTTP 400 with payload statusCode=409.
+            try:
+                payload = resp.json()
+            except ValueError:
+                payload = {}
+            duplicate_code = str(payload.get("statusCode", "")).strip()
+            duplicate_error = str(payload.get("error", "")).lower()
+            if duplicate_code == "409" or duplicate_error == "duplicate":
+                pass
+            else:
+                logger.warning(
+                    "Bucket creation returned %s: %s", resp.status_code, resp.text
+                )
         else:
             logger.warning(
                 "Bucket creation returned %s: %s", resp.status_code, resp.text
