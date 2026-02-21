@@ -32,7 +32,6 @@ VALID_RECURRENCES = {
     "on_demand",
 }
 RECURRING_RECURRENCES = {"weekly", "biweekly", "monthly_last_workday"}
-DEFAULT_REMINDER_ZOOM_MISSING_TEXT = "Ссылка на Zoom появится позже."
 
 
 def _is_last_selected_weekday_in_month(dt_local: datetime, day_of_week: int) -> bool:
@@ -276,6 +275,12 @@ async def create_schedule(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"recurrence должен быть одним из: {', '.join(sorted(VALID_RECURRENCES))}",
         )
+    zoom_service = getattr(request.app.state, "zoom_service", None)
+    if not zoom_service:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Zoom не настроен. Создание встреч без Zoom недоступно.",
+        )
 
     timezone = "Europe/Moscow"
     day_of_week = data.day_of_week
@@ -341,17 +346,9 @@ async def create_schedule(
         ]
 
     reminder_text = (data.reminder_text or "").strip() or None
-    reminder_zoom_missing_text = (data.reminder_zoom_missing_text or "").strip() or None
-
-    reminder_include_zoom_link = data.reminder_include_zoom_link
-    reminder_zoom_missing_behavior = data.reminder_zoom_missing_behavior
-    if not reminder_include_zoom_link:
-        reminder_zoom_missing_behavior = "hide"
-        reminder_zoom_missing_text = None
-    elif reminder_zoom_missing_behavior == "hide":
-        reminder_zoom_missing_text = None
-    elif reminder_zoom_missing_behavior == "fallback" and reminder_zoom_missing_text is None:
-        reminder_zoom_missing_text = DEFAULT_REMINDER_ZOOM_MISSING_TEXT
+    reminder_include_zoom_link = True
+    reminder_zoom_missing_behavior = "hide"
+    reminder_zoom_missing_text = None
 
     schedule = await schedule_repo.create(
         session,
@@ -371,7 +368,7 @@ async def create_schedule(
         reminder_zoom_missing_text=reminder_zoom_missing_text,
         telegram_targets=telegram_targets,
         participant_ids=data.participant_ids,
-        zoom_enabled=data.zoom_enabled,
+        zoom_enabled=True,
         created_by_id=member.id,
     )
 
@@ -395,8 +392,7 @@ async def create_schedule(
         )
         if not existing:
             zoom_data = None
-            zoom_service = getattr(request.app.state, "zoom_service", None)
-            if data.zoom_enabled and zoom_service:
+            if zoom_service:
                 try:
                     tz_aware = next_meeting_date.replace(tzinfo=ZoneInfo("UTC"))
                     zoom_data = await zoom_service.create_meeting(
@@ -557,23 +553,11 @@ async def update_schedule(
         if update_data.get("next_occurrence_skip") is True:
             update_data["next_occurrence_time_override"] = None
 
-    effective_include_zoom = update_data.get(
-        "reminder_include_zoom_link", schedule.reminder_include_zoom_link
-    )
-    effective_missing_behavior = update_data.get(
-        "reminder_zoom_missing_behavior", schedule.reminder_zoom_missing_behavior
-    )
-    effective_missing_text = update_data.get(
-        "reminder_zoom_missing_text", schedule.reminder_zoom_missing_text
-    )
-
-    if not effective_include_zoom:
-        update_data["reminder_zoom_missing_behavior"] = "hide"
-        update_data["reminder_zoom_missing_text"] = None
-    elif effective_missing_behavior == "hide":
-        update_data["reminder_zoom_missing_text"] = None
-    elif effective_missing_behavior == "fallback" and not (effective_missing_text or "").strip():
-        update_data["reminder_zoom_missing_text"] = DEFAULT_REMINDER_ZOOM_MISSING_TEXT
+    # Zoom link in reminders is mandatory for schedules.
+    update_data["reminder_include_zoom_link"] = True
+    update_data["reminder_zoom_missing_behavior"] = "hide"
+    update_data["reminder_zoom_missing_text"] = None
+    update_data["zoom_enabled"] = True
 
     schedule = await schedule_repo.update(session, schedule_id, **update_data)
 

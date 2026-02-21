@@ -35,7 +35,6 @@ import { ParticipantsPickerDialog } from "@/components/meetings/ParticipantsPick
 import type {
   MeetingSchedule,
   MeetingScheduleCreateRequest,
-  MeetingReminderZoomMissingBehavior,
   TeamMember,
   TelegramNotificationTarget,
   MeetingRecurrence,
@@ -62,7 +61,6 @@ const REMINDER_OPTIONS = [
   { value: "120", label: "за 2 часа" },
 ];
 
-const DEFAULT_ZOOM_MISSING_TEXT = "Ссылка на Zoom появится позже.";
 const REMINDER_TEMPLATE_VARIABLES = [
   { token: "{время}", label: "Время (МСК)" },
   { token: "{название}", label: "Название встречи" },
@@ -158,16 +156,6 @@ export function ScheduleForm({
     String(schedule?.reminder_minutes_before ?? 60)
   );
   const [reminderText, setReminderText] = useState(schedule?.reminder_text ?? "");
-  const [reminderIncludeZoomLink, setReminderIncludeZoomLink] = useState(
-    schedule?.reminder_include_zoom_link ?? true
-  );
-  const [reminderZoomMissingBehavior, setReminderZoomMissingBehavior] =
-    useState<MeetingReminderZoomMissingBehavior>(
-      schedule?.reminder_zoom_missing_behavior ?? "hide"
-    );
-  const [reminderZoomMissingText, setReminderZoomMissingText] = useState(
-    schedule?.reminder_zoom_missing_text ?? DEFAULT_ZOOM_MISSING_TEXT
-  );
   const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>(() => {
     // Pre-select telegram targets that match the schedule's targets
     if (!schedule?.telegram_targets?.length) return telegramTargets.map((t) => t.id);
@@ -263,28 +251,9 @@ export function ScheduleForm({
     if (participantMentionsPreview) {
       text += `\n\n${participantMentionsPreview}`;
     }
-    if (reminderIncludeZoomLink) {
-      text += "\n\nСсылка для подключения: https://zoom.us/j/1234567890";
-    }
+    text += "\n\nСсылка для подключения: https://zoom.us/j/1234567890";
     return text;
-  }, [baseReminderPreview, participantMentionsPreview, reminderIncludeZoomLink]);
-
-  const reminderPreviewWithoutZoom = useMemo(() => {
-    let text = baseReminderPreview;
-    if (participantMentionsPreview) {
-      text += `\n\n${participantMentionsPreview}`;
-    }
-    if (reminderIncludeZoomLink && reminderZoomMissingBehavior === "fallback") {
-      text += `\n\n${(reminderZoomMissingText || "").trim() || DEFAULT_ZOOM_MISSING_TEXT}`;
-    }
-    return text;
-  }, [
-    baseReminderPreview,
-    participantMentionsPreview,
-    reminderIncludeZoomLink,
-    reminderZoomMissingBehavior,
-    reminderZoomMissingText,
-  ]);
+  }, [baseReminderPreview, participantMentionsPreview]);
 
   const insertReminderVariable = (token: string) => {
     const textarea = reminderTextRef.current;
@@ -353,14 +322,9 @@ export function ScheduleForm({
         reminder_enabled: reminderEnabled,
         reminder_minutes_before: Number(reminderMinutes),
         reminder_text: reminderText.trim() || null,
-        reminder_include_zoom_link: reminderIncludeZoomLink,
-        reminder_zoom_missing_behavior: reminderIncludeZoomLink
-          ? reminderZoomMissingBehavior
-          : "hide",
-        reminder_zoom_missing_text:
-          reminderIncludeZoomLink && reminderZoomMissingBehavior === "fallback"
-            ? reminderZoomMissingText.trim() || DEFAULT_ZOOM_MISSING_TEXT
-            : null,
+        reminder_include_zoom_link: true,
+        reminder_zoom_missing_behavior: "hide",
+        reminder_zoom_missing_text: null,
         telegram_targets: tgTargets,
         participant_ids: participantIds,
         zoom_enabled: true,
@@ -666,54 +630,14 @@ export function ScheduleForm({
                 </div>
 
                 <div className="rounded-lg border border-border/60 bg-card px-2.5 py-2 space-y-2">
-                  <div className="flex items-start justify-between gap-3">
+                  <div>
                     <div>
-                      <Label className="text-xs font-medium">Добавлять ссылку Zoom автоматически</Label>
+                      <Label className="text-xs font-medium">Zoom-ссылка обязательна</Label>
                       <p className="text-2xs text-muted-foreground/70 mt-0.5">
-                        Ссылка подставляется в момент отправки напоминания.
+                        Ссылка добавляется автоматически. Если Zoom не создан, напоминание не отправляется.
                       </p>
                     </div>
-                    <Switch
-                      checked={reminderIncludeZoomLink}
-                      onCheckedChange={setReminderIncludeZoomLink}
-                    />
                   </div>
-
-                  {reminderIncludeZoomLink && (
-                    <div className="space-y-2 border-t border-border/50 pt-2">
-                      <div>
-                        <Label className="text-2xs text-muted-foreground">Если ссылки нет к моменту отправки</Label>
-                        <Select
-                          value={reminderZoomMissingBehavior}
-                          onValueChange={(value) =>
-                            setReminderZoomMissingBehavior(
-                              value as MeetingReminderZoomMissingBehavior
-                            )
-                          }
-                        >
-                          <SelectTrigger className="mt-1 rounded-lg h-8 text-sm">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="hide">Не показывать блок Zoom</SelectItem>
-                            <SelectItem value="fallback">Показать текст-заглушку</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      {reminderZoomMissingBehavior === "fallback" && (
-                        <div>
-                          <Label className="text-2xs text-muted-foreground">Текст заглушки</Label>
-                          <Input
-                            value={reminderZoomMissingText}
-                            onChange={(e) => setReminderZoomMissingText(e.target.value)}
-                            placeholder={DEFAULT_ZOOM_MISSING_TEXT}
-                            className="mt-1 rounded-lg h-8 text-sm"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
 
                 <div className="rounded-lg border border-dashed border-border/60 bg-background/80 p-2.5 space-y-2">
@@ -721,18 +645,10 @@ export function ScheduleForm({
                   <div className="space-y-1.5 text-xs">
                     <div className="rounded-md border border-border/50 bg-card p-2">
                       <p className="text-2xs font-medium text-muted-foreground mb-1">
-                        Если Zoom-ссылка уже есть
+                        Итоговый текст напоминания
                       </p>
                       <p className="whitespace-pre-wrap">{reminderPreviewWithZoom}</p>
                     </div>
-                    {reminderIncludeZoomLink && (
-                      <div className="rounded-md border border-border/50 bg-card p-2">
-                        <p className="text-2xs font-medium text-muted-foreground mb-1">
-                          Если Zoom-ссылки пока нет
-                        </p>
-                        <p className="whitespace-pre-wrap">{reminderPreviewWithoutZoom}</p>
-                      </div>
-                    )}
                   </div>
                 </div>
 

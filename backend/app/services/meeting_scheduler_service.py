@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
@@ -9,10 +10,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import Meeting, MeetingParticipant, MeetingSchedule, TeamMember
 from app.db.repositories import MeetingScheduleRepository
-from app.services.zoom_service import extract_zoom_join_url, sanitize_zoom_join_url
+from app.services.zoom_service import sanitize_zoom_join_url
 
 logger = logging.getLogger(__name__)
-DEFAULT_REMINDER_ZOOM_MISSING_TEXT = "Ссылка на Zoom появится позже."
+ZOOM_CREATE_MAX_ATTEMPTS = 3
+ZOOM_CREATE_RETRY_BASE_DELAY_SECONDS = 2
 RUSSIAN_WEEKDAYS = {
     1: "понедельник",
     2: "вторник",
@@ -299,6 +301,67 @@ class MeetingSchedulerService:
         next_same_weekday = dt + timedelta(days=7)
         return next_same_weekday.month != dt.month
 
+    @staticmethod
+    def _resolve_zoom_join_url(raw_join_url: str | None, zoom_meeting_id: str | None) -> str | None:
+        safe_join_url = sanitize_zoom_join_url(
+            raw_join_url,
+            zoom_meeting_id=zoom_meeting_id,
+        )
+        if safe_join_url:
+            return safe_join_url
+        if zoom_meeting_id:
+            return f"https://zoom.us/j/{zoom_meeting_id}"
+        return None
+
+    async def _create_zoom_meeting_with_retry(
+        self,
+        schedule: MeetingSchedule,
+        meeting_date: datetime,
+    ) -> dict:
+        if not self.zoom_service:
+            raise RuntimeError(
+                f"Zoom is required for schedule '{schedule.title}', but ZoomService is not configured"
+            )
+
+        last_error: Exception | None = None
+        for attempt in range(1, ZOOM_CREATE_MAX_ATTEMPTS + 1):
+            try:
+                zoom_data = await self.zoom_service.create_meeting(
+                    topic=schedule.title,
+                    start_time=meeting_date,
+                    duration=schedule.duration_minutes,
+                    timezone=schedule.timezone,
+                )
+                if not zoom_data or not zoom_data.get("id"):
+                    raise RuntimeError("Zoom API returned response without meeting id")
+                logger.info(
+                    "Zoom meeting created for schedule '%s': %s (attempt %s/%s)",
+                    schedule.title,
+                    zoom_data.get("id"),
+                    attempt,
+                    ZOOM_CREATE_MAX_ATTEMPTS,
+                )
+                return zoom_data
+            except Exception as exc:
+                last_error = exc
+                if attempt >= ZOOM_CREATE_MAX_ATTEMPTS:
+                    break
+                delay_seconds = ZOOM_CREATE_RETRY_BASE_DELAY_SECONDS * attempt
+                logger.warning(
+                    "Zoom create failed for schedule %s (%s/%s): %s. Retrying in %ss",
+                    schedule.id,
+                    attempt,
+                    ZOOM_CREATE_MAX_ATTEMPTS,
+                    exc,
+                    delay_seconds,
+                )
+                await asyncio.sleep(delay_seconds)
+
+        raise RuntimeError(
+            f"Zoom meeting creation failed for schedule {schedule.id} after "
+            f"{ZOOM_CREATE_MAX_ATTEMPTS} attempts"
+        ) from last_error
+
     async def _trigger_meeting(
         self,
         session,
@@ -312,38 +375,52 @@ class MeetingSchedulerService:
         # Check if meeting already exists (pre-created when schedule was created)
         existing = await self._find_existing_meeting(session, schedule.id, meeting_date_naive)
 
-        # 1. Create Zoom meeting (if configured and not already set up)
+        # 1. Create Zoom meeting (required for reminder delivery)
         zoom_data = None
-        if schedule.zoom_enabled and self.zoom_service:
+        if schedule.zoom_enabled:
             if existing and existing.zoom_meeting_id:
                 zoom_data = {
                     "id": existing.zoom_meeting_id,
-                    "join_url": sanitize_zoom_join_url(
+                    "join_url": self._resolve_zoom_join_url(
                         existing.zoom_join_url,
-                        zoom_meeting_id=existing.zoom_meeting_id,
+                        existing.zoom_meeting_id,
                     ),
                 }
             else:
-                try:
-                    zoom_data = await self.zoom_service.create_meeting(
-                        topic=schedule.title,
-                        start_time=meeting_date,
-                        duration=schedule.duration_minutes,
-                        timezone=schedule.timezone,
-                    )
-                    logger.info(
-                        f"Zoom meeting created for schedule '{schedule.title}': {zoom_data.get('id')}"
-                    )
-                except Exception as e:
-                    logger.error(f"Zoom create failed for schedule {schedule.id}: {e}")
+                zoom_data = await self._create_zoom_meeting_with_retry(schedule, meeting_date)
+
+        zoom_meeting_id = str(zoom_data["id"]) if zoom_data and zoom_data.get("id") else None
+        zoom_join_url = self._resolve_zoom_join_url(
+            (zoom_data or {}).get("join_url"),
+            zoom_meeting_id,
+        )
+
+        if existing and not zoom_meeting_id:
+            zoom_meeting_id = existing.zoom_meeting_id
+        if existing and not zoom_join_url:
+            zoom_join_url = self._resolve_zoom_join_url(
+                existing.zoom_join_url,
+                zoom_meeting_id or existing.zoom_meeting_id,
+            )
+
+        if schedule.zoom_enabled and not zoom_join_url:
+            raise RuntimeError(
+                f"Zoom link is required but missing for schedule {schedule.id} "
+                f"at {meeting_date.isoformat()}"
+            )
 
         # 2. Use existing meeting or create new one
         if existing:
             meeting = existing
-            # Update with Zoom info if it was missing
-            if zoom_data and not existing.zoom_meeting_id:
-                existing.zoom_meeting_id = str(zoom_data["id"])
-                existing.zoom_join_url = extract_zoom_join_url(zoom_data)
+            updated = False
+            # Update stored Zoom data if it was missing or stale.
+            if zoom_meeting_id and existing.zoom_meeting_id != zoom_meeting_id:
+                existing.zoom_meeting_id = zoom_meeting_id
+                updated = True
+            if zoom_join_url and existing.zoom_join_url != zoom_join_url:
+                existing.zoom_join_url = zoom_join_url
+                updated = True
+            if updated:
                 await session.commit()
             logger.info(f"Using existing meeting for schedule '{schedule.title}' at {meeting_date}")
         else:
@@ -353,8 +430,8 @@ class MeetingSchedulerService:
                 schedule_id=schedule.id,
                 status="scheduled",
                 duration_minutes=schedule.duration_minutes,
-                zoom_meeting_id=str(zoom_data["id"]) if zoom_data else None,
-                zoom_join_url=extract_zoom_join_url(zoom_data) if zoom_data else None,
+                zoom_meeting_id=zoom_meeting_id,
+                zoom_join_url=zoom_join_url,
                 created_by_id=schedule.created_by_id,
             )
             session.add(meeting)
@@ -466,20 +543,20 @@ class MeetingSchedulerService:
                 text += "\n\n" + " ".join(mentions)
 
         raw_join_url = (zoom_data or {}).get("join_url") or meeting.zoom_join_url
-        safe_join_url = sanitize_zoom_join_url(
+        safe_join_url = self._resolve_zoom_join_url(
             raw_join_url,
-            zoom_meeting_id=meeting.zoom_meeting_id,
+            meeting.zoom_meeting_id,
         )
-        include_zoom_link = getattr(schedule, "reminder_include_zoom_link", True)
-        missing_behavior = getattr(schedule, "reminder_zoom_missing_behavior", "hide")
-        missing_text = getattr(schedule, "reminder_zoom_missing_text", None)
+        include_zoom_link = bool(getattr(schedule, "zoom_enabled", False)) or getattr(
+            schedule, "reminder_include_zoom_link", True
+        )
 
         if include_zoom_link:
-            if safe_join_url:
-                text += f"\n\nСсылка для подключения: {safe_join_url}"
-            elif missing_behavior == "fallback":
-                fallback_text = (missing_text or "").strip() or DEFAULT_REMINDER_ZOOM_MISSING_TEXT
-                text += f"\n\n{fallback_text}"
+            if not safe_join_url:
+                raise RuntimeError(
+                    f"Cannot send reminder for schedule {schedule.id}: Zoom link is missing"
+                )
+            text += f"\n\nСсылка для подключения: {safe_join_url}"
 
         # Deduplicate targets by chat_id+thread_id to avoid sending twice
         seen_targets: set[str] = set()
