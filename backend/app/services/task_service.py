@@ -254,6 +254,9 @@ class TaskService:
             progress_percent=progress_percent,
             source=source,
         )
+        # Treat timeline updates as task activity for stale-task tracking.
+        task.updated_at = datetime.utcnow()
+        await session.flush()
         if update_type == "blocker":
             await self.in_app_notifications.notify_task_blocker_added(
                 session, task, task_update, member
