@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent as ReactClipboardEvent,
+} from "react";
 import Image from "next/image";
 import {
   Bold,
@@ -697,23 +705,44 @@ export default function BroadcastsPage() {
     }
   };
 
-  const handleSelectImage = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] || null;
-    event.target.value = "";
-
-    if (!file) return;
+  const tryAttachImage = (file: File | null) => {
+    if (!file) return false;
 
     if (!file.type.startsWith("image/")) {
       toastError("Можно прикрепить только изображение");
-      return;
+      return false;
     }
 
     if (file.size > MAX_IMAGE_BYTES) {
       toastError("Картинка слишком большая (максимум 10 МБ)");
-      return;
+      return false;
     }
 
     setImageFile(file);
+    return true;
+  };
+
+  const handleSelectImage = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = "";
+    tryAttachImage(file);
+  };
+
+  const handlePasteImage = (event: ReactClipboardEvent<HTMLElement>) => {
+    const imageItem = Array.from(event.clipboardData.items).find((item) =>
+      item.type.startsWith("image/")
+    );
+    if (!imageItem) return;
+
+    const file = imageItem.getAsFile();
+    event.preventDefault();
+
+    if (!file) {
+      toastError("Не удалось вставить изображение из буфера");
+      return;
+    }
+
+    tryAttachImage(file);
   };
 
   const handleCreate = async () => {
@@ -896,7 +925,10 @@ export default function BroadcastsPage() {
         </section>
 
         <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-          <section className="rounded-2xl border border-border/60 bg-card p-6">
+          <section
+            className="rounded-2xl border border-border/60 bg-card p-6"
+            onPaste={handlePasteImage}
+          >
             <div className="space-y-5">
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1306,7 +1338,8 @@ export default function BroadcastsPage() {
                     </div>
                   ) : (
                     <p className="text-xs text-muted-foreground">
-                      Форматы: JPG, PNG, WEBP. Максимальный размер: 10 МБ.
+                      Форматы: JPG, PNG, WEBP. Максимальный размер: 10 МБ. Можно выбрать
+                      файл или вставить из буфера (Ctrl+V/Cmd+V).
                     </p>
                   )}
                 </div>
