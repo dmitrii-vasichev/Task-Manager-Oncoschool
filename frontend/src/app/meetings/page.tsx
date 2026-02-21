@@ -165,11 +165,10 @@ export default function MeetingsPage() {
             {activeTab === "upcoming" && isModerator && (
               <Button
                 size="sm"
-                variant="outline"
                 className="w-full rounded-xl gap-1.5 sm:w-auto"
                 onClick={() => setShowScheduleForm(true)}
               >
-                <Video className="h-4 w-4" />
+                <Video className="h-3.5 w-3.5" />
                 Новая встреча
               </Button>
             )}
@@ -250,39 +249,44 @@ export default function MeetingsPage() {
 
                 {/* Pagination */}
                 {totalPages > 1 && (
-                  <div className="flex items-center justify-center gap-1 overflow-x-auto pb-1 pt-2">
-                    <button
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      disabled={currentPage <= 1}
-                      className="h-9 w-9 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      <ChevronLeft className="h-4 w-4" />
-                    </button>
-                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                      (num) => (
-                        <button
-                          key={num}
-                          onClick={() => setPage(num)}
-                          className={`
-                            h-9 w-9 rounded-xl text-sm font-medium flex items-center justify-center
-                            ${
-                              num === currentPage
-                                ? "bg-primary text-primary-foreground shadow-sm"
-                                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                            }
-                          `}
-                        >
-                          {num}
-                        </button>
-                      )
-                    )}
-                    <button
-                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      disabled={currentPage >= totalPages}
-                      className="h-9 w-9 rounded-xl flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
+                  <div className="flex justify-center overflow-x-auto pb-1 pt-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    <div className="inline-flex min-w-max items-center gap-1 rounded-xl bg-muted/70 p-1">
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={currentPage <= 1}
+                        className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                        (num) => (
+                          <button
+                            key={num}
+                            type="button"
+                            onClick={() => setPage(num)}
+                            className={`
+                              h-8 w-8 rounded-lg text-sm font-medium flex items-center justify-center transition-colors
+                              ${
+                                num === currentPage
+                                  ? "bg-background text-foreground shadow-sm"
+                                  : "text-muted-foreground hover:bg-background/70 hover:text-foreground"
+                              }
+                            `}
+                          >
+                            {num}
+                          </button>
+                        )
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={currentPage >= totalPages}
+                        className="h-8 w-8 rounded-lg flex items-center justify-center text-muted-foreground transition-colors hover:bg-background/70 hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 )}
 

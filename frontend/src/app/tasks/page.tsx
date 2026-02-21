@@ -288,10 +288,11 @@ export default function TasksPage() {
           showDepartmentFilter={canSwitchDepartment}
         />
         <Button
+          size="sm"
           onClick={() => setCreateOpen(true)}
-          className="h-10 w-full gap-2 bg-accent text-accent-foreground shadow-sm hover:bg-accent/90 sm:w-auto lg:shrink-0"
+          className="w-full rounded-xl gap-1.5 sm:w-auto lg:shrink-0"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-3.5 w-3.5" />
           Новая задача
         </Button>
       </div>
@@ -309,32 +310,41 @@ export default function TasksPage() {
       {/* Mobile tabs */}
       <div className="relative lg:hidden">
         <div
-          className="flex gap-1 overflow-x-auto pb-1 pr-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="overflow-x-auto pb-1 pr-8 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           data-no-transition
         >
-          {COLUMNS.map((status) => (
-            <button
-              key={status}
-              onClick={() => setMobileTab(status)}
-              className={`
-                flex items-center gap-2 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap
-                ${
-                  mobileTab === status
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                }
-              `}
-            >
-              <span className={`h-2 w-2 rounded-full ${COLUMN_DOT_COLORS[status]}`} />
-              {TASK_STATUS_LABELS[status]}
-              <span className={`
-                text-xs rounded-full px-1.5 min-w-[20px] text-center
-                ${mobileTab === status ? "bg-primary-foreground/20" : "bg-foreground/10"}
-              `}>
-                {tasksByStatus[status].length}
-              </span>
-            </button>
-          ))}
+          <div className="inline-flex min-w-max items-center gap-1 rounded-xl bg-muted/70 p-1">
+            {COLUMNS.map((status) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() => setMobileTab(status)}
+                className={`
+                  flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors
+                  ${
+                    mobileTab === status
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-background/70 hover:text-foreground"
+                  }
+                `}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${COLUMN_DOT_COLORS[status]}`} />
+                {TASK_STATUS_LABELS[status]}
+                <span
+                  className={`
+                    ml-0.5 rounded-md px-1.5 py-0.5 text-2xs font-semibold leading-none
+                    ${
+                      mobileTab === status
+                        ? "bg-primary/10 text-primary"
+                        : "bg-foreground/10 text-muted-foreground"
+                    }
+                  `}
+                >
+                  {tasksByStatus[status].length}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
         <div className="pointer-events-none absolute inset-y-0 right-0 w-10 bg-gradient-to-l from-background to-transparent" />
       </div>
@@ -382,16 +392,18 @@ export default function TasksPage() {
 /* Column header shared by both mobile and desktop */
 function ColumnHeader({ status, count }: { status: TaskStatus; count: number }) {
   return (
-    <div className={`flex items-center justify-between rounded-xl px-4 py-3 mb-3 ${COLUMN_BG[status]}`}>
-      <div className="flex items-center gap-2.5">
-        <span className={`h-2.5 w-2.5 rounded-full ${COLUMN_DOT_COLORS[status]}`} />
-        <h3 className="text-sm font-semibold text-foreground">
-          {TASK_STATUS_LABELS[status]}
-        </h3>
+    <div className={`mb-3 rounded-xl p-1 ${COLUMN_BG[status]}`}>
+      <div className="flex items-center justify-between rounded-lg bg-background/85 px-3 py-2 shadow-sm">
+        <div className="flex items-center gap-2">
+          <span className={`h-1.5 w-1.5 rounded-full ${COLUMN_DOT_COLORS[status]}`} />
+          <h3 className="text-sm font-medium text-foreground">
+            {TASK_STATUS_LABELS[status]}
+          </h3>
+        </div>
+        <span className="min-w-[22px] rounded-md bg-foreground/10 px-1.5 py-0.5 text-center text-2xs font-semibold leading-none text-muted-foreground">
+          {count}
+        </span>
       </div>
-      <span className="text-xs font-medium text-muted-foreground bg-background/60 rounded-full px-2.5 py-0.5 min-w-[24px] text-center shadow-sm">
-        {count}
-      </span>
     </div>
   );
 }

@@ -140,7 +140,7 @@ export function TaskFilters({
           variant="outline"
           size="sm"
           onClick={() => setFiltersExpanded(!filtersExpanded)}
-          className="h-10 w-full gap-2 border-border/60 shadow-sm sm:w-auto lg:hidden"
+          className="h-10 w-full rounded-xl gap-1.5 border-border/60 shadow-sm sm:w-auto lg:hidden"
         >
           <SlidersHorizontal className="h-4 w-4" />
           Фильтры
