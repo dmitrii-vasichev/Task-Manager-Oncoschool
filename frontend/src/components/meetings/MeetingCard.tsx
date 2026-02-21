@@ -209,7 +209,7 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
                       )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5">
+                    <div className="flex flex-col items-start gap-1">
                       <Badge
                         variant="secondary"
                         className="rounded-md text-2xs font-medium px-1.5 py-0 h-5"
@@ -218,7 +218,7 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
                         {recurrenceLabel}
                       </Badge>
                       {variant === "upcoming" && meeting.meeting_date && (
-                        <span className="inline-flex items-center rounded-md bg-muted/70 px-1.5 py-0 h-5 text-2xs text-muted-foreground">
+                        <span className="inline-flex items-center rounded-md bg-muted/70 px-1.5 py-0 h-5 text-2xs text-muted-foreground whitespace-nowrap">
                           {formatTimeRemaining(meeting.meeting_date, meeting.duration_minutes)}
                         </span>
                       )}
@@ -361,7 +361,7 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
                       )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-1.5">
+                    <div className="flex flex-col items-start gap-1">
                       <Badge
                         variant="secondary"
                         className="rounded-md text-2xs font-medium px-1.5 py-0 h-5"
