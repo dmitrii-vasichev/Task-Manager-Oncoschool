@@ -27,7 +27,7 @@ import type {
   TelegramNotificationTarget,
 } from "@/lib/types";
 
-const PER_PAGE = 6;
+const PER_PAGE = 9;
 
 export default function MeetingsPage() {
   const { user } = useCurrentUser();
@@ -131,7 +131,7 @@ export default function MeetingsPage() {
         {/* Meeting skeletons */}
         <div className="space-y-3">
           <Skeleton className="h-10 w-72 rounded-lg" />
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {[...Array(4)].map((_, i) => (
               <Skeleton key={i} className="h-44 rounded-2xl" />
             ))}
@@ -184,7 +184,7 @@ export default function MeetingsPage() {
                 description="Создайте новую встречу, чтобы она появилась в этом списке"
               />
             ) : (
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {upcomingMeetings.map((meeting, i) => (
                   <div
                     key={meeting.id}
@@ -231,7 +231,7 @@ export default function MeetingsPage() {
               />
             ) : (
               <>
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {paginatedPast.map((meeting, i) => (
                     <div
                     key={meeting.id}

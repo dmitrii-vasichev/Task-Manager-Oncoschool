@@ -6,6 +6,7 @@ import {
   Video,
   FileText,
   ListChecks,
+  CalendarDays,
   Clock,
   ExternalLink,
   Trash2,
@@ -13,6 +14,7 @@ import {
   Repeat,
   Users,
   StickyNote,
+  XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,17 +26,10 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { UserAvatar } from "@/components/shared/UserAvatar";
-import type { Meeting, MeetingStatus, TeamMember } from "@/lib/types";
-import { DAY_OF_WEEK_SHORT, MEETING_STATUS_LABELS, RECURRENCE_LABELS } from "@/lib/types";
+import type { Meeting, TeamMember } from "@/lib/types";
+import { DAY_OF_WEEK_SHORT, RECURRENCE_LABELS } from "@/lib/types";
 import { parseUTCDate } from "@/lib/dateUtils";
 import { sanitizeZoomJoinUrl } from "@/lib/zoomLink";
-
-const STATUS_STYLES: Record<MeetingStatus, string> = {
-  scheduled: "bg-muted/60 text-muted-foreground border-border/50",
-  in_progress: "bg-amber-500/10 text-amber-600 border-amber-500/20",
-  completed: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
-  cancelled: "bg-muted text-muted-foreground border-border/40",
-};
 
 const DAY_COLORS: Record<number, string> = {
   1: "bg-blue-500/10 text-blue-600 border-blue-500/20",
@@ -73,7 +68,9 @@ interface MeetingCardProps {
 
 export function MeetingCard({ meeting, variant, members = [], isModerator, onDelete }: MeetingCardProps) {
   const effectiveStatus = meeting.effective_status || meeting.status;
-  const statusStyle = STATUS_STYLES[effectiveStatus] || STATUS_STYLES.scheduled;
+  const isCancelled = effectiveStatus === "cancelled";
+  const isInProgress = effectiveStatus === "in_progress";
+  const hasMeetingDate = !!meeting.meeting_date;
   const [deleting, setDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const safeJoinUrl = sanitizeZoomJoinUrl(
@@ -152,37 +149,66 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
               </div>
             )}
 
-            <div className="relative p-3 sm:p-5">
+            <div className="relative p-3 sm:p-4">
               <div className="flex items-start gap-2.5 sm:gap-3">
                 <div
-                  className={`shrink-0 flex items-center justify-center h-10 w-10 sm:h-11 sm:w-11 rounded-xl border font-heading font-bold text-sm ${upcomingMeta.dayColor}`}
+                  className={`shrink-0 flex items-center justify-center h-10 w-10 rounded-xl border font-heading font-bold text-sm ${upcomingMeta.dayColor}`}
                 >
                   {upcomingMeta.dayShort}
                 </div>
 
                 <div className={`flex-1 min-w-0 ${isModerator && onDelete ? "pr-9 sm:pr-11" : ""}`}>
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="min-w-0 flex-1 font-heading font-semibold text-sm leading-5 text-foreground line-clamp-1 min-h-5 sm:line-clamp-2 sm:min-h-10">
+                    <h3 className="min-w-0 flex-1 font-heading font-semibold text-sm leading-5 text-foreground line-clamp-1 min-h-5 sm:line-clamp-2 sm:min-h-8">
                       {meeting.title || "Встреча без названия"}
                     </h3>
-                    <Badge
-                      variant="outline"
-                      className={`shrink-0 rounded-md text-2xs font-medium border whitespace-nowrap ${statusStyle}`}
-                    >
-                      {MEETING_STATUS_LABELS[effectiveStatus]}
-                    </Badge>
+
+                    {(isCancelled || isInProgress) && (
+                      <span
+                        className={`shrink-0 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs font-medium ${
+                          isCancelled
+                            ? "text-destructive bg-destructive/10"
+                            : "text-amber-700 bg-amber-500/10"
+                        }`}
+                      >
+                        {isCancelled ? (
+                          <>
+                            <XCircle className="h-3 w-3" />
+                            Отменена
+                          </>
+                        ) : (
+                          <>
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                            Идёт
+                          </>
+                        )}
+                      </span>
+                    )}
                   </div>
 
-                  <div className="mt-1 space-y-1">
-                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-                      <Clock className="h-3 w-3" />
-                      <span>{upcomingMeta.timeLabel}</span>
-                      <span className="text-border mx-0.5">·</span>
-                      <span>{meeting.duration_minutes} мин</span>
+                  <div className="mt-1.5 space-y-1.5">
+                    <div
+                      className={`flex items-center gap-1.5 ${
+                        hasMeetingDate
+                          ? "text-sm font-semibold tracking-tight text-foreground"
+                          : "text-xs text-muted-foreground"
+                      }`}
+                    >
+                      <CalendarDays
+                        className={`h-3.5 w-3.5 ${hasMeetingDate ? "text-primary/80" : "text-muted-foreground"}`}
+                      />
+                      <span className="line-clamp-1">{upcomingMeta.dateLabel}</span>
                     </div>
 
-                    <div className="text-2xs text-muted-foreground pl-4 line-clamp-1">
-                      {upcomingMeta.dateLabel}
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground pl-5">
+                      <Clock className="h-3 w-3" />
+                      <span>{upcomingMeta.timeLabel}</span>
+                      {hasMeetingDate && (
+                        <>
+                          <span className="text-border mx-0.5">·</span>
+                          <span>{meeting.duration_minutes} мин</span>
+                        </>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -198,7 +224,7 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
                 </div>
               </div>
 
-              <div className="mt-3 border-t border-border/40 pt-3">
+              <div className="mt-2.5 border-t border-border/40 pt-2.5">
                 <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3">
                   <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
                     {safeJoinUrl && (
@@ -278,37 +304,66 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
               </div>
             )}
 
-            <div className="relative p-3 sm:p-5">
+            <div className="relative p-3 sm:p-4">
               <div className="flex items-start gap-2.5 sm:gap-3">
                 <div
-                  className={`shrink-0 flex items-center justify-center h-10 w-10 sm:h-11 sm:w-11 rounded-xl border font-heading font-bold text-sm ${upcomingMeta.dayColor}`}
+                  className={`shrink-0 flex items-center justify-center h-10 w-10 rounded-xl border font-heading font-bold text-sm ${upcomingMeta.dayColor}`}
                 >
                   {upcomingMeta.dayShort}
                 </div>
 
                 <div className={`flex-1 min-w-0 ${isModerator && onDelete ? "pr-9 sm:pr-11" : ""}`}>
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="min-w-0 flex-1 font-heading font-semibold text-sm leading-5 text-foreground line-clamp-1 min-h-5 sm:line-clamp-2 sm:min-h-10">
+                    <h3 className="min-w-0 flex-1 font-heading font-semibold text-sm leading-5 text-foreground line-clamp-1 min-h-5 sm:line-clamp-2 sm:min-h-8">
                       {meeting.title || "Встреча без названия"}
                     </h3>
-                    <Badge
-                      variant="outline"
-                      className={`shrink-0 rounded-md text-2xs font-medium border whitespace-nowrap ${statusStyle}`}
-                    >
-                      {MEETING_STATUS_LABELS[effectiveStatus]}
-                    </Badge>
+
+                    {(isCancelled || isInProgress) && (
+                      <span
+                        className={`shrink-0 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-2xs font-medium ${
+                          isCancelled
+                            ? "text-destructive bg-destructive/10"
+                            : "text-amber-700 bg-amber-500/10"
+                        }`}
+                      >
+                        {isCancelled ? (
+                          <>
+                            <XCircle className="h-3 w-3" />
+                            Отменена
+                          </>
+                        ) : (
+                          <>
+                            <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                            Идёт
+                          </>
+                        )}
+                      </span>
+                    )}
                   </div>
 
-                  <div className="mt-1 space-y-1">
-                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
-                      <Clock className="h-3 w-3" />
-                      <span>{upcomingMeta.timeLabel}</span>
-                      <span className="text-border mx-0.5">·</span>
-                      <span>{meeting.duration_minutes} мин</span>
+                  <div className="mt-1.5 space-y-1.5">
+                    <div
+                      className={`flex items-center gap-1.5 ${
+                        hasMeetingDate
+                          ? "text-sm font-semibold tracking-tight text-foreground"
+                          : "text-xs text-muted-foreground"
+                      }`}
+                    >
+                      <CalendarDays
+                        className={`h-3.5 w-3.5 ${hasMeetingDate ? "text-primary/80" : "text-muted-foreground"}`}
+                      />
+                      <span className="line-clamp-1">{upcomingMeta.dateLabel}</span>
                     </div>
 
-                    <div className="text-2xs text-muted-foreground pl-4 line-clamp-1">
-                      {upcomingMeta.dateLabel}
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground pl-5">
+                      <Clock className="h-3 w-3" />
+                      <span>{upcomingMeta.timeLabel}</span>
+                      {hasMeetingDate && (
+                        <>
+                          <span className="text-border mx-0.5">·</span>
+                          <span>{meeting.duration_minutes} мин</span>
+                        </>
+                      )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -324,7 +379,7 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
                 </div>
               </div>
 
-              <div className="mt-3 border-t border-border/40 pt-3">
+              <div className="mt-2.5 border-t border-border/40 pt-2.5">
                 <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3">
                   <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
                     {meeting.parsed_summary && (
