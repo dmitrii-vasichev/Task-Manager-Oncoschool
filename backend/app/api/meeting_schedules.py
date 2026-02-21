@@ -280,6 +280,53 @@ async def _find_meeting_by_schedule_datetime(
     return result.scalar_one_or_none()
 
 
+async def _find_next_scheduled_meeting_with_date(
+    session: AsyncSession,
+    schedule_id: uuid.UUID,
+) -> Meeting | None:
+    now_utc_naive = datetime.now(ZoneInfo("UTC")).replace(tzinfo=None)
+
+    future_stmt = (
+        select(Meeting)
+        .where(
+            Meeting.schedule_id == schedule_id,
+            Meeting.status == "scheduled",
+            Meeting.meeting_date.is_not(None),
+            Meeting.meeting_date >= now_utc_naive,
+        )
+        .order_by(Meeting.meeting_date.asc(), Meeting.created_at.asc())
+    )
+    future_result = await session.execute(future_stmt)
+    future = future_result.scalars().first()
+    if future:
+        return future
+
+    fallback_stmt = (
+        select(Meeting)
+        .where(
+            Meeting.schedule_id == schedule_id,
+            Meeting.status == "scheduled",
+            Meeting.meeting_date.is_not(None),
+        )
+        .order_by(Meeting.meeting_date.desc(), Meeting.created_at.desc())
+    )
+    fallback_result = await session.execute(fallback_stmt)
+    return fallback_result.scalars().first()
+
+
+async def _find_schedule_template_meeting(
+    session: AsyncSession,
+    schedule_id: uuid.UUID,
+) -> Meeting | None:
+    stmt = select(Meeting).where(
+        Meeting.schedule_id == schedule_id,
+        Meeting.meeting_date.is_(None),
+        Meeting.status == "scheduled",
+    )
+    result = await session.execute(stmt)
+    return result.scalars().first()
+
+
 async def _ensure_on_demand_template_meeting(
     session: AsyncSession,
     schedule: MeetingSchedule,
@@ -308,6 +355,42 @@ async def _ensure_on_demand_template_meeting(
     if schedule.participant_ids:
         await _add_meeting_participants(session, template.id, list(schedule.participant_ids))
     return template
+
+
+async def _create_zoom_fields_for_occurrence(
+    zoom_service,
+    *,
+    title: str,
+    occurrence_at: datetime,
+    duration_minutes: int,
+    timezone: str,
+    context: str,
+) -> tuple[str | None, str | None]:
+    """Create Zoom meeting for a scheduled occurrence and return (meeting_id, join_url)."""
+    if not zoom_service:
+        logger.warning("Zoom service unavailable while %s", context)
+        return None, None
+
+    try:
+        start_time = occurrence_at
+        if start_time.tzinfo is None:
+            start_time = start_time.replace(tzinfo=ZoneInfo("UTC"))
+        else:
+            start_time = start_time.astimezone(ZoneInfo("UTC"))
+
+        zoom_data = await zoom_service.create_meeting(
+            topic=title,
+            start_time=start_time,
+            duration=duration_minutes,
+            timezone=timezone,
+        )
+    except Exception as e:
+        logger.warning("Zoom create failed while %s: %s", context, e)
+        return None, None
+
+    zoom_meeting_id = str(zoom_data["id"]) if zoom_data and zoom_data.get("id") else None
+    zoom_join_url = extract_zoom_join_url(zoom_data)
+    return zoom_meeting_id, zoom_join_url
 
 
 @router.get("", response_model=list[MeetingScheduleResponse])
@@ -475,18 +558,14 @@ async def create_schedule(
             meeting_date=next_meeting_date,
         )
         if not existing:
-            zoom_data = None
-            if zoom_service:
-                try:
-                    tz_aware = next_meeting_date.replace(tzinfo=ZoneInfo("UTC"))
-                    zoom_data = await zoom_service.create_meeting(
-                        topic=data.title,
-                        start_time=tz_aware,
-                        duration=data.duration_minutes,
-                        timezone=timezone,
-                    )
-                except Exception as e:
-                    logger.warning(f"Zoom create failed for new schedule: {e}")
+            zoom_meeting_id, zoom_join_url = await _create_zoom_fields_for_occurrence(
+                zoom_service,
+                title=data.title,
+                occurrence_at=next_meeting_date,
+                duration_minutes=data.duration_minutes,
+                timezone=timezone,
+                context=f"creating schedule {schedule.id}",
+            )
 
             meeting = Meeting(
                 title=data.title,
@@ -494,8 +573,8 @@ async def create_schedule(
                 schedule_id=schedule.id,
                 status="scheduled",
                 duration_minutes=data.duration_minutes,
-                zoom_meeting_id=str(zoom_data["id"]) if zoom_data else None,
-                zoom_join_url=extract_zoom_join_url(zoom_data) if zoom_data else None,
+                zoom_meeting_id=zoom_meeting_id,
+                zoom_join_url=zoom_join_url,
                 created_by_id=member.id,
             )
             session.add(meeting)
@@ -512,6 +591,7 @@ async def create_schedule(
 async def update_schedule(
     schedule_id: uuid.UUID,
     data: MeetingScheduleUpdate,
+    request: Request,
     _: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
 ):
@@ -519,6 +599,8 @@ async def update_schedule(
     schedule = await schedule_repo.get_by_id(session, schedule_id)
     if not schedule:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Расписание не найдено")
+    zoom_service = getattr(request.app.state, "zoom_service", None)
+    previous_recurrence = schedule.recurrence
 
     update_data = data.model_dump(exclude_unset=True)
 
@@ -674,20 +756,49 @@ async def update_schedule(
     schedule = await schedule_repo.update(session, schedule_id, **update_data)
 
     if schedule.recurrence == "on_demand":
-        await _ensure_on_demand_template_meeting(session, schedule, schedule.created_by_id)
         if schedule.next_occurrence_at:
+            await _ensure_on_demand_template_meeting(session, schedule, schedule.created_by_id)
             existing = await _find_meeting_by_schedule_datetime(
                 session,
                 schedule_id=schedule.id,
                 meeting_date=schedule.next_occurrence_at,
             )
-            if not existing:
+            if existing:
+                if existing.zoom_meeting_id and not existing.zoom_join_url:
+                    existing.zoom_join_url = extract_zoom_join_url({"id": existing.zoom_meeting_id})
+                if schedule.zoom_enabled and not existing.zoom_meeting_id:
+                    zoom_meeting_id, zoom_join_url = await _create_zoom_fields_for_occurrence(
+                        zoom_service,
+                        title=schedule.title,
+                        occurrence_at=schedule.next_occurrence_at,
+                        duration_minutes=schedule.duration_minutes,
+                        timezone=schedule.timezone,
+                        context=f"updating on_demand schedule {schedule.id}",
+                    )
+                    if zoom_meeting_id:
+                        existing.zoom_meeting_id = zoom_meeting_id
+                    if zoom_join_url:
+                        existing.zoom_join_url = zoom_join_url
+            else:
+                zoom_meeting_id = None
+                zoom_join_url = None
+                if schedule.zoom_enabled:
+                    zoom_meeting_id, zoom_join_url = await _create_zoom_fields_for_occurrence(
+                        zoom_service,
+                        title=schedule.title,
+                        occurrence_at=schedule.next_occurrence_at,
+                        duration_minutes=schedule.duration_minutes,
+                        timezone=schedule.timezone,
+                        context=f"updating on_demand schedule {schedule.id}",
+                    )
                 meeting = Meeting(
                     title=schedule.title,
                     meeting_date=schedule.next_occurrence_at,
                     schedule_id=schedule.id,
                     status="scheduled",
                     duration_minutes=schedule.duration_minutes,
+                    zoom_meeting_id=zoom_meeting_id,
+                    zoom_join_url=zoom_join_url,
                     created_by_id=schedule.created_by_id,
                 )
                 session.add(meeting)
@@ -698,6 +809,105 @@ async def update_schedule(
                         meeting.id,
                         list(schedule.participant_ids),
                     )
+        else:
+            template = await _find_schedule_template_meeting(session, schedule.id)
+            meeting_with_date = await _find_next_scheduled_meeting_with_date(
+                session,
+                schedule.id,
+            )
+            if (
+                template
+                and meeting_with_date
+                and template.id != meeting_with_date.id
+            ):
+                await session.delete(template)
+                template = None
+
+            if meeting_with_date:
+                if meeting_with_date.zoom_meeting_id and zoom_service:
+                    try:
+                        await zoom_service.delete_meeting(meeting_with_date.zoom_meeting_id)
+                    except Exception as e:
+                        logger.warning(
+                            "Zoom delete failed while clearing on_demand schedule %s: %s",
+                            schedule.id,
+                            e,
+                        )
+
+                meeting_with_date.title = schedule.title
+                meeting_with_date.meeting_date = None
+                meeting_with_date.status = "scheduled"
+                meeting_with_date.duration_minutes = schedule.duration_minutes
+                meeting_with_date.zoom_meeting_id = None
+                meeting_with_date.zoom_join_url = None
+                meeting_with_date.zoom_recording_url = None
+                meeting_with_date.sent_reminder_offsets_minutes = []
+
+            await _ensure_on_demand_template_meeting(session, schedule, schedule.created_by_id)
+    elif previous_recurrence == "on_demand":
+        next_meeting_date = _calc_next_meeting_datetime(
+            day_of_week=schedule.day_of_week,
+            time_utc=schedule.time_utc,
+            timezone_str=schedule.timezone,
+            recurrence=schedule.recurrence,
+            one_time_date=schedule.one_time_date,
+            next_occurrence_at=schedule.next_occurrence_at,
+        )
+        if next_meeting_date:
+            existing = await _find_meeting_by_schedule_datetime(
+                session,
+                schedule_id=schedule.id,
+                meeting_date=next_meeting_date,
+            )
+            template = await _find_schedule_template_meeting(session, schedule.id)
+
+            target = existing
+            if not target:
+                if template:
+                    template.title = schedule.title
+                    template.meeting_date = next_meeting_date
+                    template.duration_minutes = schedule.duration_minutes
+                    template.status = "scheduled"
+                    target = template
+                else:
+                    target = Meeting(
+                        title=schedule.title,
+                        meeting_date=next_meeting_date,
+                        schedule_id=schedule.id,
+                        status="scheduled",
+                        duration_minutes=schedule.duration_minutes,
+                        created_by_id=schedule.created_by_id,
+                    )
+                    session.add(target)
+                    await session.flush()
+                    if schedule.participant_ids:
+                        await _add_meeting_participants(
+                            session,
+                            target.id,
+                            list(schedule.participant_ids),
+                        )
+
+            if schedule.zoom_enabled and target:
+                if target.zoom_meeting_id and not target.zoom_join_url:
+                    target.zoom_join_url = extract_zoom_join_url(
+                        {"id": target.zoom_meeting_id}
+                    )
+                if not target.zoom_meeting_id:
+                    zoom_meeting_id, zoom_join_url = await _create_zoom_fields_for_occurrence(
+                        zoom_service,
+                        title=schedule.title,
+                        occurrence_at=next_meeting_date,
+                        duration_minutes=schedule.duration_minutes,
+                        timezone=schedule.timezone,
+                        context=(
+                            "switching schedule "
+                            f"{schedule.id} from on_demand to {schedule.recurrence}"
+                        ),
+                    )
+                    if zoom_meeting_id:
+                        target.zoom_meeting_id = zoom_meeting_id
+                    if zoom_join_url:
+                        target.zoom_join_url = zoom_join_url
 
     await session.commit()
     return _enrich_response(schedule)
