@@ -303,7 +303,7 @@ export default function MeetingDetailPage() {
               <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center">
                 <CalendarClock className="h-4 w-4 text-primary" />
               </div>
-              <span className="text-sm font-heading font-semibold">План встречи</span>
+              <span className="text-sm font-heading font-semibold">Расписание встречи</span>
             </div>
             {isModerator && schedule && (
               <Button
