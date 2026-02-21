@@ -39,6 +39,14 @@ import type {
 class ApiClient {
   private token: string | null = null;
   private activeApiBaseUrl: string | null = null;
+  private readonly retryableMethods = new Set([
+    "GET",
+    "HEAD",
+    "OPTIONS",
+    "PUT",
+    "PATCH",
+    "DELETE",
+  ]);
 
   private getApiBases(): string[] {
     return getApiBaseCandidates(this.activeApiBaseUrl);
@@ -70,6 +78,14 @@ class ApiClient {
     );
   }
 
+  private isTransientNetworkError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    return (
+      error.message.includes("Сервер недоступен") ||
+      error.message.includes("Failed to fetch")
+    );
+  }
+
   setToken(token: string | null) {
     this.token = token;
     if (token) {
@@ -92,6 +108,7 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<T> {
     const token = this.getToken();
+    const method = (options.method || "GET").toUpperCase();
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...((options.headers as Record<string, string>) || {}),
@@ -100,10 +117,28 @@ class ApiClient {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const res = await this.fetchWithApiFallback(path, {
-      ...options,
-      headers,
-    });
+    let res: Response;
+    let retried = false;
+    while (true) {
+      try {
+        res = await this.fetchWithApiFallback(path, {
+          ...options,
+          method,
+          headers,
+        });
+        break;
+      } catch (error) {
+        if (
+          retried ||
+          !this.retryableMethods.has(method) ||
+          !this.isTransientNetworkError(error)
+        ) {
+          throw error;
+        }
+        retried = true;
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    }
 
     if (res.status === 401) {
       const body = await res.json().catch(() => ({}));
