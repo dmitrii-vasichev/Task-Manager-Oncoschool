@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  CalendarDays,
   Video,
   FileText,
   ListChecks,
@@ -11,6 +10,10 @@ import {
   ExternalLink,
   Trash2,
   Loader2,
+  Settings,
+  Repeat,
+  Users,
+  StickyNote,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,10 +24,10 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import type { Meeting, MeetingStatus } from "@/lib/types";
-import { MEETING_STATUS_LABELS } from "@/lib/types";
+import { UserAvatar } from "@/components/shared/UserAvatar";
+import type { Meeting, MeetingStatus, TeamMember } from "@/lib/types";
+import { DAY_OF_WEEK_SHORT, MEETING_STATUS_LABELS, RECURRENCE_LABELS } from "@/lib/types";
 import { parseUTCDate } from "@/lib/dateUtils";
-import { formatMeetingListDateTime } from "@/lib/meetingDateTime";
 import { sanitizeZoomJoinUrl } from "@/lib/zoomLink";
 
 const STATUS_STYLES: Record<MeetingStatus, string> = {
@@ -34,18 +37,42 @@ const STATUS_STYLES: Record<MeetingStatus, string> = {
   cancelled: "bg-muted text-muted-foreground border-border/40",
 };
 
-function formatDate(dateStr: string): string {
-  return formatMeetingListDateTime(dateStr);
+const DAY_COLORS: Record<number, string> = {
+  1: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+  2: "bg-violet-500/10 text-violet-600 border-violet-500/20",
+  3: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+  4: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+  5: "bg-rose-500/10 text-rose-600 border-rose-500/20",
+  6: "bg-cyan-500/10 text-cyan-600 border-cyan-500/20",
+  7: "bg-orange-500/10 text-orange-600 border-orange-500/20",
+};
+
+function getMoscowIsoWeekday(date: Date): number {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Moscow",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+
+  const year = Number(parts.find((p) => p.type === "year")?.value || 0);
+  const month = Number(parts.find((p) => p.type === "month")?.value || 1);
+  const day = Number(parts.find((p) => p.type === "day")?.value || 1);
+
+  const utcNoon = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const weekday = utcNoon.getUTCDay();
+  return weekday === 0 ? 7 : weekday;
 }
 
 interface MeetingCardProps {
   meeting: Meeting;
   variant: "upcoming" | "past";
+  members?: TeamMember[];
   isModerator?: boolean;
   onDelete?: (meeting: Meeting) => Promise<void>;
 }
 
-export function MeetingCard({ meeting, variant, isModerator, onDelete }: MeetingCardProps) {
+export function MeetingCard({ meeting, variant, members = [], isModerator, onDelete }: MeetingCardProps) {
   const effectiveStatus = meeting.effective_status || meeting.status;
   const statusStyle = STATUS_STYLES[effectiveStatus] || STATUS_STYLES.scheduled;
   const [deleting, setDeleting] = useState(false);
@@ -55,133 +82,334 @@ export function MeetingCard({ meeting, variant, isModerator, onDelete }: Meeting
     meeting.zoom_meeting_id
   );
 
+  const participants = useMemo(() => {
+    const byId = new Map(members.map((m) => [m.id, m]));
+    return (meeting.participant_ids || [])
+      .map((id) => byId.get(id))
+      .filter((member): member is TeamMember => !!member);
+  }, [meeting.participant_ids, members]);
+
+  const recurrenceKey = (meeting.schedule_recurrence || "one_time") as keyof typeof RECURRENCE_LABELS;
+  const recurrenceLabel = RECURRENCE_LABELS[recurrenceKey] || "Разовая встреча";
+
+  const upcomingMeta = useMemo(() => {
+    if (!meeting.meeting_date) {
+      return {
+        dayShort: "—",
+        dayColor: DAY_COLORS[1],
+        timeLabel: "Время не назначено",
+        dateLabel: "Следующая дата пока не назначена",
+      };
+    }
+
+    const date = parseUTCDate(meeting.meeting_date);
+    const weekdayIso = getMoscowIsoWeekday(date);
+    const timeLabel = date.toLocaleTimeString("ru-RU", {
+      timeZone: "Europe/Moscow",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+    const dateLabel = date.toLocaleDateString("ru-RU", {
+      timeZone: "Europe/Moscow",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    });
+
+    return {
+      dayShort: DAY_OF_WEEK_SHORT[weekdayIso],
+      dayColor: DAY_COLORS[weekdayIso] || DAY_COLORS[1],
+      timeLabel: `${timeLabel} МСК`,
+      dateLabel: `${dateLabel.charAt(0).toUpperCase()}${dateLabel.slice(1)}`,
+    };
+  }, [meeting.meeting_date]);
+
   return (
     <>
-      <Link
-        href={`/meetings/${meeting.id}`}
-        className="group block"
-      >
-        <div className="relative overflow-hidden rounded-2xl border border-border/60 bg-card p-5 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-0.5 transition-all duration-200">
-          {/* Decorative corner */}
-          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-bl from-primary/5 to-transparent rounded-bl-3xl" />
+      {variant === "upcoming" ? (
+        <Link href={`/meetings/${meeting.id}`} className="group block">
+          <div className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card hover:shadow-md hover:border-border/80 transition-all duration-200">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/3 to-transparent rounded-bl-3xl pointer-events-none" />
 
-          {/* Header: date + status */}
-          <div className="flex items-center justify-between gap-2 mb-3">
-            {meeting.meeting_date && (
-              <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <CalendarDays className="h-3.5 w-3.5" />
-                <span className="font-medium">{formatDate(meeting.meeting_date)}</span>
-              </div>
-            )}
-            <Badge
-              variant="outline"
-              className={`rounded-md text-2xs font-medium border ${statusStyle}`}
-            >
-              {MEETING_STATUS_LABELS[effectiveStatus]}
-            </Badge>
-          </div>
-
-          {/* Title */}
-          <h3 className="text-base font-heading font-semibold text-foreground mb-2 pr-6 line-clamp-2 group-hover:text-primary transition-colors">
-            {meeting.title || "Встреча без названия"}
-          </h3>
-
-          {/* Summary preview (past meetings) */}
-          {variant === "past" && meeting.parsed_summary && (
-            <p className="text-sm text-muted-foreground line-clamp-2 mb-3 leading-relaxed">
-              {meeting.parsed_summary}
-            </p>
-          )}
-
-          {/* Footer */}
-          <div className="flex items-center gap-2 mt-auto pt-3 border-t border-border/40">
-            {/* Zoom link for upcoming */}
-            {variant === "upcoming" && safeJoinUrl && (
-              <a
-                href={safeJoinUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-500/10 rounded-lg px-2.5 py-1.5 hover:bg-blue-500/15 transition-colors"
-              >
-                <Video className="h-3 w-3" />
-                Подключиться
-                <ExternalLink className="h-2.5 w-2.5" />
-              </a>
-            )}
-
-            {/* Indicators for past meetings */}
-            {variant === "past" && (
-              <>
-                {meeting.decisions && meeting.decisions.length > 0 && (
-                  <Badge
-                    variant="secondary"
-                    className="gap-1 rounded-lg text-2xs font-medium bg-status-done-bg text-status-done-fg"
+            {isModerator && (
+              <div className="absolute top-2 right-2 sm:top-3.5 sm:right-3.5 z-10 flex items-center gap-1 opacity-100 pointer-events-auto sm:opacity-0 sm:pointer-events-none sm:group-hover:opacity-100 sm:group-hover:pointer-events-auto transition-opacity">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.location.assign(`/meetings/${meeting.id}`);
+                  }}
+                  className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg text-muted-foreground hover:text-foreground bg-card/70 backdrop-blur-[1px] flex items-center justify-center"
+                  title="Открыть настройки встречи"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </button>
+                {onDelete && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowDeleteDialog(true);
+                    }}
+                    disabled={deleting}
+                    className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg text-muted-foreground hover:text-destructive bg-card/70 backdrop-blur-[1px] flex items-center justify-center disabled:opacity-50"
+                    title="Удалить встречу"
                   >
-                    <ListChecks className="h-3 w-3" />
-                    {meeting.decisions.length}{" "}
-                    {meeting.decisions.length === 1
-                      ? "решение"
-                      : meeting.decisions.length < 5
-                        ? "решения"
-                        : "решений"}
-                  </Badge>
+                    {deleting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </button>
                 )}
-                {meeting.transcript && (
-                  <Badge
-                    variant="secondary"
-                    className="gap-1 rounded-lg text-2xs font-medium"
-                  >
-                    <FileText className="h-3 w-3" />
-                    Транскрипция
-                  </Badge>
-                )}
-              </>
-            )}
-
-            {/* Upcoming: show time remaining */}
-            {variant === "upcoming" && meeting.meeting_date && (
-              <div className="flex items-center gap-1 text-2xs text-muted-foreground ml-auto">
-                <Clock className="h-3 w-3" />
-                {formatTimeRemaining(meeting.meeting_date, meeting.duration_minutes)}
               </div>
             )}
 
-            {variant === "past" && (
-              <div className="flex-1" />
-            )}
+            <div className="relative p-3 sm:p-5">
+              <div className="flex items-start gap-2.5 sm:gap-3">
+                <div
+                  className={`shrink-0 flex items-center justify-center h-10 w-10 sm:h-11 sm:w-11 rounded-xl border font-heading font-bold text-sm ${upcomingMeta.dayColor}`}
+                >
+                  {upcomingMeta.dayShort}
+                </div>
 
-            {/* Delete button for moderators */}
-            {isModerator && onDelete && (
-              <button
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setShowDeleteDialog(true);
-                }}
-                disabled={deleting}
-                className="h-7 w-7 rounded-lg flex items-center justify-center text-muted-foreground/40 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all disabled:opacity-50"
-                title="Удалить встречу"
-              >
-                {deleting ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Trash2 className="h-3.5 w-3.5" />
-                )}
-              </button>
-            )}
+                <div className={`flex-1 min-w-0 ${isModerator ? "pr-14 sm:pr-[4.5rem]" : ""}`}>
+                  <h3 className="font-heading font-semibold text-sm leading-5 text-foreground line-clamp-1 min-h-5 sm:line-clamp-2 sm:min-h-10">
+                    {meeting.title || "Встреча без названия"}
+                  </h3>
 
-            {/* Hover arrow for past (when no delete) */}
-            {variant === "past" && !(isModerator && onDelete) && (
-              <div className="h-7 w-7 rounded-lg bg-muted/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                <Video className="h-3.5 w-3.5 text-muted-foreground" />
+                  <div className="mt-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      <span>{upcomingMeta.timeLabel}</span>
+                      <span className="text-border mx-0.5">·</span>
+                      <span>{meeting.duration_minutes} мин</span>
+                    </div>
+
+                    <div className="text-2xs text-muted-foreground pl-4 line-clamp-1">
+                      {upcomingMeta.dateLabel}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge
+                        variant="secondary"
+                        className="rounded-md text-2xs font-medium px-1.5 py-0 h-5"
+                      >
+                        <Repeat className="h-2.5 w-2.5 mr-0.5" />
+                        {recurrenceLabel}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className={`rounded-md text-2xs font-medium border ${statusStyle}`}
+                      >
+                        {MEETING_STATUS_LABELS[effectiveStatus]}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
               </div>
-            )}
+
+              <div className="mt-3 border-t border-border/40 pt-3">
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+                    {safeJoinUrl && (
+                      <a
+                        href={safeJoinUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-500/10 rounded-lg px-2.5 py-1.5 hover:bg-blue-500/15 transition-colors"
+                      >
+                        <Video className="h-3 w-3" />
+                        Подключиться
+                        <ExternalLink className="h-2.5 w-2.5" />
+                      </a>
+                    )}
+
+                    {meeting.meeting_date && (
+                      <div className="flex items-center gap-1 text-2xs text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        {formatTimeRemaining(meeting.meeting_date, meeting.duration_minutes)}
+                      </div>
+                    )}
+                  </div>
+
+                  {participants.length > 0 ? (
+                    <div className="flex items-center gap-1 sm:ml-auto">
+                      <div className="flex -space-x-1.5">
+                        {participants.slice(0, 4).map((participant) => (
+                          <UserAvatar
+                            key={participant.id}
+                            name={participant.full_name}
+                            avatarUrl={participant.avatar_url}
+                            size="sm"
+                          />
+                        ))}
+                      </div>
+                      {participants.length > 4 && (
+                        <span className="text-2xs text-muted-foreground ml-1">
+                          +{participants.length - 4}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-2xs text-muted-foreground/50 sm:ml-auto">
+                      <Users className="h-3 w-3" />
+                      <span>Нет участников</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </Link>
+        </Link>
+      ) : (
+        <Link href={`/meetings/${meeting.id}`} className="group block">
+          <div className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card hover:shadow-md hover:border-border/80 transition-all duration-200">
+            <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/3 to-transparent rounded-bl-3xl pointer-events-none" />
 
-      {/* Delete confirmation dialog */}
+            {isModerator && (
+              <div className="absolute top-2 right-2 sm:top-3.5 sm:right-3.5 z-10 flex items-center gap-1 opacity-100 pointer-events-auto sm:opacity-0 sm:pointer-events-none sm:group-hover:opacity-100 sm:group-hover:pointer-events-auto transition-opacity">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.location.assign(`/meetings/${meeting.id}`);
+                  }}
+                  className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg text-muted-foreground hover:text-foreground bg-card/70 backdrop-blur-[1px] flex items-center justify-center"
+                  title="Открыть настройки встречи"
+                >
+                  <Settings className="h-3.5 w-3.5" />
+                </button>
+                {onDelete && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowDeleteDialog(true);
+                    }}
+                    disabled={deleting}
+                    className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg text-muted-foreground hover:text-destructive bg-card/70 backdrop-blur-[1px] flex items-center justify-center disabled:opacity-50"
+                    title="Удалить встречу"
+                  >
+                    {deleting ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="relative p-3 sm:p-5">
+              <div className="flex items-start gap-2.5 sm:gap-3">
+                <div
+                  className={`shrink-0 flex items-center justify-center h-10 w-10 sm:h-11 sm:w-11 rounded-xl border font-heading font-bold text-sm ${upcomingMeta.dayColor}`}
+                >
+                  {upcomingMeta.dayShort}
+                </div>
+
+                <div className={`flex-1 min-w-0 ${isModerator ? "pr-14 sm:pr-[4.5rem]" : ""}`}>
+                  <h3 className="font-heading font-semibold text-sm leading-5 text-foreground line-clamp-1 min-h-5 sm:line-clamp-2 sm:min-h-10">
+                    {meeting.title || "Встреча без названия"}
+                  </h3>
+
+                  <div className="mt-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      <span>{upcomingMeta.timeLabel}</span>
+                      <span className="text-border mx-0.5">·</span>
+                      <span>{meeting.duration_minutes} мин</span>
+                    </div>
+
+                    <div className="text-2xs text-muted-foreground pl-4 line-clamp-1">
+                      {upcomingMeta.dateLabel}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge
+                        variant="secondary"
+                        className="rounded-md text-2xs font-medium px-1.5 py-0 h-5"
+                      >
+                        <Repeat className="h-2.5 w-2.5 mr-0.5" />
+                        {recurrenceLabel}
+                      </Badge>
+                      <Badge
+                        variant="outline"
+                        className={`rounded-md text-2xs font-medium border ${statusStyle}`}
+                      >
+                        {MEETING_STATUS_LABELS[effectiveStatus]}
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 border-t border-border/40 pt-3">
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3">
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+                    {meeting.parsed_summary && (
+                      <Badge variant="secondary" className="gap-1 rounded-lg text-2xs font-medium">
+                        <FileText className="h-3 w-3" />
+                        Резюме
+                      </Badge>
+                    )}
+                    {meeting.transcript && (
+                      <Badge variant="secondary" className="gap-1 rounded-lg text-2xs font-medium">
+                        <FileText className="h-3 w-3" />
+                        Транскрипция
+                      </Badge>
+                    )}
+                    {meeting.decisions && meeting.decisions.length > 0 && (
+                      <Badge
+                        variant="secondary"
+                        className="gap-1 rounded-lg text-2xs font-medium bg-status-done-bg text-status-done-fg"
+                      >
+                        <ListChecks className="h-3 w-3" />
+                        Решения: {meeting.decisions.length}
+                      </Badge>
+                    )}
+                    {meeting.notes && (
+                      <Badge variant="secondary" className="gap-1 rounded-lg text-2xs font-medium">
+                        <StickyNote className="h-3 w-3" />
+                        Заметки
+                      </Badge>
+                    )}
+                  </div>
+
+                  {participants.length > 0 ? (
+                    <div className="flex items-center gap-1 sm:ml-auto">
+                      <div className="flex -space-x-1.5">
+                        {participants.slice(0, 4).map((participant) => (
+                          <UserAvatar
+                            key={participant.id}
+                            name={participant.full_name}
+                            avatarUrl={participant.avatar_url}
+                            size="sm"
+                          />
+                        ))}
+                      </div>
+                      {participants.length > 4 && (
+                        <span className="text-2xs text-muted-foreground ml-1">
+                          +{participants.length - 4}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1 text-2xs text-muted-foreground/50 sm:ml-auto">
+                      <Users className="h-3 w-3" />
+                      <span>Нет участников</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </Link>
+      )}
+
       {showDeleteDialog && onDelete && (
         <Dialog open onOpenChange={(open) => !open && setShowDeleteDialog(false)}>
           <DialogContent className="sm:max-w-sm">

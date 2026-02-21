@@ -8,7 +8,12 @@ export type TaskSource = "text" | "voice" | "summary" | "web";
 export type UpdateType = "progress" | "status_change" | "comment" | "blocker" | "completion";
 export type MemberRole = "admin" | "moderator" | "member";
 export type MemberDeactivationStrategy = "unassign" | "reassign";
-export type MeetingRecurrence = "weekly" | "biweekly" | "monthly_last_workday";
+export type MeetingRecurrence =
+  | "weekly"
+  | "biweekly"
+  | "monthly_last_workday"
+  | "one_time"
+  | "on_demand";
 export type MeetingReminderZoomMissingBehavior = "hide" | "fallback";
 export type MeetingStatus = "scheduled" | "in_progress" | "completed" | "cancelled";
 export type TelegramBroadcastStatus = "scheduled" | "sent" | "failed" | "cancelled";
@@ -143,6 +148,8 @@ export interface Meeting {
   duration_minutes: number;
   effective_status: MeetingStatus;
   participant_ids: string[];
+  schedule_recurrence: MeetingRecurrence | null;
+  is_schedule_template: boolean;
 }
 
 export interface TelegramTargetRef {
@@ -195,6 +202,8 @@ export interface MeetingSchedule {
   timezone: string;
   duration_minutes: number;
   recurrence: MeetingRecurrence;
+  one_time_date: string | null;
+  next_occurrence_at: string | null;
   reminder_enabled: boolean;
   reminder_minutes_before: number;
   reminder_text: string | null;
@@ -215,11 +224,12 @@ export interface MeetingSchedule {
 
 export interface MeetingScheduleCreateRequest {
   title: string;
-  day_of_week: number;
-  time_local: string;
+  day_of_week?: number;
+  time_local?: string;
   timezone?: string;
   duration_minutes?: number;
   recurrence?: MeetingRecurrence;
+  meeting_date_local?: string | null;
   reminder_enabled?: boolean;
   reminder_minutes_before?: number;
   reminder_text?: string | null;
@@ -231,6 +241,7 @@ export interface MeetingScheduleCreateRequest {
   zoom_enabled?: boolean;
   next_occurrence_skip?: boolean;
   next_occurrence_time_local?: string | null;
+  next_occurrence_datetime_local?: string | null;
 }
 
 export interface ZoomStatusResponse {
@@ -537,6 +548,8 @@ export const RECURRENCE_LABELS: Record<MeetingRecurrence, string> = {
   weekly: "Еженедельно",
   biweekly: "Раз в 2 недели",
   monthly_last_workday: "Последний день месяца",
+  one_time: "Разовая встреча",
+  on_demand: "По мере необходимости",
 };
 
 export const MEETING_STATUS_LABELS: Record<MeetingStatus, string> = {

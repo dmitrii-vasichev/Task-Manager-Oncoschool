@@ -214,6 +214,8 @@ class MeetingResponse(BaseModel):
     duration_minutes: int = 60
     effective_status: str = "scheduled"
     participant_ids: list[uuid.UUID] = []
+    schedule_recurrence: str | None = None
+    is_schedule_template: bool = False
 
 
 # ── MeetingSchedule ──
@@ -221,11 +223,12 @@ class MeetingResponse(BaseModel):
 
 class MeetingScheduleCreate(BaseModel):
     title: str
-    day_of_week: int  # 1-7
-    time_local: str  # "15:00" — frontend sends local time
+    day_of_week: int | None = None  # 1-7
+    time_local: str | None = None  # "15:00" — frontend sends local time
     timezone: str = "Europe/Moscow"
     duration_minutes: int = 60
-    recurrence: str = "weekly"  # weekly | biweekly | monthly_last_workday
+    recurrence: str = "weekly"  # weekly | biweekly | monthly_last_workday | one_time | on_demand
+    meeting_date_local: str | None = None  # "YYYY-MM-DDTHH:MM" for one_time/on_demand next run
     reminder_enabled: bool = True
     reminder_minutes_before: int = 60
     reminder_text: str | None = None
@@ -244,6 +247,7 @@ class MeetingScheduleUpdate(BaseModel):
     timezone: str | None = None
     duration_minutes: int | None = None
     recurrence: str | None = None
+    meeting_date_local: str | None = None
     reminder_enabled: bool | None = None
     reminder_minutes_before: int | None = None
     reminder_text: str | None = None
@@ -256,6 +260,7 @@ class MeetingScheduleUpdate(BaseModel):
     is_active: bool | None = None
     next_occurrence_skip: bool | None = None
     next_occurrence_time_local: str | None = None  # "HH:MM" local, converted to UTC
+    next_occurrence_datetime_local: str | None = None  # "YYYY-MM-DDTHH:MM" local, converted to UTC
 
 
 class MeetingScheduleResponse(BaseModel):
@@ -268,6 +273,8 @@ class MeetingScheduleResponse(BaseModel):
     timezone: str
     duration_minutes: int
     recurrence: str
+    one_time_date: date | None = None
+    next_occurrence_at: datetime | None = None
     reminder_enabled: bool
     reminder_minutes_before: int
     reminder_text: str | None

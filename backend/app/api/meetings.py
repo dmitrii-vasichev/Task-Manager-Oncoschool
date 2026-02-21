@@ -107,6 +107,11 @@ def _meeting_response(meeting) -> MeetingResponse:
         meeting.zoom_join_url,
         zoom_meeting_id=meeting.zoom_meeting_id,
     )
+    schedule = getattr(meeting, "schedule", None)
+    resp.schedule_recurrence = schedule.recurrence if schedule else None
+    resp.is_schedule_template = bool(
+        schedule and schedule.recurrence == "on_demand" and meeting.meeting_date is None
+    )
     # Ensure meeting_date is timezone-aware (UTC) so frontend receives "+00:00" suffix
     # and JavaScript correctly interprets it as UTC, not browser-local time
     if resp.meeting_date and resp.meeting_date.tzinfo is None:
@@ -114,6 +119,33 @@ def _meeting_response(meeting) -> MeetingResponse:
     if resp.created_at and resp.created_at.tzinfo is None:
         resp.created_at = resp.created_at.replace(tzinfo=ZoneInfo("UTC"))
     return resp
+
+
+def _hide_redundant_on_demand_templates(meetings: list) -> list:
+    """Hide template rows when a dated upcoming instance exists for same on-demand schedule."""
+    schedules_with_dated_instance: set[uuid.UUID] = set()
+    for meeting in meetings:
+        schedule = getattr(meeting, "schedule", None)
+        if (
+            schedule
+            and schedule.recurrence == "on_demand"
+            and meeting.schedule_id
+            and meeting.meeting_date is not None
+        ):
+            schedules_with_dated_instance.add(meeting.schedule_id)
+
+    filtered = []
+    for meeting in meetings:
+        schedule = getattr(meeting, "schedule", None)
+        if (
+            schedule
+            and schedule.recurrence == "on_demand"
+            and meeting.schedule_id in schedules_with_dated_instance
+            and meeting.meeting_date is None
+        ):
+            continue
+        filtered.append(meeting)
+    return filtered
 
 
 # ── LIST / GET endpoints ──
@@ -136,7 +168,7 @@ async def list_meetings(
     from sqlalchemy.orm import selectinload
     from sqlalchemy.dialects.postgresql import INTERVAL
     from sqlalchemy import func, or_, and_, cast
-    from app.db.models import Meeting, MeetingParticipant
+    from app.db.models import Meeting, MeetingParticipant, MeetingSchedule
 
     # Participant filtering requires inline query (can't use repo methods)
     has_participant_filter = member_id is not None or department_id is not None
@@ -150,7 +182,7 @@ async def list_meetings(
         elif status_filter:
             stmt = (
                 select(Meeting)
-                .options(selectinload(Meeting.participants))
+                .options(selectinload(Meeting.participants), selectinload(Meeting.schedule))
                 .where(Meeting.status == status_filter)
                 .order_by(Meeting.meeting_date.desc().nullslast())
                 .limit(per_page)
@@ -161,7 +193,7 @@ async def list_meetings(
         else:
             stmt = (
                 select(Meeting)
-                .options(selectinload(Meeting.participants))
+                .options(selectinload(Meeting.participants), selectinload(Meeting.schedule))
                 .order_by(Meeting.meeting_date.desc().nullslast())
                 .limit(per_page)
                 .offset((page - 1) * per_page)
@@ -175,14 +207,31 @@ async def list_meetings(
             func.concat(Meeting.duration_minutes, ' minutes'), INTERVAL
         )
 
-        stmt = select(Meeting).options(selectinload(Meeting.participants))
+        stmt = select(Meeting).options(
+            selectinload(Meeting.participants),
+            selectinload(Meeting.schedule),
+        )
 
         if upcoming:
             stmt = stmt.where(
                 Meeting.status == "scheduled",
-                Meeting.meeting_date.is_not(None),
-                end_time > now_utc_naive,
-            ).order_by(Meeting.meeting_date.asc())
+                or_(
+                    and_(
+                        Meeting.meeting_date.is_not(None),
+                        end_time > now_utc_naive,
+                    ),
+                    and_(
+                        Meeting.meeting_date.is_(None),
+                        Meeting.schedule_id.is_not(None),
+                        Meeting.schedule.has(
+                            and_(
+                                MeetingSchedule.recurrence == "on_demand",
+                                MeetingSchedule.is_active.is_(True),
+                            )
+                        ),
+                    ),
+                ),
+            ).order_by(Meeting.meeting_date.asc().nullslast(), Meeting.created_at.asc())
         elif past:
             stmt = stmt.where(
                 or_(
@@ -221,6 +270,9 @@ async def list_meetings(
         stmt = stmt.distinct().limit(per_page).offset((page - 1) * per_page)
         result = await session.execute(stmt)
         meetings = list(result.scalars().unique().all())
+
+    if upcoming:
+        meetings = _hide_redundant_on_demand_templates(meetings)
 
     return [_meeting_response(m) for m in meetings]
 

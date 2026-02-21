@@ -245,14 +245,18 @@ class MeetingRepository:
     async def get_by_id(self, session: AsyncSession, meeting_id: uuid.UUID) -> Meeting | None:
         stmt = (
             select(Meeting)
-            .options(selectinload(Meeting.participants))
+            .options(selectinload(Meeting.participants), selectinload(Meeting.schedule))
             .where(Meeting.id == meeting_id)
         )
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
 
     async def get_all(self, session: AsyncSession) -> list[Meeting]:
-        stmt = select(Meeting).order_by(Meeting.created_at.desc())
+        stmt = (
+            select(Meeting)
+            .options(selectinload(Meeting.participants), selectinload(Meeting.schedule))
+            .order_by(Meeting.created_at.desc())
+        )
         result = await session.execute(stmt)
         return list(result.scalars().all())
 
@@ -275,7 +279,7 @@ class MeetingRepository:
     async def get_by_zoom_id(self, session: AsyncSession, zoom_meeting_id: str) -> Meeting | None:
         stmt = (
             select(Meeting)
-            .options(selectinload(Meeting.participants))
+            .options(selectinload(Meeting.participants), selectinload(Meeting.schedule))
             .where(Meeting.zoom_meeting_id == zoom_meeting_id)
         )
         result = await session.execute(stmt)
@@ -290,13 +294,27 @@ class MeetingRepository:
         )
         stmt = (
             select(Meeting)
-            .options(selectinload(Meeting.participants))
+            .options(selectinload(Meeting.participants), selectinload(Meeting.schedule))
             .where(
                 Meeting.status == "scheduled",
-                Meeting.meeting_date.is_not(None),
-                end_time > now_utc_naive,
+                or_(
+                    and_(
+                        Meeting.meeting_date.is_not(None),
+                        end_time > now_utc_naive,
+                    ),
+                    and_(
+                        Meeting.meeting_date.is_(None),
+                        Meeting.schedule_id.is_not(None),
+                        Meeting.schedule.has(
+                            and_(
+                                MeetingSchedule.recurrence == "on_demand",
+                                MeetingSchedule.is_active.is_(True),
+                            )
+                        ),
+                    ),
+                ),
             )
-            .order_by(Meeting.meeting_date.asc())
+            .order_by(Meeting.meeting_date.asc().nullslast(), Meeting.created_at.asc())
             .limit(limit)
         )
         result = await session.execute(stmt)
@@ -315,16 +333,30 @@ class MeetingRepository:
         )
         stmt = (
             select(Meeting)
-            .options(selectinload(Meeting.participants))
+            .options(selectinload(Meeting.participants), selectinload(Meeting.schedule))
             .join(MeetingParticipant, Meeting.id == MeetingParticipant.meeting_id)
             .join(TeamMember, MeetingParticipant.member_id == TeamMember.id)
             .where(
                 Meeting.status == "scheduled",
-                Meeting.meeting_date.is_not(None),
-                end_time > now_utc_naive,
+                or_(
+                    and_(
+                        Meeting.meeting_date.is_not(None),
+                        end_time > now_utc_naive,
+                    ),
+                    and_(
+                        Meeting.meeting_date.is_(None),
+                        Meeting.schedule_id.is_not(None),
+                        Meeting.schedule.has(
+                            and_(
+                                MeetingSchedule.recurrence == "on_demand",
+                                MeetingSchedule.is_active.is_(True),
+                            )
+                        ),
+                    ),
+                ),
                 TeamMember.department_id == department_id,
             )
-            .order_by(Meeting.meeting_date.asc())
+            .order_by(Meeting.meeting_date.asc().nullslast(), Meeting.created_at.asc())
             .distinct()
             .limit(limit)
         )
@@ -339,7 +371,7 @@ class MeetingRepository:
         )
         stmt = (
             select(Meeting)
-            .options(selectinload(Meeting.participants))
+            .options(selectinload(Meeting.participants), selectinload(Meeting.schedule))
             .where(
                 or_(
                     Meeting.status.in_(["completed", "cancelled"]),

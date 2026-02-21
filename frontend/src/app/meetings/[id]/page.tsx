@@ -9,6 +9,9 @@ import {
   ListChecks,
   StickyNote,
   MessageSquareText,
+  CalendarClock,
+  Repeat,
+  Pencil,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -19,12 +22,22 @@ import { useTeam } from "@/hooks/useTeam";
 import { useDepartments } from "@/hooks/useDepartments";
 import { PermissionService } from "@/lib/permissions";
 import { api } from "@/lib/api";
-import type { Meeting, Task, MeetingStatus, TeamMember } from "@/lib/types";
+import type {
+  Meeting,
+  Task,
+  MeetingStatus,
+  TeamMember,
+  MeetingSchedule,
+  MeetingScheduleCreateRequest,
+  TelegramNotificationTarget,
+} from "@/lib/types";
+import { RECURRENCE_LABELS } from "@/lib/types";
 
 import { MeetingHeader } from "@/components/meetings/MeetingHeader";
 import { ZoomBlock } from "@/components/meetings/ZoomBlock";
 import { ParticipantsBlock } from "@/components/meetings/ParticipantsBlock";
 import { ParticipantsPickerDialog } from "@/components/meetings/ParticipantsPickerDialog";
+import { ScheduleForm } from "@/components/meetings/ScheduleForm";
 import { TranscriptTab } from "@/components/meetings/TranscriptTab";
 import { SummaryTab } from "@/components/meetings/SummaryTab";
 import { MeetingTasksTab } from "@/components/meetings/MeetingTasksTab";
@@ -46,9 +59,14 @@ export default function MeetingDetailPage() {
 
   const [meeting, setMeeting] = useState<Meeting | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [schedule, setSchedule] = useState<MeetingSchedule | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>("summary");
   const [participantPickerOpen, setParticipantPickerOpen] = useState(false);
+  const [scheduleFormOpen, setScheduleFormOpen] = useState(false);
+  const [telegramTargets, setTelegramTargets] = useState<TelegramNotificationTarget[]>(
+    []
+  );
 
   const membersById = useMemo(
     () => new Map(members.map((m) => [m.id, m])),
@@ -64,12 +82,16 @@ export default function MeetingDetailPage() {
 
   const fetchData = useCallback(async () => {
     try {
-      const [meetingData, tasksData] = await Promise.all([
-        api.getMeeting(id),
+      const meetingData = await api.getMeeting(id);
+      const [tasksData, scheduleData] = await Promise.all([
         api.getMeetingTasks(id),
+        meetingData.schedule_id
+          ? api.getMeetingSchedule(meetingData.schedule_id).catch(() => null)
+          : Promise.resolve(null),
       ]);
       setMeeting(meetingData);
       setTasks(tasksData);
+      setSchedule(scheduleData);
     } catch {
       toastError("Не удалось загрузить встречу");
     } finally {
@@ -80,6 +102,11 @@ export default function MeetingDetailPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!isModerator) return;
+    api.getTelegramTargets().then(setTelegramTargets).catch(() => {});
+  }, [isModerator]);
 
   // Background refresh while waiting for Zoom transcript
   useEffect(() => {
@@ -177,6 +204,19 @@ export default function MeetingDetailPage() {
     setActiveTab("tasks");
   };
 
+  const handleUpdateSchedule = async (data: MeetingScheduleCreateRequest) => {
+    if (!schedule) return;
+    try {
+      const updated = await api.updateMeetingSchedule(schedule.id, data);
+      setSchedule(updated);
+      await fetchData();
+      toastSuccess("Настройки встречи обновлены");
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Ошибка обновления расписания");
+      throw e;
+    }
+  };
+
   if (loading) {
     return (
       <div className="max-w-3xl space-y-6 animate-in fade-in duration-300">
@@ -211,6 +251,10 @@ export default function MeetingDetailPage() {
       </div>
     );
   }
+
+  const isPastMeeting =
+    meeting.effective_status === "completed" || meeting.effective_status === "cancelled";
+  const isUpcomingMeeting = !isPastMeeting;
 
   const tabs: { id: TabId; label: string; icon: typeof FileText; count?: number }[] = [
     { id: "transcript", label: "Транскрипция", icon: MessageSquareText },
@@ -252,92 +296,164 @@ export default function MeetingDetailPage() {
         />
       )}
 
-      {/* Custom tabs */}
-      <div className="animate-fade-in-up stagger-3">
-        <div className="overflow-x-auto pb-1">
-          <div className="flex min-w-max gap-1 rounded-2xl bg-muted/50 p-1">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            const hasIndicator =
-              (tab.id === "transcript" && meeting.transcript) ||
-              (tab.id === "summary" && meeting.parsed_summary);
-
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`
-                  flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-all sm:px-4
-                  ${
-                    isActive
-                      ? "bg-card text-foreground shadow-sm"
-                      : "text-muted-foreground hover:text-foreground"
-                  }
-                `}
+      {isUpcomingMeeting && (
+        <div className="rounded-2xl border border-border/60 bg-card p-4 animate-fade-in-up stagger-3 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center">
+                <CalendarClock className="h-4 w-4 text-primary" />
+              </div>
+              <span className="text-sm font-heading font-semibold">План встречи</span>
+            </div>
+            {isModerator && schedule && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="rounded-lg"
+                onClick={() => setScheduleFormOpen(true)}
               >
-                <div className="relative">
-                  <Icon className="h-4 w-4" />
-                  {hasIndicator && !isActive && (
-                    <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  )}
-                </div>
-                {tab.label}
-                {tab.count !== undefined && tab.count > 0 && (
-                  <span
+                <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                Изменить
+              </Button>
+            )}
+          </div>
+
+          {schedule ? (
+            <div className="space-y-1.5 text-sm text-muted-foreground">
+              <p className="inline-flex items-center gap-1.5 text-foreground font-medium">
+                <Repeat className="h-3.5 w-3.5 text-primary/80" />
+                {RECURRENCE_LABELS[schedule.recurrence]}
+              </p>
+              {meeting.meeting_date ? (
+                <p>
+                  Ближайшая встреча:{" "}
+                  <span className="font-medium text-foreground">
+                    {new Date(meeting.meeting_date).toLocaleString("ru-RU", {
+                      day: "numeric",
+                      month: "long",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      timeZone: "Europe/Moscow",
+                    })}{" "}
+                    МСК
+                  </span>
+                </p>
+              ) : (
+                <p>
+                  Следующая дата не назначена. Встреча остаётся в списке, чтобы вы могли
+                  быстро назначить новый слот.
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              Разовая встреча без связанного расписания.
+            </p>
+          )}
+        </div>
+      )}
+
+      {!isUpcomingMeeting && (
+        <>
+          {/* Custom tabs */}
+          <div className="animate-fade-in-up stagger-3">
+            <div className="overflow-x-auto pb-1">
+              <div className="flex min-w-max gap-1 rounded-2xl bg-muted/50 p-1">
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                const hasIndicator =
+                  (tab.id === "transcript" && meeting.transcript) ||
+                  (tab.id === "summary" && meeting.parsed_summary);
+
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
                     className={`
-                      text-2xs rounded-full px-1.5 min-w-[18px] text-center font-semibold
-                      ${isActive ? "bg-primary/10 text-primary" : "bg-foreground/8 text-muted-foreground"}
+                      flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-medium transition-all sm:px-4
+                      ${
+                        isActive
+                          ? "bg-card text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }
                     `}
                   >
-                    {tab.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+                    <div className="relative">
+                      <Icon className="h-4 w-4" />
+                      {hasIndicator && !isActive && (
+                        <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                      )}
+                    </div>
+                    {tab.label}
+                    {tab.count !== undefined && tab.count > 0 && (
+                      <span
+                        className={`
+                          text-2xs rounded-full px-1.5 min-w-[18px] text-center font-semibold
+                          ${isActive ? "bg-primary/10 text-primary" : "bg-foreground/8 text-muted-foreground"}
+                        `}
+                      >
+                        {tab.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Tab content */}
-      <div className="animate-fade-in-up stagger-4">
-        {activeTab === "transcript" && (
-          <TranscriptTab
-            meeting={meeting}
-            isModerator={isModerator}
-            onMeetingUpdate={handleMeetingUpdate}
-            onSwitchToSummary={() => setActiveTab("summary")}
-          />
-        )}
+          {/* Tab content */}
+          <div className="animate-fade-in-up stagger-4">
+            {activeTab === "transcript" && (
+              <TranscriptTab
+                meeting={meeting}
+                isModerator={isModerator}
+                onMeetingUpdate={handleMeetingUpdate}
+                onSwitchToSummary={() => setActiveTab("summary")}
+              />
+            )}
 
-        {activeTab === "summary" && (
-          <SummaryTab
-            meeting={meeting}
-            isModerator={isModerator}
-            onMeetingUpdate={handleMeetingUpdate}
-            onTasksCreated={handleTasksCreated}
-            onSwitchToTranscript={() => setActiveTab("transcript")}
-          />
-        )}
+            {activeTab === "summary" && (
+              <SummaryTab
+                meeting={meeting}
+                isModerator={isModerator}
+                onMeetingUpdate={handleMeetingUpdate}
+                onTasksCreated={handleTasksCreated}
+                onSwitchToTranscript={() => setActiveTab("transcript")}
+              />
+            )}
 
-        {activeTab === "tasks" && (
-          <MeetingTasksTab
-            tasks={tasks}
-            meeting={meeting}
-            isModerator={isModerator}
-            onSwitchToSummary={() => setActiveTab("summary")}
-          />
-        )}
+            {activeTab === "tasks" && (
+              <MeetingTasksTab
+                tasks={tasks}
+                meeting={meeting}
+                isModerator={isModerator}
+                onSwitchToSummary={() => setActiveTab("summary")}
+              />
+            )}
 
-        {activeTab === "notes" && (
-          <NotesTab
-            notes={meeting.notes}
-            isModerator={isModerator}
-            onSave={handleUpdateNotes}
-          />
-        )}
-      </div>
+            {activeTab === "notes" && (
+              <NotesTab
+                notes={meeting.notes}
+                isModerator={isModerator}
+                onSave={handleUpdateNotes}
+              />
+            )}
+          </div>
+        </>
+      )}
+
+      {isModerator && scheduleFormOpen && schedule && (
+        <ScheduleForm
+          schedule={schedule}
+          members={members}
+          departments={departments}
+          telegramTargets={telegramTargets}
+          onSave={handleUpdateSchedule}
+          onClose={() => setScheduleFormOpen(false)}
+        />
+      )}
     </div>
   );
 }

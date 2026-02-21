@@ -3,62 +3,29 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import {
-  Calendar,
-  Plus,
   Search,
   ChevronLeft,
   ChevronRight,
-  Loader2,
   Video,
-  CalendarPlus,
-  Users,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
-import { useMeetingSchedules } from "@/hooks/useMeetingSchedules";
 import { useMeetings } from "@/hooks/useMeetings";
 import { useTeam } from "@/hooks/useTeam";
 import { useDepartments } from "@/hooks/useDepartments";
 import { PermissionService } from "@/lib/permissions";
 import { api } from "@/lib/api";
 import { useToast } from "@/components/shared/Toast";
-import { DatePicker } from "@/components/shared/DatePicker";
-import { TimePicker } from "@/components/shared/TimePicker";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { ScheduleCard } from "@/components/meetings/ScheduleCard";
 import { ScheduleForm } from "@/components/meetings/ScheduleForm";
 import { MeetingCard } from "@/components/meetings/MeetingCard";
-import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
-import { ParticipantsPickerDialog } from "@/components/meetings/ParticipantsPickerDialog";
-import { UserAvatar } from "@/components/shared/UserAvatar";
 import type {
-  MeetingSchedule,
   MeetingScheduleCreateRequest,
   TelegramNotificationTarget,
-  TeamMember,
-  Department,
 } from "@/lib/types";
-import {
-  zonedDateTimeToUtcIso,
-} from "@/lib/meetingDateTime";
 
 const PER_PAGE = 6;
 
@@ -71,7 +38,6 @@ export default function MeetingsPage() {
   const meetingsMemberId =
     scopeParam === "my" && user?.id ? user.id : undefined;
 
-  const { schedules, loading: schedulesLoading, refetch: refetchSchedules } = useMeetingSchedules();
   const { meetings: upcomingMeetings, loading: upcomingLoading, refetch: refetchUpcoming } = useMeetings({
     upcoming: true,
     ...(meetingsMemberId ? { member_id: meetingsMemberId } : {}),
@@ -92,14 +58,7 @@ export default function MeetingsPage() {
   }, [isModerator]);
 
   // Schedule form state
-  const [editSchedule, setEditSchedule] = useState<MeetingSchedule | null>(null);
   const [showScheduleForm, setShowScheduleForm] = useState(false);
-
-  // Create meeting dialog
-  const [showCreateMeeting, setShowCreateMeeting] = useState(false);
-
-  // Delete confirmation
-  const [deleteTarget, setDeleteTarget] = useState<MeetingSchedule | null>(null);
 
   // Search + pagination for past meetings
   const [search, setSearch] = useState("");
@@ -121,12 +80,6 @@ export default function MeetingsPage() {
       setActiveTab(value);
     }
   }, []);
-
-  // Active schedules sorted by day_of_week
-  const activeSchedules = useMemo(
-    () => schedules.filter((s) => s.is_active).sort((a, b) => a.day_of_week - b.day_of_week),
-    [schedules]
-  );
 
   // Filtered past meetings
   const filteredPast = useMemo(() => {
@@ -150,37 +103,10 @@ export default function MeetingsPage() {
   const handleCreateSchedule = useCallback(
     async (data: MeetingScheduleCreateRequest) => {
       await api.createMeetingSchedule(data);
-      toastSuccess("Расписание создано");
-      refetchSchedules();
+      toastSuccess("Встреча создана");
       refetchUpcoming();
     },
-    [refetchSchedules, refetchUpcoming, toastSuccess]
-  );
-
-  const handleUpdateSchedule = useCallback(
-    async (data: MeetingScheduleCreateRequest) => {
-      if (!editSchedule) return;
-      await api.updateMeetingSchedule(editSchedule.id, data);
-      toastSuccess("Расписание обновлено");
-      refetchSchedules();
-      refetchUpcoming();
-    },
-    [editSchedule, refetchSchedules, refetchUpcoming, toastSuccess]
-  );
-
-  const handleDeleteSchedule = useCallback(
-    async (schedule: MeetingSchedule) => {
-      try {
-        await api.deleteMeetingSchedule(schedule.id);
-        toastSuccess("Расписание удалено");
-        refetchSchedules();
-      } catch (e) {
-        toastError(e instanceof Error ? e.message : "Ошибка удаления");
-      } finally {
-        setDeleteTarget(null);
-      }
-    },
-    [refetchSchedules, toastSuccess, toastError]
+    [refetchUpcoming, toastSuccess]
   );
 
   const handleDeleteMeeting = useCallback(
@@ -197,20 +123,11 @@ export default function MeetingsPage() {
     [refetchUpcoming, refetchPast, toastSuccess, toastError]
   );
 
-  const loading = schedulesLoading || upcomingLoading || pastLoading;
+  const loading = upcomingLoading || pastLoading;
 
   if (loading) {
     return (
       <div className="space-y-8 animate-in fade-in duration-300">
-        {/* Schedule skeletons */}
-        <div className="space-y-3">
-          <Skeleton className="h-7 w-48 rounded-lg" />
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {[...Array(3)].map((_, i) => (
-              <Skeleton key={i} className="h-32 rounded-2xl" />
-            ))}
-          </div>
-        </div>
         {/* Meeting skeletons */}
         <div className="space-y-3">
           <Skeleton className="h-10 w-72 rounded-lg" />
@@ -226,68 +143,6 @@ export default function MeetingsPage() {
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      {/* ============================================
-          SECTION 1: Расписание встреч
-          ============================================ */}
-      <section>
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="h-8 w-8 rounded-xl bg-primary/10 flex items-center justify-center">
-              <Calendar className="h-4.5 w-4.5 text-primary" />
-            </div>
-            <h2 className="font-heading font-semibold text-lg">Расписание встреч</h2>
-          </div>
-          {isModerator && (
-            <Button
-              size="sm"
-              className="w-full rounded-xl gap-1.5 sm:w-auto"
-              onClick={() => {
-                setEditSchedule(null);
-                setShowScheduleForm(true);
-              }}
-            >
-              <Plus className="h-4 w-4" />
-              Новое расписание
-            </Button>
-          )}
-        </div>
-
-        {activeSchedules.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 p-8 text-center">
-            <Calendar className="h-8 w-8 text-muted-foreground/40 mx-auto mb-2" />
-            <p className="text-sm text-muted-foreground">Нет активных расписаний</p>
-            {isModerator && (
-              <p className="text-xs text-muted-foreground/60 mt-1">
-                Создайте расписание для автоматических напоминаний
-              </p>
-            )}
-          </div>
-        ) : (
-          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-            {activeSchedules.map((schedule, i) => (
-              <div
-                key={schedule.id}
-                className={`animate-fade-in-up stagger-${Math.min(i + 1, 6)}`}
-              >
-                <ScheduleCard
-                  schedule={schedule}
-                  members={members}
-                  isModerator={isModerator}
-                  onEdit={(s) => {
-                    setEditSchedule(s);
-                    setShowScheduleForm(true);
-                  }}
-                  onDelete={setDeleteTarget}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* ============================================
-          SECTION 2: Встречи (Предстоящие / Прошедшие)
-          ============================================ */}
       <section>
         <Tabs value={activeTab} onValueChange={handleTabChange}>
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -312,10 +167,10 @@ export default function MeetingsPage() {
                 size="sm"
                 variant="outline"
                 className="w-full rounded-xl gap-1.5 sm:w-auto"
-                onClick={() => setShowCreateMeeting(true)}
+                onClick={() => setShowScheduleForm(true)}
               >
-                <CalendarPlus className="h-4 w-4" />
-                Создать встречу
+                <Video className="h-4 w-4" />
+                Новая встреча
               </Button>
             )}
           </div>
@@ -326,7 +181,7 @@ export default function MeetingsPage() {
               <EmptyState
                 variant="meetings"
                 title="Нет предстоящих встреч"
-                description="Встречи создаются автоматически по расписанию или вручную"
+                description="Создайте новую встречу, чтобы она появилась в этом списке"
               />
             ) : (
               <div className="grid gap-4 md:grid-cols-2">
@@ -335,7 +190,13 @@ export default function MeetingsPage() {
                     key={meeting.id}
                     className={`animate-fade-in-up stagger-${Math.min(i + 1, 6)}`}
                   >
-                    <MeetingCard meeting={meeting} variant="upcoming" isModerator={isModerator} onDelete={handleDeleteMeeting} />
+                    <MeetingCard
+                      meeting={meeting}
+                      variant="upcoming"
+                      members={members}
+                      isModerator={isModerator}
+                      onDelete={handleDeleteMeeting}
+                    />
                   </div>
                 ))}
               </div>
@@ -373,13 +234,19 @@ export default function MeetingsPage() {
                 <div className="grid gap-4 md:grid-cols-2">
                   {paginatedPast.map((meeting, i) => (
                     <div
-                      key={meeting.id}
-                      className={`animate-fade-in-up stagger-${Math.min(i + 1, 6)}`}
-                    >
-                      <MeetingCard meeting={meeting} variant="past" isModerator={isModerator} onDelete={handleDeleteMeeting} />
-                    </div>
-                  ))}
-                </div>
+                    key={meeting.id}
+                    className={`animate-fade-in-up stagger-${Math.min(i + 1, 6)}`}
+                  >
+                    <MeetingCard
+                      meeting={meeting}
+                      variant="past"
+                      members={members}
+                      isModerator={isModerator}
+                      onDelete={handleDeleteMeeting}
+                    />
+                  </div>
+                ))}
+              </div>
 
                 {/* Pagination */}
                 {totalPages > 1 && (
@@ -440,274 +307,14 @@ export default function MeetingsPage() {
       {/* Schedule create/edit form */}
       {showScheduleForm && (
         <ScheduleForm
-          schedule={editSchedule}
+          schedule={null}
           members={members}
           departments={departments}
           telegramTargets={telegramTargets}
-          onSave={editSchedule ? handleUpdateSchedule : handleCreateSchedule}
-          onClose={() => {
-            setShowScheduleForm(false);
-            setEditSchedule(null);
-          }}
-        />
-      )}
-
-      {/* Delete schedule confirmation */}
-      <ConfirmDialog
-        open={!!deleteTarget}
-        onOpenChange={(open) => !open && setDeleteTarget(null)}
-        title={`Удалить расписание «${deleteTarget?.title}»?`}
-        description="Расписание будет удалено. Уже созданные встречи останутся."
-        onConfirm={() => deleteTarget && handleDeleteSchedule(deleteTarget)}
-      />
-
-      {/* Create meeting manually */}
-      {showCreateMeeting && (
-        <CreateMeetingDialog
-          members={members}
-          departments={departments}
-          onClose={() => setShowCreateMeeting(false)}
-          onCreated={() => {
-            refetchUpcoming();
-            setShowCreateMeeting(false);
-          }}
+          onSave={handleCreateSchedule}
+          onClose={() => setShowScheduleForm(false)}
         />
       )}
     </div>
-  );
-}
-
-// ============================================
-// Create Meeting Dialog (manual, no schedule)
-// ============================================
-
-function CreateMeetingDialog({
-  members,
-  departments,
-  onClose,
-  onCreated,
-}: {
-  members: TeamMember[];
-  departments: Department[];
-  onClose: () => void;
-  onCreated: () => void;
-}) {
-  const { toastSuccess, toastError } = useToast();
-  const [title, setTitle] = useState("");
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("15:00");
-  const [durationMinutes, setDurationMinutes] = useState(60);
-  const [zoomEnabled, setZoomEnabled] = useState(true);
-  const [participantIds, setParticipantIds] = useState<string[]>([]);
-  const [participantPickerOpen, setParticipantPickerOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const membersById = useMemo(
-    () => new Map(members.map((m) => [m.id, m])),
-    [members]
-  );
-
-  const selectedMembers = useMemo(
-    () =>
-      participantIds
-        .map((id) => membersById.get(id))
-        .filter((m): m is TeamMember => !!m),
-    [participantIds, membersById]
-  );
-
-  const handleCreate = async () => {
-    if (!title.trim()) {
-      setError("Введите название");
-      return;
-    }
-    if (!date) {
-      setError("Выберите дату");
-      return;
-    }
-
-    setSaving(true);
-    setError(null);
-
-    try {
-      const meetingDate = zonedDateTimeToUtcIso(date, time, "Europe/Moscow");
-      await api.createMeetingManual({
-        title: title.trim(),
-        meeting_date: meetingDate,
-        timezone: "Europe/Moscow",
-        zoom_enabled: zoomEnabled,
-        duration_minutes: durationMinutes,
-        participant_ids: participantIds.length > 0 ? participantIds : undefined,
-      });
-      toastSuccess("Встреча создана");
-      onCreated();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Ошибка создания";
-      setError(msg);
-      toastError(msg);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="font-heading">Создать встречу</DialogTitle>
-        </DialogHeader>
-
-        <div className="space-y-4 pt-2">
-          <div>
-            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Название
-            </Label>
-            <Input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Название встречи"
-              className="mt-1.5 rounded-xl"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
-            <div>
-              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Дата
-              </Label>
-              <DatePicker
-                value={date}
-                onChange={setDate}
-                placeholder="Выбрать"
-                className="w-full mt-1.5 rounded-xl"
-              />
-            </div>
-            <div>
-              <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                Время (МСК)
-              </Label>
-              <TimePicker
-                value={time}
-                onChange={setTime}
-                className="mt-1.5 w-full rounded-xl"
-              />
-            </div>
-          </div>
-
-          <div>
-            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              Длительность
-            </Label>
-            <Select
-              value={String(durationMinutes)}
-              onValueChange={(value) => setDurationMinutes(Number(value))}
-            >
-              <SelectTrigger className="mt-1.5 rounded-xl">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="15">15 минут</SelectItem>
-                <SelectItem value="30">30 минут</SelectItem>
-                <SelectItem value="45">45 минут</SelectItem>
-                <SelectItem value="60">1 час</SelectItem>
-                <SelectItem value="90">1.5 часа</SelectItem>
-                <SelectItem value="120">2 часа</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Participants */}
-          <div>
-            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
-              <Users className="h-3 w-3" />
-              Участники
-            </Label>
-            <div className="mt-1.5 rounded-xl border border-border/60 bg-card p-3 space-y-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                <p className="text-sm font-medium">
-                  {participantIds.length > 0
-                    ? `Выбрано: ${participantIds.length}`
-                    : "Участники не выбраны"}
-                </p>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="rounded-lg shrink-0"
-                  onClick={() => setParticipantPickerOpen(true)}
-                >
-                  {participantIds.length > 0 ? "Изменить" : "Выбрать"}
-                </Button>
-              </div>
-
-              {selectedMembers.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {selectedMembers.slice(0, 8).map((member) => (
-                    <div
-                      key={member.id}
-                      className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-muted/20 px-2 py-1"
-                    >
-                      <UserAvatar name={member.full_name} avatarUrl={member.avatar_url} size="sm" />
-                      <span className="text-xs font-medium text-foreground truncate max-w-[120px] sm:max-w-[140px]">
-                        {member.full_name}
-                      </span>
-                    </div>
-                  ))}
-                  {selectedMembers.length > 8 && (
-                    <span className="inline-flex items-center rounded-lg border border-border/60 px-2 py-1 text-xs text-muted-foreground">
-                      +{selectedMembers.length - 8}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <ParticipantsPickerDialog
-              open={participantPickerOpen}
-              onOpenChange={setParticipantPickerOpen}
-              members={members}
-              departments={departments}
-              selectedIds={participantIds}
-              onApply={setParticipantIds}
-            />
-          </div>
-
-          <div className="flex flex-col gap-2 rounded-xl border border-border/40 bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-2">
-              <Video className="h-4 w-4 text-blue-500" />
-              <span className="text-sm font-medium">Создать Zoom-конференцию</span>
-            </div>
-            <Switch checked={zoomEnabled} onCheckedChange={setZoomEnabled} />
-          </div>
-
-          {error && (
-            <div className="rounded-xl bg-destructive/10 border border-destructive/20 p-3">
-              <p className="text-sm text-destructive">{error}</p>
-            </div>
-          )}
-
-          <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
-            <Button
-              variant="outline"
-              className="w-full rounded-xl sm:w-auto"
-              onClick={onClose}
-              disabled={saving}
-            >
-              Отмена
-            </Button>
-            <Button className="w-full rounded-xl sm:w-auto" onClick={handleCreate} disabled={saving}>
-              {saving ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Создание...
-                </>
-              ) : (
-                "Создать"
-              )}
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
   );
 }

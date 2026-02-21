@@ -3,13 +3,14 @@ import uuid
 from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from zoneinfo import ZoneInfo
 
 from app.api.auth import get_current_user, require_moderator
 from app.db.database import get_session
 from app.db.models import Meeting, MeetingParticipant, MeetingSchedule, TeamMember
-from app.db.repositories import MeetingScheduleRepository, TelegramTargetRepository, TeamMemberRepository
+from app.db.repositories import MeetingScheduleRepository, TelegramTargetRepository
 from app.db.schemas import (
     MeetingScheduleCreate,
     MeetingScheduleResponse,
@@ -23,9 +24,14 @@ router = APIRouter(prefix="/meeting-schedules", tags=["meeting-schedules"])
 
 schedule_repo = MeetingScheduleRepository()
 target_repo = TelegramTargetRepository()
-member_repo = TeamMemberRepository()
-
-VALID_RECURRENCES = {"weekly", "biweekly", "monthly_last_workday"}
+VALID_RECURRENCES = {
+    "weekly",
+    "biweekly",
+    "monthly_last_workday",
+    "one_time",
+    "on_demand",
+}
+RECURRING_RECURRENCES = {"weekly", "biweekly", "monthly_last_workday"}
 DEFAULT_REMINDER_ZOOM_MISSING_TEXT = "Ссылка на Zoom появится позже."
 
 
@@ -61,21 +67,48 @@ def _local_to_utc(time_local: str, timezone: str) -> time:
     return utc_dt.time()
 
 
+def _parse_local_datetime(datetime_local: str, timezone: str) -> tuple[datetime, datetime]:
+    """Parse local datetime string and return (local_naive, utc_naive)."""
+    local_dt = datetime.fromisoformat(datetime_local)
+    if local_dt.tzinfo is not None:
+        local_dt = local_dt.astimezone(ZoneInfo(timezone)).replace(tzinfo=None)
+    local_aware = local_dt.replace(tzinfo=ZoneInfo(timezone))
+    utc_naive = local_aware.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+    return local_dt, utc_naive
+
+
 def _calc_next_meeting_datetime(
     day_of_week: int,
     time_utc: time,
     timezone_str: str,
     recurrence: str,
+    one_time_date: date | None = None,
+    next_occurrence_at: datetime | None = None,
 ) -> datetime | None:
-    """Calculate the next meeting datetime (naive UTC) for a given schedule.
-
-    Iterates up to ~2 months ahead and finds the first datetime where:
-    - the meeting time is in the future
-    - local date matches recurrence/day_of_week rules
-    """
+    """Calculate next meeting datetime (naive UTC) for any recurrence mode."""
     now_utc = datetime.now(ZoneInfo("UTC"))
-    tz = ZoneInfo(timezone_str)
 
+    if recurrence == "one_time":
+        if not one_time_date:
+            return None
+        candidate = datetime.combine(one_time_date, time_utc, tzinfo=ZoneInfo("UTC"))
+        if candidate > now_utc:
+            return candidate.replace(tzinfo=None)
+        return None
+
+    if recurrence == "on_demand":
+        if not next_occurrence_at:
+            return None
+        candidate = next_occurrence_at
+        if candidate.tzinfo is None:
+            candidate = candidate.replace(tzinfo=ZoneInfo("UTC"))
+        else:
+            candidate = candidate.astimezone(ZoneInfo("UTC"))
+        if candidate > now_utc:
+            return candidate.replace(tzinfo=None)
+        return None
+
+    tz = ZoneInfo(timezone_str)
     for days_ahead in range(60):
         candidate_date = now_utc.date() + timedelta(days=days_ahead)
         candidate_dt = datetime.combine(candidate_date, time_utc, tzinfo=ZoneInfo("UTC"))
@@ -84,7 +117,7 @@ def _calc_next_meeting_datetime(
         if candidate_dt > now_utc and _matches_recurrence(
             candidate_local, day_of_week, recurrence
         ):
-            return candidate_dt.replace(tzinfo=None)  # Return naive UTC
+            return candidate_dt.replace(tzinfo=None)
 
     return None
 
@@ -92,27 +125,51 @@ def _calc_next_meeting_datetime(
 def _calc_next_occurrence_date(schedule: MeetingSchedule) -> date | None:
     """Calculate the next occurrence date for a schedule, considering recurrence rules."""
     now_utc = datetime.now(ZoneInfo("UTC"))
+
+    if schedule.recurrence == "one_time":
+        if not schedule.one_time_date:
+            return None
+        if (
+            schedule.last_triggered_date
+            and schedule.last_triggered_date >= schedule.one_time_date
+        ):
+            return None
+        candidate = datetime.combine(
+            schedule.one_time_date,
+            schedule.time_utc,
+            tzinfo=ZoneInfo("UTC"),
+        )
+        return schedule.one_time_date if candidate > now_utc else None
+
+    if schedule.recurrence == "on_demand":
+        if not schedule.next_occurrence_at:
+            return None
+        candidate = schedule.next_occurrence_at
+        if candidate.tzinfo is None:
+            candidate = candidate.replace(tzinfo=ZoneInfo("UTC"))
+        else:
+            candidate = candidate.astimezone(ZoneInfo("UTC"))
+        if candidate > now_utc:
+            return candidate.date()
+        return None
+
     tz = ZoneInfo(schedule.timezone)
     effective_time = schedule.next_occurrence_time_override or schedule.time_utc
 
-    for days_ahead in range(60):  # Look up to ~2 months ahead
+    for days_ahead in range(60):
         candidate_date = now_utc.date() + timedelta(days=days_ahead)
         candidate_dt = datetime.combine(candidate_date, effective_time, tzinfo=ZoneInfo("UTC"))
         candidate_local = candidate_dt.astimezone(tz)
 
-        # Must be in the future (or today if not yet triggered)
         if candidate_dt <= now_utc:
-            # Allow today if not yet triggered
             if candidate_date != now_utc.date():
                 continue
             if schedule.last_triggered_date and schedule.last_triggered_date >= candidate_date:
                 continue
 
-        # Already triggered on this date
         if schedule.last_triggered_date and candidate_date <= schedule.last_triggered_date:
             continue
 
-        # Day of week + recurrence check (in local timezone)
         if not _matches_recurrence(candidate_local, schedule.day_of_week, schedule.recurrence):
             continue
 
@@ -124,8 +181,63 @@ def _calc_next_occurrence_date(schedule: MeetingSchedule) -> date | None:
 def _enrich_response(schedule: MeetingSchedule) -> MeetingScheduleResponse:
     """Build response with computed next_occurrence_date."""
     resp = MeetingScheduleResponse.model_validate(schedule)
+    if resp.next_occurrence_at and resp.next_occurrence_at.tzinfo is None:
+        resp.next_occurrence_at = resp.next_occurrence_at.replace(tzinfo=ZoneInfo("UTC"))
     resp.next_occurrence_date = _calc_next_occurrence_date(schedule)
     return resp
+
+
+async def _add_meeting_participants(
+    session: AsyncSession,
+    meeting_id: uuid.UUID,
+    participant_ids: list[uuid.UUID],
+) -> None:
+    for pid in participant_ids:
+        session.add(MeetingParticipant(meeting_id=meeting_id, member_id=pid))
+    await session.flush()
+
+
+async def _find_meeting_by_schedule_datetime(
+    session: AsyncSession,
+    schedule_id: uuid.UUID,
+    meeting_date: datetime,
+) -> Meeting | None:
+    stmt = select(Meeting).where(
+        Meeting.schedule_id == schedule_id,
+        Meeting.meeting_date == meeting_date,
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
+async def _ensure_on_demand_template_meeting(
+    session: AsyncSession,
+    schedule: MeetingSchedule,
+    created_by_id: uuid.UUID | None,
+) -> Meeting:
+    stmt = select(Meeting).where(
+        Meeting.schedule_id == schedule.id,
+        Meeting.meeting_date.is_(None),
+        Meeting.status == "scheduled",
+    )
+    result = await session.execute(stmt)
+    existing = result.scalars().first()
+    if existing:
+        return existing
+
+    template = Meeting(
+        title=schedule.title,
+        meeting_date=None,
+        schedule_id=schedule.id,
+        status="scheduled",
+        duration_minutes=schedule.duration_minutes,
+        created_by_id=created_by_id,
+    )
+    session.add(template)
+    await session.flush()
+    if schedule.participant_ids:
+        await _add_meeting_participants(session, template.id, list(schedule.participant_ids))
+    return template
 
 
 @router.get("", response_model=list[MeetingScheduleResponse])
@@ -159,28 +271,67 @@ async def create_schedule(
     session: AsyncSession = Depends(get_session),
 ):
     """Create a new meeting schedule (moderator only)."""
-    # Validate
-    if data.day_of_week < 1 or data.day_of_week > 7:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="day_of_week должен быть от 1 (Пн) до 7 (Вс)",
-        )
     if data.recurrence not in VALID_RECURRENCES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"recurrence должен быть одним из: {', '.join(VALID_RECURRENCES)}",
+            detail=f"recurrence должен быть одним из: {', '.join(sorted(VALID_RECURRENCES))}",
         )
 
-    # Convert local time to UTC
-    try:
-        time_utc = _local_to_utc(data.time_local, "Europe/Moscow")
-    except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Неверный формат времени или timezone",
-        )
+    timezone = "Europe/Moscow"
+    day_of_week = data.day_of_week
+    time_utc: time
+    one_time_date: date | None = None
+    next_occurrence_at: datetime | None = None
 
-    # If telegram_targets is empty, use defaults from TelegramNotificationTarget table
+    if data.recurrence in RECURRING_RECURRENCES:
+        if data.day_of_week is None or data.day_of_week < 1 or data.day_of_week > 7:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="day_of_week должен быть от 1 (Пн) до 7 (Вс)",
+            )
+        if not data.time_local:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Для этого типа периодичности требуется время",
+            )
+        try:
+            time_utc = _local_to_utc(data.time_local, timezone)
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Неверный формат времени или timezone",
+            )
+    else:
+        if data.meeting_date_local:
+            try:
+                local_dt, utc_dt = _parse_local_datetime(data.meeting_date_local, timezone)
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Неверный формат meeting_date_local, ожидается YYYY-MM-DDTHH:MM",
+                )
+            day_of_week = local_dt.isoweekday()
+            time_utc = utc_dt.time()
+            if data.recurrence == "one_time":
+                one_time_date = utc_dt.date()
+            else:
+                next_occurrence_at = utc_dt
+        else:
+            if data.recurrence == "one_time":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Для разовой встречи требуется meeting_date_local",
+                )
+            day_of_week = day_of_week if day_of_week and 1 <= day_of_week <= 7 else 1
+            local_time = data.time_local or "15:00"
+            try:
+                time_utc = _local_to_utc(local_time, timezone)
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Неверный формат времени или timezone",
+                )
+
     telegram_targets = data.telegram_targets
     if not telegram_targets:
         active_targets = await target_repo.get_all_active(session)
@@ -205,11 +356,13 @@ async def create_schedule(
     schedule = await schedule_repo.create(
         session,
         title=data.title,
-        day_of_week=data.day_of_week,
+        day_of_week=day_of_week,
         time_utc=time_utc,
-        timezone="Europe/Moscow",
+        timezone=timezone,
         duration_minutes=data.duration_minutes,
         recurrence=data.recurrence,
+        one_time_date=one_time_date,
+        next_occurrence_at=next_occurrence_at,
         reminder_enabled=data.reminder_enabled,
         reminder_minutes_before=data.reminder_minutes_before,
         reminder_text=reminder_text,
@@ -222,41 +375,54 @@ async def create_schedule(
         created_by_id=member.id,
     )
 
-    # Create the first upcoming meeting immediately so it appears in the UI
+    if schedule.recurrence == "on_demand":
+        await _ensure_on_demand_template_meeting(session, schedule, member.id)
+
     next_meeting_date = _calc_next_meeting_datetime(
-        data.day_of_week, time_utc, "Europe/Moscow", data.recurrence
+        day_of_week=day_of_week,
+        time_utc=time_utc,
+        timezone_str=timezone,
+        recurrence=schedule.recurrence,
+        one_time_date=one_time_date,
+        next_occurrence_at=next_occurrence_at,
     )
+
     if next_meeting_date:
-        zoom_data = None
-        zoom_service = getattr(request.app.state, "zoom_service", None)
-        if data.zoom_enabled and zoom_service:
-            try:
-                tz_aware = next_meeting_date.replace(tzinfo=ZoneInfo("UTC"))
-                zoom_data = await zoom_service.create_meeting(
-                    topic=data.title,
-                    start_time=tz_aware,
-                    duration=data.duration_minutes,
-                    timezone="Europe/Moscow",
-                )
-            except Exception as e:
-                logger.warning(f"Zoom create failed for new schedule: {e}")
-
-        meeting = Meeting(
-            title=data.title,
-            meeting_date=next_meeting_date,
+        existing = await _find_meeting_by_schedule_datetime(
+            session,
             schedule_id=schedule.id,
-            status="scheduled",
-            duration_minutes=data.duration_minutes,
-            zoom_meeting_id=str(zoom_data["id"]) if zoom_data else None,
-            zoom_join_url=extract_zoom_join_url(zoom_data) if zoom_data else None,
-            created_by_id=member.id,
+            meeting_date=next_meeting_date,
         )
-        session.add(meeting)
-        await session.flush()
+        if not existing:
+            zoom_data = None
+            zoom_service = getattr(request.app.state, "zoom_service", None)
+            if data.zoom_enabled and zoom_service:
+                try:
+                    tz_aware = next_meeting_date.replace(tzinfo=ZoneInfo("UTC"))
+                    zoom_data = await zoom_service.create_meeting(
+                        topic=data.title,
+                        start_time=tz_aware,
+                        duration=data.duration_minutes,
+                        timezone=timezone,
+                    )
+                except Exception as e:
+                    logger.warning(f"Zoom create failed for new schedule: {e}")
 
-        if data.participant_ids:
-            for pid in data.participant_ids:
-                session.add(MeetingParticipant(meeting_id=meeting.id, member_id=pid))
+            meeting = Meeting(
+                title=data.title,
+                meeting_date=next_meeting_date,
+                schedule_id=schedule.id,
+                status="scheduled",
+                duration_minutes=data.duration_minutes,
+                zoom_meeting_id=str(zoom_data["id"]) if zoom_data else None,
+                zoom_join_url=extract_zoom_join_url(zoom_data) if zoom_data else None,
+                created_by_id=member.id,
+            )
+            session.add(meeting)
+            await session.flush()
+
+            if data.participant_ids:
+                await _add_meeting_participants(session, meeting.id, data.participant_ids)
 
     await session.commit()
     return _enrich_response(schedule)
@@ -276,21 +442,20 @@ async def update_schedule(
 
     update_data = data.model_dump(exclude_unset=True)
 
-    # Validate if provided
-    if "day_of_week" in update_data:
+    new_recurrence = update_data.get("recurrence", schedule.recurrence)
+    if new_recurrence not in VALID_RECURRENCES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"recurrence должен быть одним из: {', '.join(sorted(VALID_RECURRENCES))}",
+        )
+
+    if "day_of_week" in update_data and update_data["day_of_week"] is not None:
         if update_data["day_of_week"] < 1 or update_data["day_of_week"] > 7:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="day_of_week должен быть от 1 (Пн) до 7 (Вс)",
             )
-    if "recurrence" in update_data:
-        if update_data["recurrence"] not in VALID_RECURRENCES:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"recurrence должен быть одним из: {', '.join(VALID_RECURRENCES)}",
-            )
 
-    # Normalize optional free text fields
     if "reminder_text" in update_data:
         update_data["reminder_text"] = (update_data["reminder_text"] or "").strip() or None
     if "reminder_zoom_missing_text" in update_data:
@@ -298,40 +463,100 @@ async def update_schedule(
             (update_data["reminder_zoom_missing_text"] or "").strip() or None
         )
 
-    # Force timezone to Moscow
     update_data["timezone"] = "Europe/Moscow"
 
-    # Convert time_local -> time_utc if provided
     if "time_local" in update_data:
-        try:
-            update_data["time_utc"] = _local_to_utc(update_data.pop("time_local"), "Europe/Moscow")
-        except Exception:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Неверный формат времени или timezone",
-            )
-    # Remove time_local from update_data if not already removed
-    update_data.pop("time_local", None)
-
-    # Handle next_occurrence_time_local -> next_occurrence_time_override (UTC)
-    if "next_occurrence_time_local" in update_data:
-        time_local_str = update_data.pop("next_occurrence_time_local")
+        time_local_str = update_data.pop("time_local")
         if time_local_str:
             try:
-                update_data["next_occurrence_time_override"] = _local_to_utc(time_local_str, "Europe/Moscow")
+                update_data["time_utc"] = _local_to_utc(time_local_str, "Europe/Moscow")
             except Exception:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Неверный формат времени переноса",
+                    detail="Неверный формат времени или timezone",
                 )
+
+    if "meeting_date_local" in update_data:
+        meeting_date_local = update_data.pop("meeting_date_local")
+        if meeting_date_local:
+            try:
+                local_dt, utc_dt = _parse_local_datetime(meeting_date_local, "Europe/Moscow")
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Неверный формат meeting_date_local, ожидается YYYY-MM-DDTHH:MM",
+                )
+            update_data["day_of_week"] = local_dt.isoweekday()
+            update_data.setdefault("time_utc", utc_dt.time())
+            if new_recurrence == "one_time":
+                update_data["one_time_date"] = utc_dt.date()
+                update_data["next_occurrence_at"] = None
+            elif new_recurrence == "on_demand":
+                update_data["next_occurrence_at"] = utc_dt
+                update_data["one_time_date"] = None
+
+    if "next_occurrence_datetime_local" in update_data:
+        next_dt_local = update_data.pop("next_occurrence_datetime_local")
+        if next_dt_local:
+            try:
+                local_dt, utc_dt = _parse_local_datetime(next_dt_local, "Europe/Moscow")
+            except Exception:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Неверный формат next_occurrence_datetime_local",
+                )
+            update_data["next_occurrence_at"] = utc_dt
+            update_data["day_of_week"] = local_dt.isoweekday()
+            update_data.setdefault("time_utc", utc_dt.time())
         else:
+            update_data["next_occurrence_at"] = None
+
+    if new_recurrence in RECURRING_RECURRENCES:
+        if (
+            update_data.get("day_of_week", schedule.day_of_week) is None
+            or update_data.get("time_utc", schedule.time_utc) is None
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Для этого типа периодичности нужны day_of_week и time_local",
+            )
+    elif new_recurrence == "one_time":
+        if update_data.get("one_time_date") is None and schedule.one_time_date is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Для разовой встречи нужен meeting_date_local",
+            )
+
+    if new_recurrence != "one_time":
+        update_data["one_time_date"] = None
+    if new_recurrence != "on_demand":
+        update_data["next_occurrence_at"] = None
+
+    has_next_occurrence_time_local = "next_occurrence_time_local" in update_data
+    next_occurrence_time_local = update_data.pop("next_occurrence_time_local", None)
+
+    if new_recurrence in {"one_time", "on_demand"}:
+        update_data["next_occurrence_time_override"] = None
+        update_data["next_occurrence_skip"] = False
+    else:
+        if has_next_occurrence_time_local:
+            if next_occurrence_time_local:
+                try:
+                    update_data["next_occurrence_time_override"] = _local_to_utc(
+                        next_occurrence_time_local,
+                        "Europe/Moscow",
+                    )
+                except Exception:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Неверный формат времени переноса",
+                    )
+            else:
+                update_data["next_occurrence_time_override"] = None
+
+        if update_data.get("next_occurrence_skip") is True:
             update_data["next_occurrence_time_override"] = None
 
-    # Mutual exclusivity: skip=True clears time override
-    if update_data.get("next_occurrence_skip") is True:
-        update_data["next_occurrence_time_override"] = None
-
-    # Normalize reminder Zoom block options
     effective_include_zoom = update_data.get(
         "reminder_include_zoom_link", schedule.reminder_include_zoom_link
     )
@@ -351,6 +576,33 @@ async def update_schedule(
         update_data["reminder_zoom_missing_text"] = DEFAULT_REMINDER_ZOOM_MISSING_TEXT
 
     schedule = await schedule_repo.update(session, schedule_id, **update_data)
+
+    if schedule.recurrence == "on_demand":
+        await _ensure_on_demand_template_meeting(session, schedule, schedule.created_by_id)
+        if schedule.next_occurrence_at:
+            existing = await _find_meeting_by_schedule_datetime(
+                session,
+                schedule_id=schedule.id,
+                meeting_date=schedule.next_occurrence_at,
+            )
+            if not existing:
+                meeting = Meeting(
+                    title=schedule.title,
+                    meeting_date=schedule.next_occurrence_at,
+                    schedule_id=schedule.id,
+                    status="scheduled",
+                    duration_minutes=schedule.duration_minutes,
+                    created_by_id=schedule.created_by_id,
+                )
+                session.add(meeting)
+                await session.flush()
+                if schedule.participant_ids:
+                    await _add_meeting_participants(
+                        session,
+                        meeting.id,
+                        list(schedule.participant_ids),
+                    )
+
     await session.commit()
     return _enrich_response(schedule)
 

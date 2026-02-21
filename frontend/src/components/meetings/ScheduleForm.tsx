@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { UserAvatar } from "@/components/shared/UserAvatar";
+import { DatePicker } from "@/components/shared/DatePicker";
 import { TimePicker } from "@/components/shared/TimePicker";
 import { ParticipantsPickerDialog } from "@/components/meetings/ParticipantsPickerDialog";
 import type {
@@ -85,6 +86,35 @@ function applyReminderTemplate(
     .replaceAll("{weekday_ru}", values.weekday);
 }
 
+function toMoscowDate(utcIso: string): string {
+  const normalized = utcIso.endsWith("Z") ? utcIso : `${utcIso}Z`;
+  return new Date(normalized).toLocaleDateString("en-CA", {
+    timeZone: "Europe/Moscow",
+  });
+}
+
+function toMoscowTime(utcIso: string): string {
+  const normalized = utcIso.endsWith("Z") ? utcIso : `${utcIso}Z`;
+  return new Date(normalized).toLocaleTimeString("ru-RU", {
+    timeZone: "Europe/Moscow",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function getInitialDateFromSchedule(schedule: MeetingSchedule | null): string {
+  if (!schedule) return "";
+  if (schedule.next_occurrence_at) {
+    return toMoscowDate(schedule.next_occurrence_at);
+  }
+  if (schedule.one_time_date) {
+    const oneTimeUtc = `${schedule.one_time_date}T${schedule.time_utc}Z`;
+    return toMoscowDate(oneTimeUtc);
+  }
+  return "";
+}
+
 interface ScheduleFormProps {
   schedule: MeetingSchedule | null; // null = create mode
   members: TeamMember[];
@@ -106,12 +136,18 @@ export function ScheduleForm({
 
   const [title, setTitle] = useState(schedule?.title ?? "");
   const [dayOfWeek, setDayOfWeek] = useState(String(schedule?.day_of_week ?? 1));
-  const [timeMsk, setTimeMsk] = useState(
-    schedule ? utcTimeToMsk(schedule.time_utc) : "15:00"
-  );
+  const [timeMsk, setTimeMsk] = useState(() => {
+    if (schedule?.next_occurrence_at) {
+      return toMoscowTime(schedule.next_occurrence_at);
+    }
+    return schedule ? utcTimeToMsk(schedule.time_utc) : "15:00";
+  });
   const [duration, setDuration] = useState(String(schedule?.duration_minutes ?? 60));
   const [recurrence, setRecurrence] = useState<MeetingRecurrence>(
     schedule?.recurrence ?? "weekly"
+  );
+  const [meetingDate, setMeetingDate] = useState<string>(() =>
+    getInitialDateFromSchedule(schedule)
   );
   const [participantIds, setParticipantIds] = useState<string[]>(
     schedule?.participant_ids ?? []
@@ -196,17 +232,28 @@ export function ScheduleForm({
   const previewTemplateValues = useMemo(() => {
     const previewTime = timeMsk || "15:00";
     const previewTitle = title.trim() || "Название встречи";
-    const previewDate = new Date().toLocaleDateString("ru-RU", {
-      timeZone: "Europe/Moscow",
-    });
-    const previewWeekday = DAY_OF_WEEK_LABELS[Number(dayOfWeek)] || "понедельник";
+    const previewDate =
+      meetingDate ||
+      new Date().toLocaleDateString("en-CA", {
+        timeZone: "Europe/Moscow",
+      });
+    const previewWeekday =
+      meetingDate
+        ? DAY_OF_WEEK_LABELS[
+            new Date(`${meetingDate}T12:00:00`).getDay() === 0
+              ? 7
+              : new Date(`${meetingDate}T12:00:00`).getDay()
+          ]
+        : DAY_OF_WEEK_LABELS[Number(dayOfWeek)] || "понедельник";
     return {
       time: previewTime,
       title: previewTitle,
-      date: previewDate,
+      date: new Date(`${previewDate}T12:00:00`).toLocaleDateString("ru-RU", {
+        timeZone: "Europe/Moscow",
+      }),
       weekday: previewWeekday.toLowerCase(),
     };
-  }, [dayOfWeek, timeMsk, title]);
+  }, [dayOfWeek, meetingDate, timeMsk, title]);
 
   const baseReminderPreview = useMemo(() => {
     if (reminderText.trim()) {
@@ -266,9 +313,28 @@ export function ScheduleForm({
     );
   };
 
+  const isRecurringMode =
+    recurrence === "weekly" ||
+    recurrence === "biweekly" ||
+    recurrence === "monthly_last_workday";
+  const isOneTimeMode = recurrence === "one_time";
+  const isOnDemandMode = recurrence === "on_demand";
+
   const handleSubmit = async () => {
     if (!title.trim()) {
       setError("Введите название");
+      return;
+    }
+    if (isRecurringMode && !dayOfWeek) {
+      setError("Выберите день недели");
+      return;
+    }
+    if ((isOneTimeMode || (isOnDemandMode && !isEdit)) && !meetingDate) {
+      setError("Выберите дату встречи");
+      return;
+    }
+    if (!timeMsk) {
+      setError("Выберите время встречи");
       return;
     }
 
@@ -285,8 +351,6 @@ export function ScheduleForm({
 
       const data: MeetingScheduleCreateRequest = {
         title: title.trim(),
-        day_of_week: Number(dayOfWeek),
-        time_local: timeMsk,
         timezone: "Europe/Moscow",
         duration_minutes: Number(duration),
         recurrence,
@@ -304,11 +368,26 @@ export function ScheduleForm({
         telegram_targets: tgTargets,
         participant_ids: participantIds,
         zoom_enabled: zoomEnabled,
-        ...(isEdit && {
-          next_occurrence_skip: nextOccurrenceSkip,
-          next_occurrence_time_local: nextOccurrenceTimeMsk || null,
-        }),
       };
+
+      if (isRecurringMode) {
+        data.day_of_week = Number(dayOfWeek);
+        data.time_local = timeMsk;
+        if (isEdit) {
+          data.next_occurrence_skip = nextOccurrenceSkip;
+          data.next_occurrence_time_local = nextOccurrenceTimeMsk || null;
+        }
+      } else {
+        data.time_local = timeMsk;
+        if (meetingDate) {
+          data.meeting_date_local = `${meetingDate}T${timeMsk}`;
+          if (isEdit && isOnDemandMode) {
+            data.next_occurrence_datetime_local = `${meetingDate}T${timeMsk}`;
+          }
+        } else if (isEdit && isOnDemandMode) {
+          data.next_occurrence_datetime_local = null;
+        }
+      }
 
       await onSave(data);
       onClose();
@@ -342,24 +421,37 @@ export function ScheduleForm({
             />
           </div>
 
-          {/* Day + Time row */}
+          {/* Day/Date + Time row */}
           <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
             <div>
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                День недели
+                {isRecurringMode
+                  ? "День недели"
+                  : isOnDemandMode
+                    ? "Ближайшая дата (МСК)"
+                    : "Дата встречи (МСК)"}
               </Label>
-              <Select value={dayOfWeek} onValueChange={setDayOfWeek}>
-                <SelectTrigger className="mt-1.5 rounded-xl">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[1, 2, 3, 4, 5, 6, 7].map((d) => (
-                    <SelectItem key={d} value={String(d)}>
-                      {DAY_OF_WEEK_LABELS[d]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {isRecurringMode ? (
+                <Select value={dayOfWeek} onValueChange={setDayOfWeek}>
+                  <SelectTrigger className="mt-1.5 rounded-xl">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1, 2, 3, 4, 5, 6, 7].map((d) => (
+                      <SelectItem key={d} value={String(d)}>
+                        {DAY_OF_WEEK_LABELS[d]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <DatePicker
+                  value={meetingDate}
+                  onChange={setMeetingDate}
+                  placeholder={isOnDemandMode ? "Опционально" : "Выбрать дату"}
+                  className="w-full mt-1.5 rounded-xl"
+                />
+              )}
             </div>
             <div>
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
@@ -738,7 +830,7 @@ export function ScheduleForm({
           </div>
 
           {/* Next meeting override (edit mode only) */}
-          {isEdit && schedule?.next_occurrence_date && (
+          {isEdit && isRecurringMode && schedule?.next_occurrence_date && (
             <div className="rounded-xl bg-amber-500/5 border border-amber-500/20 overflow-hidden">
               <div className="p-3">
                 <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">

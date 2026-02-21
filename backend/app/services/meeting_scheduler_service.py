@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import Meeting, MeetingParticipant, MeetingSchedule, TeamMember
@@ -92,7 +92,15 @@ class MeetingSchedulerService:
                                 )
                                 schedule.last_triggered_date = now_utc.date()
                                 schedule.next_occurrence_skip = False
-                                schedule.next_occurrence_time_override = None
+                                if schedule.recurrence == "on_demand":
+                                    schedule.next_occurrence_at = None
+                                    await self._ensure_on_demand_template_meeting(
+                                        session, schedule
+                                    )
+                                elif schedule.recurrence == "one_time":
+                                    schedule.is_active = False
+                                else:
+                                    schedule.next_occurrence_time_override = None
                                 await session.commit()
                             else:
                                 await self._trigger_meeting(session, schedule, now_utc)
@@ -198,15 +206,45 @@ class MeetingSchedulerService:
 
     def _should_trigger(self, schedule: MeetingSchedule, now_utc: datetime) -> bool:
         """Check all conditions for triggering a schedule."""
-        # 1. Already triggered today? (DB-based, survives restarts)
+        recurrence = schedule.recurrence
         today_utc = now_utc.date()
+
+        # on_demand has its own explicit datetime, not weekday-based recurrence.
+        if recurrence == "on_demand":
+            if not schedule.next_occurrence_at:
+                return False
+
+            next_occurrence = schedule.next_occurrence_at
+            if next_occurrence.tzinfo is None:
+                next_occurrence = next_occurrence.replace(tzinfo=ZoneInfo("UTC"))
+            else:
+                next_occurrence = next_occurrence.astimezone(ZoneInfo("UTC"))
+
+            trigger_at = next_occurrence - timedelta(minutes=schedule.reminder_minutes_before)
+
+            # Exact trigger window + catch-up window before meeting start.
+            in_trigger_window = abs((now_utc - trigger_at).total_seconds()) <= 90
+            in_catchup = trigger_at <= now_utc <= next_occurrence
+            return in_trigger_window or in_catchup
+
+        # one_time / recurring meetings still use once-per-day safeguard.
         if schedule.last_triggered_date and schedule.last_triggered_date >= today_utc:
             return False
 
-        # Use effective time (override or regular) for all calculations
         effective_time = schedule.next_occurrence_time_override or schedule.time_utc
 
-        # 2. Day of week — check in LOCAL timezone to handle UTC/local day mismatch
+        if recurrence == "one_time":
+            if not schedule.one_time_date:
+                return False
+            meeting_dt_utc = datetime.combine(
+                schedule.one_time_date, effective_time, tzinfo=ZoneInfo("UTC")
+            )
+            trigger_at = meeting_dt_utc - timedelta(minutes=schedule.reminder_minutes_before)
+            in_trigger_window = abs((now_utc - trigger_at).total_seconds()) <= 90
+            in_catchup = trigger_at <= now_utc <= meeting_dt_utc
+            return in_trigger_window or in_catchup
+
+        # Recurring weekday modes.
         meeting_dt_utc = datetime.combine(
             now_utc.date(), effective_time, tzinfo=ZoneInfo("UTC")
         )
@@ -214,18 +252,16 @@ class MeetingSchedulerService:
         if meeting_dt_local.isoweekday() != schedule.day_of_week:
             return False
 
-        # 3. Recurrence
-        if schedule.recurrence == "biweekly":
+        if recurrence == "biweekly":
             week_number = meeting_dt_local.isocalendar()[1]
             if week_number % 2 != 0:
                 return False
-        elif schedule.recurrence == "monthly_last_workday":
+        elif recurrence == "monthly_last_workday":
             if not self._is_last_selected_weekday_of_month(
                 meeting_dt_local, schedule.day_of_week
             ):
                 return False
 
-        # 4. Time: trigger at (effective_time - reminder_minutes_before) with catch-up
         trigger_time = self._calc_trigger_time(schedule, effective_time)
         current_minutes = now_utc.hour * 60 + now_utc.minute
         trigger_minutes = trigger_time.hour * 60 + trigger_time.minute
@@ -236,18 +272,12 @@ class MeetingSchedulerService:
             diff = 1440 - diff
         in_trigger_window = diff <= 1
 
-        # Catch-up: if trigger time has passed but meeting time hasn't,
-        # still allow (handles schedule created after trigger window).
         if trigger_minutes <= meeting_minutes:
             in_catchup = trigger_minutes <= current_minutes <= meeting_minutes
         else:
-            # Trigger crosses midnight
             in_catchup = current_minutes >= trigger_minutes or current_minutes <= meeting_minutes
 
-        if not in_trigger_window and not in_catchup:
-            return False
-
-        return True
+        return in_trigger_window or in_catchup
 
     def _calc_trigger_time(self, schedule: MeetingSchedule, effective_time: time | None = None) -> time:
         """Calculate trigger time = effective_time - reminder_minutes_before."""
@@ -342,14 +372,33 @@ class MeetingSchedulerService:
         if schedule.reminder_enabled:
             await self._send_reminders(session, schedule, meeting, zoom_data)
 
-        # 4. Mark as triggered in DB (survives restarts) + reset override flags
+        # 4. Mark as triggered in DB (survives restarts) + reset one-shot flags
         schedule.last_triggered_date = now_utc.date()
-        schedule.next_occurrence_time_override = None
-        schedule.next_occurrence_skip = False
+        if schedule.recurrence == "on_demand":
+            schedule.next_occurrence_at = None
+            await self._ensure_on_demand_template_meeting(session, schedule)
+        elif schedule.recurrence == "one_time":
+            schedule.is_active = False
+        else:
+            schedule.next_occurrence_time_override = None
+            schedule.next_occurrence_skip = False
         await session.commit()
 
     def _next_meeting_datetime(self, schedule: MeetingSchedule, now_utc: datetime) -> datetime:
         """Calculate the meeting datetime (UTC-aware) for today's trigger."""
+        if schedule.recurrence == "on_demand" and schedule.next_occurrence_at:
+            if schedule.next_occurrence_at.tzinfo is None:
+                return schedule.next_occurrence_at.replace(tzinfo=ZoneInfo("UTC"))
+            return schedule.next_occurrence_at.astimezone(ZoneInfo("UTC"))
+
+        if schedule.recurrence == "one_time" and schedule.one_time_date:
+            effective_time = schedule.next_occurrence_time_override or schedule.time_utc
+            return datetime.combine(
+                schedule.one_time_date,
+                effective_time,
+                tzinfo=ZoneInfo("UTC"),
+            )
+
         effective_time = schedule.next_occurrence_time_override or schedule.time_utc
         meeting_dt = datetime.combine(now_utc.date(), effective_time)
         return meeting_dt.replace(tzinfo=ZoneInfo("UTC"))
@@ -357,18 +406,43 @@ class MeetingSchedulerService:
     async def _find_existing_meeting(
         self, session, schedule_id, meeting_date_naive: datetime
     ) -> Meeting | None:
-        """Find existing scheduled meeting for this schedule and date."""
-        target_date = (
-            meeting_date_naive.date()
-            if isinstance(meeting_date_naive, datetime)
-            else meeting_date_naive
-        )
+        """Find existing scheduled meeting for this schedule and datetime."""
         stmt = select(Meeting).where(
             Meeting.schedule_id == schedule_id,
-            func.date(Meeting.meeting_date) == target_date,
+            Meeting.meeting_date == meeting_date_naive,
         )
         result = await session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def _ensure_on_demand_template_meeting(
+        self,
+        session,
+        schedule: MeetingSchedule,
+    ) -> Meeting:
+        stmt = select(Meeting).where(
+            Meeting.schedule_id == schedule.id,
+            Meeting.meeting_date.is_(None),
+            Meeting.status == "scheduled",
+        )
+        result = await session.execute(stmt)
+        existing = result.scalars().first()
+        if existing:
+            return existing
+
+        template = Meeting(
+            title=schedule.title,
+            meeting_date=None,
+            schedule_id=schedule.id,
+            status="scheduled",
+            duration_minutes=schedule.duration_minutes,
+            created_by_id=schedule.created_by_id,
+        )
+        session.add(template)
+        await session.flush()
+        if schedule.participant_ids:
+            for pid in schedule.participant_ids:
+                session.add(MeetingParticipant(meeting_id=template.id, member_id=pid))
+        return template
 
     async def _send_reminders(
         self, session, schedule: MeetingSchedule, meeting: Meeting, zoom_data

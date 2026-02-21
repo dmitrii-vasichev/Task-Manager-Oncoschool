@@ -180,7 +180,9 @@ class MeetingSchedule(Base):
     duration_minutes: Mapped[int] = mapped_column(Integer, default=60, server_default="60")
     recurrence: Mapped[str] = mapped_column(
         String(30), default="weekly", server_default="weekly"
-    )  # weekly | biweekly | monthly_last_workday
+    )  # weekly | biweekly | monthly_last_workday | one_time | on_demand
+    one_time_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    next_occurrence_at: Mapped[datetime | None] = mapped_column(nullable=True)
     reminder_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     reminder_minutes_before: Mapped[int] = mapped_column(Integer, default=60, server_default="60")
     reminder_text: Mapped[str | None] = mapped_column(Text, nullable=True)

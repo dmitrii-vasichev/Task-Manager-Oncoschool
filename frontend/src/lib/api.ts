@@ -346,6 +346,10 @@ class ApiClient {
     return this.request<MeetingSchedule[]>("/api/meeting-schedules");
   }
 
+  async getMeetingSchedule(id: string): Promise<MeetingSchedule> {
+    return this.request<MeetingSchedule>(`/api/meeting-schedules/${id}`);
+  }
+
   async createMeetingSchedule(data: MeetingScheduleCreateRequest): Promise<MeetingSchedule> {
     return this.request<MeetingSchedule>("/api/meeting-schedules", {
       method: "POST",
