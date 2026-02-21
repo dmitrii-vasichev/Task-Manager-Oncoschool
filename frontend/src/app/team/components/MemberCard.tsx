@@ -1,6 +1,6 @@
 "use client";
 
-import { Pencil, Star } from "lucide-react";
+import { FlaskConical, Pencil, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RoleBadge } from "@/components/shared/RoleBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
@@ -46,8 +46,14 @@ export function MemberCard({ member, isHead, onClick, onEdit }: MemberCardProps)
               {member.position}
             </p>
           )}
-          <div className="mt-1">
+          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
             <RoleBadge role={member.role} />
+            {member.is_test && (
+              <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-2xs font-semibold bg-orange-500/15 text-orange-700 ring-1 ring-inset ring-orange-500/40">
+                <FlaskConical className="h-3 w-3" />
+                Тестовый
+              </span>
+            )}
           </div>
           {!member.is_active && (
             <div className="mt-1">
