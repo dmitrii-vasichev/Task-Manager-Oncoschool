@@ -1,6 +1,7 @@
 import logging
 import time
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -14,6 +15,8 @@ logger = logging.getLogger(__name__)
 _bulk_cooldowns: dict[str, float] = {}
 BULK_COOLDOWN_SECONDS = 30
 REMINDER_TIMEZONE = "Europe/Moscow"
+MEETING_REMINDER_TEXTS_KEY = "meeting_reminder_texts"
+ALLOWED_MEETING_REMINDER_OFFSETS_MINUTES = {0, 15, 30, 60, 120}
 from app.db.database import get_session
 from app.db.models import TeamMember
 from app.db.repositories import (
@@ -34,6 +37,38 @@ sub_repo = NotificationSubscriptionRepository()
 reminder_repo = ReminderSettingsRepository()
 app_settings_repo = AppSettingsRepository()
 ai_service = AIService()
+
+
+def _normalize_meeting_reminder_texts(
+    raw_value: dict | None,
+) -> dict[str, str]:
+    source: dict = {}
+    if isinstance(raw_value, dict):
+        nested = raw_value.get("texts_by_offset")
+        if isinstance(nested, dict):
+            source = nested
+        else:
+            source = raw_value
+
+    normalized: dict[str, str] = {}
+    for raw_key, raw_text in source.items():
+        try:
+            offset = int(raw_key)
+        except (TypeError, ValueError):
+            continue
+        if offset not in ALLOWED_MEETING_REMINDER_OFFSETS_MINUTES:
+            continue
+        text = str(raw_text or "").strip()
+        if text:
+            normalized[str(offset)] = text
+
+    # Keep stable ordering for deterministic responses.
+    ordered_items = sorted(
+        normalized.items(),
+        key=lambda item: int(item[0]),
+        reverse=True,
+    )
+    return dict(ordered_items)
 
 
 # ── Notification Subscriptions ──
@@ -196,6 +231,67 @@ async def bulk_update_reminders(
     await session.commit()
 
     return {"updated": updated_count}
+
+
+# ── Meeting Reminder Text Templates ──
+
+
+class MeetingReminderTextsResponse(BaseModel):
+    texts_by_offset: dict[str, str]
+    updated_by_id: uuid.UUID | None = None
+    updated_at: datetime | None = None
+
+
+class MeetingReminderTextsUpdate(BaseModel):
+    texts_by_offset: dict[str, str]
+
+
+@router.get(
+    "/meeting-reminder-texts",
+    response_model=MeetingReminderTextsResponse,
+)
+async def get_meeting_reminder_texts(
+    member: TeamMember = Depends(require_moderator),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get global meeting reminder text templates. Moderator only."""
+    setting = await app_settings_repo.get(session, MEETING_REMINDER_TEXTS_KEY)
+    if not setting:
+        return MeetingReminderTextsResponse(texts_by_offset={})
+
+    return MeetingReminderTextsResponse(
+        texts_by_offset=_normalize_meeting_reminder_texts(setting.value),
+        updated_by_id=setting.updated_by_id,
+        updated_at=setting.updated_at,
+    )
+
+
+@router.put(
+    "/meeting-reminder-texts",
+    response_model=MeetingReminderTextsResponse,
+)
+async def update_meeting_reminder_texts(
+    data: MeetingReminderTextsUpdate,
+    member: TeamMember = Depends(require_moderator),
+    session: AsyncSession = Depends(get_session),
+):
+    """Update global meeting reminder text templates. Moderator only."""
+    normalized = _normalize_meeting_reminder_texts(
+        {"texts_by_offset": data.texts_by_offset}
+    )
+    setting = await app_settings_repo.set(
+        session,
+        MEETING_REMINDER_TEXTS_KEY,
+        {"texts_by_offset": normalized},
+        updated_by_id=member.id,
+    )
+    await session.commit()
+
+    return MeetingReminderTextsResponse(
+        texts_by_offset=normalized,
+        updated_by_id=setting.updated_by_id,
+        updated_at=setting.updated_at,
+    )
 
 
 # ── AI Provider Settings ──

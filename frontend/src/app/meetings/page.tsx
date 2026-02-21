@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Video,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +22,7 @@ import { api } from "@/lib/api";
 import { useToast } from "@/components/shared/Toast";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ScheduleForm } from "@/components/meetings/ScheduleForm";
+import { MeetingReminderTextsDialog } from "@/components/meetings/MeetingReminderTextsDialog";
 import { MeetingCard } from "@/components/meetings/MeetingCard";
 import type {
   MeetingScheduleCreateRequest,
@@ -59,6 +61,7 @@ export default function MeetingsPage() {
 
   // Schedule form state
   const [showScheduleForm, setShowScheduleForm] = useState(false);
+  const [showReminderTextsDialog, setShowReminderTextsDialog] = useState(false);
 
   // Search + pagination for past meetings
   const [search, setSearch] = useState("");
@@ -163,14 +166,25 @@ export default function MeetingsPage() {
 
             {/* Create meeting button (upcoming tab, moderator) */}
             {activeTab === "upcoming" && isModerator && (
-              <Button
-                size="sm"
-                className="w-full rounded-xl gap-1.5 sm:w-auto"
-                onClick={() => setShowScheduleForm(true)}
-              >
-                <Video className="h-3.5 w-3.5" />
-                Новая встреча
-              </Button>
+              <div className="flex w-full gap-2 sm:w-auto">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full rounded-xl gap-1.5 sm:w-auto"
+                  onClick={() => setShowReminderTextsDialog(true)}
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  Тексты напоминаний
+                </Button>
+                <Button
+                  size="sm"
+                  className="w-full rounded-xl gap-1.5 sm:w-auto"
+                  onClick={() => setShowScheduleForm(true)}
+                >
+                  <Video className="h-3.5 w-3.5" />
+                  Новая встреча
+                </Button>
+              </div>
             )}
           </div>
 
@@ -317,6 +331,13 @@ export default function MeetingsPage() {
           telegramTargets={telegramTargets}
           onSave={handleCreateSchedule}
           onClose={() => setShowScheduleForm(false)}
+        />
+      )}
+
+      {showReminderTextsDialog && (
+        <MeetingReminderTextsDialog
+          open={showReminderTextsDialog}
+          onOpenChange={setShowReminderTextsDialog}
         />
       )}
     </div>

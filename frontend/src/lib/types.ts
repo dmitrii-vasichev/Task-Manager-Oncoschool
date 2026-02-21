@@ -314,6 +314,12 @@ export interface ReminderSettings {
   updated_at: string;
 }
 
+export interface MeetingReminderTextsSettings {
+  texts_by_offset: Record<string, string>;
+  updated_by_id: string | null;
+  updated_at: string | null;
+}
+
 export interface AppSettingsValue {
   provider: string;
   model: string;

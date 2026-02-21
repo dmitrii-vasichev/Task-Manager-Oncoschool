@@ -18,6 +18,7 @@ import type {
   MemberStats,
   MeetingAnalytics,
   ReminderSettings,
+  MeetingReminderTextsSettings,
   AppSettingsValue,
   AISettingsResponse,
   ParseSummaryResponse,
@@ -616,6 +617,24 @@ class ApiClient {
       {
         method: "PUT",
         body: JSON.stringify(data),
+      }
+    );
+  }
+
+  async getMeetingReminderTexts(): Promise<MeetingReminderTextsSettings> {
+    return this.request<MeetingReminderTextsSettings>(
+      "/api/settings/meeting-reminder-texts"
+    );
+  }
+
+  async updateMeetingReminderTexts(
+    textsByOffset: Record<string, string>
+  ): Promise<MeetingReminderTextsSettings> {
+    return this.request<MeetingReminderTextsSettings>(
+      "/api/settings/meeting-reminder-texts",
+      {
+        method: "PUT",
+        body: JSON.stringify({ texts_by_offset: textsByOffset }),
       }
     );
   }

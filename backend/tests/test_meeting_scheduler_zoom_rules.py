@@ -134,10 +134,14 @@ class MeetingSchedulerZoomRulesTests(unittest.IsolatedAsyncioTestCase):
             session_maker=SimpleNamespace(),
             zoom_service=None,
         )
+        scheduler._get_global_reminder_templates = AsyncMock(
+            return_value={
+                "60": 'Подключение: <a href="{zoom_link}">Подключиться ↗</a>'
+            }
+        )
         schedule = SimpleNamespace(
             id=uuid.uuid4(),
             title="Планерка",
-            reminder_text='Подключение: <a href="{zoom_link}">Подключиться ↗</a>',
             participant_ids=[],
             reminder_include_zoom_link=True,
             telegram_targets=[{"chat_id": "12345", "thread_id": None}],
@@ -154,6 +158,7 @@ class MeetingSchedulerZoomRulesTests(unittest.IsolatedAsyncioTestCase):
             schedule=schedule,
             meeting=meeting,
             zoom_data=None,
+            reminder_offset_minutes=60,
         )
 
         bot.send_message.assert_awaited_once()
@@ -168,11 +173,15 @@ class MeetingSchedulerZoomRulesTests(unittest.IsolatedAsyncioTestCase):
             session_maker=SimpleNamespace(),
             zoom_service=None,
         )
+        scheduler._get_global_reminder_templates = AsyncMock(
+            return_value={
+                "0": "Начинаем: <a href=\"{zoom_link}\">Подключиться ↗</a>",
+                "60": "legacy text",
+            }
+        )
         schedule = SimpleNamespace(
             id=uuid.uuid4(),
             title="Планерка",
-            reminder_text="legacy text",
-            reminder_texts_by_offset={"0": "Начинаем: <a href=\"{zoom_link}\">Подключиться ↗</a>"},
             participant_ids=[],
             reminder_include_zoom_link=True,
             telegram_targets=[{"chat_id": "12345", "thread_id": None}],

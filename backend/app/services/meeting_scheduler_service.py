@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import Meeting, MeetingParticipant, MeetingSchedule, TeamMember
-from app.db.repositories import MeetingScheduleRepository
+from app.db.repositories import AppSettingsRepository, MeetingScheduleRepository
 from app.services.zoom_service import sanitize_zoom_join_url
 
 logger = logging.getLogger(__name__)
@@ -17,6 +17,7 @@ ZOOM_CREATE_MAX_ATTEMPTS = 3
 ZOOM_CREATE_RETRY_BASE_DELAY_SECONDS = 2
 ALLOWED_REMINDER_OFFSETS_MINUTES = (0, 15, 30, 60, 120)
 DEFAULT_REMINDER_OFFSET_MINUTES = 60
+MEETING_REMINDER_TEXTS_KEY = "meeting_reminder_texts"
 TRIGGER_EARLY_WINDOW_SECONDS = 90
 TRIGGER_LATE_GRACE_SECONDS = 300
 RUSSIAN_WEEKDAYS = {
@@ -47,6 +48,7 @@ class MeetingSchedulerService:
         self.bot = bot
         self.session_maker = session_maker
         self.zoom_service = zoom_service
+        self.app_settings_repo = AppSettingsRepository()
         self.scheduler = AsyncIOScheduler()
 
     def start(self) -> None:
@@ -359,15 +361,45 @@ class MeetingSchedulerService:
 
     @staticmethod
     def _get_custom_reminder_template(
-        schedule: MeetingSchedule,
+        reminder_templates_by_offset: dict[str, str],
         reminder_offset_minutes: int | None,
     ) -> str:
-        if reminder_offset_minutes is not None:
-            by_offset = getattr(schedule, "reminder_texts_by_offset", None) or {}
-            template = str(by_offset.get(str(reminder_offset_minutes), "")).strip()
-            if template:
-                return template
-        return str(getattr(schedule, "reminder_text", "") or "").strip()
+        if reminder_offset_minutes is None:
+            return ""
+        return str(reminder_templates_by_offset.get(str(reminder_offset_minutes), "")).strip()
+
+    @staticmethod
+    def _normalize_global_reminder_templates(value: dict | None) -> dict[str, str]:
+        source: dict = {}
+        if isinstance(value, dict):
+            nested = value.get("texts_by_offset")
+            if isinstance(nested, dict):
+                source = nested
+            else:
+                source = value
+
+        normalized: dict[str, str] = {}
+        for raw_key, raw_text in source.items():
+            try:
+                offset = int(raw_key)
+            except (TypeError, ValueError):
+                continue
+            if offset not in ALLOWED_REMINDER_OFFSETS_MINUTES:
+                continue
+            text = str(raw_text or "").strip()
+            if text:
+                normalized[str(offset)] = text
+        return normalized
+
+    async def _get_global_reminder_templates(self, session) -> dict[str, str]:
+        try:
+            setting = await self.app_settings_repo.get(session, MEETING_REMINDER_TEXTS_KEY)
+        except Exception:
+            logger.warning("Failed to load global reminder templates", exc_info=True)
+            return {}
+        if not setting:
+            return {}
+        return self._normalize_global_reminder_templates(setting.value)
 
     @staticmethod
     def _resolve_zoom_join_url(raw_join_url: str | None, zoom_meeting_id: str | None) -> str | None:
@@ -630,8 +662,9 @@ class MeetingSchedulerService:
                 f"Cannot send reminder for schedule {schedule.id}: Zoom link is missing"
             )
 
+        global_templates_by_offset = await self._get_global_reminder_templates(session)
         custom_template = self._get_custom_reminder_template(
-            schedule,
+            global_templates_by_offset,
             reminder_offset_minutes=reminder_offset_minutes,
         )
         contains_zoom_placeholder = self._contains_zoom_link_placeholder(custom_template)
