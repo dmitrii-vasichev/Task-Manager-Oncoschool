@@ -17,6 +17,7 @@ import { useToast } from "@/components/shared/Toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -152,7 +153,7 @@ export function MeetingReminderTextsDialog({
   const [textsByOffset, setTextsByOffset] = useState<Record<string, string>>({});
   const [activeReminderOffset, setActiveReminderOffset] = useState<number>(60);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
-  const [linkUrl, setLinkUrl] = useState("https://");
+  const [linkUrl, setLinkUrl] = useState("{zoom_link}");
   const [linkLabel, setLinkLabel] = useState("");
   const [linkSelection, setLinkSelection] = useState<{ start: number; end: number } | null>(null);
 
@@ -248,7 +249,7 @@ export function MeetingReminderTextsDialog({
 
     setLinkSelection({ start, end });
     setLinkLabel(selectedText || "");
-    setLinkUrl("https://");
+    setLinkUrl("{zoom_link}");
     setLinkDialogOpen(true);
   };
 
@@ -334,7 +335,7 @@ export function MeetingReminderTextsDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-5xl max-h-[92vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-5xl max-h-[92vh] sm:min-h-[640px] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="font-heading">Тексты напоминаний</DialogTitle>
           </DialogHeader>
@@ -344,9 +345,36 @@ export function MeetingReminderTextsDialog({
           </p>
 
           {loading ? (
-            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Загрузка шаблонов...
+            <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="space-y-3">
+                <div className="space-y-1.5">
+                  <Label className="text-2xs text-muted-foreground">Тайминг</Label>
+                  <Skeleton className="h-9 w-full rounded-lg" />
+                </div>
+                <Skeleton className="h-11 w-full rounded-xl" />
+                <Skeleton className="h-[250px] w-full rounded-xl" />
+                <div>
+                  <Label className="text-2xs text-muted-foreground">
+                    Переменные
+                  </Label>
+                  <div className="mt-1 grid grid-cols-2 gap-1.5">
+                    <Skeleton className="h-7 rounded-md" />
+                    <Skeleton className="h-7 rounded-md" />
+                    <Skeleton className="h-7 rounded-md" />
+                    <Skeleton className="h-7 rounded-md" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-border/60 bg-card p-4">
+                <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
+                  <Eye className="h-3.5 w-3.5" />
+                  Предпросмотр
+                </div>
+                <div className="max-h-[420px] overflow-auto rounded-xl border border-border/40 bg-muted/20 p-4">
+                  <Skeleton className="ml-auto h-[130px] w-[95%] rounded-2xl" />
+                </div>
+              </div>
             </div>
           ) : (
             <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
@@ -579,7 +607,7 @@ export function MeetingReminderTextsDialog({
                 id="global-reminder-link-url"
                 value={linkUrl}
                 onChange={(e) => setLinkUrl(e.target.value)}
-                placeholder="https://example.com или {zoom_link}"
+                placeholder="{zoom_link} или https://example.com"
               />
             </div>
             <div className="space-y-1.5">
