@@ -331,3 +331,37 @@ class MeetingSchedulerZoomRulesTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertFalse(scheduler._should_trigger(schedule, now_utc, reminder_offset_minutes=60))
+
+    def test_should_trigger_does_not_fire_before_weekly_trigger_time(self) -> None:
+        scheduler = MeetingSchedulerService(
+            bot=SimpleNamespace(send_message=AsyncMock()),
+            session_maker=SimpleNamespace(),
+            zoom_service=None,
+        )
+        schedule = SimpleNamespace(
+            recurrence="weekly",
+            next_occurrence_time_override=None,
+            time_utc=datetime(2026, 2, 23, 12, 0).time(),
+            timezone="UTC",
+            day_of_week=1,
+            last_triggered_date=None,
+        )
+        reminder_offset_minutes = 15
+
+        before_trigger = datetime(2026, 2, 23, 11, 44, 59, tzinfo=timezone.utc)
+        at_trigger = datetime(2026, 2, 23, 11, 45, 0, tzinfo=timezone.utc)
+
+        self.assertFalse(
+            scheduler._should_trigger(
+                schedule,
+                before_trigger,
+                reminder_offset_minutes=reminder_offset_minutes,
+            )
+        )
+        self.assertTrue(
+            scheduler._should_trigger(
+                schedule,
+                at_trigger,
+                reminder_offset_minutes=reminder_offset_minutes,
+            )
+        )

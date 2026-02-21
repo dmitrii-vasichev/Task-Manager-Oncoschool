@@ -25,7 +25,7 @@ REMINDER_PARTICIPANTS_PLACEHOLDERS = (
     "{usernames}",
     "{participant_usernames}",
 )
-TRIGGER_EARLY_WINDOW_SECONDS = 90
+TRIGGER_EARLY_WINDOW_SECONDS = 0
 TRIGGER_LATE_GRACE_SECONDS = 300
 RUSSIAN_WEEKDAYS = {
     1: "понедельник",
@@ -66,8 +66,9 @@ class MeetingSchedulerService:
 
         self.scheduler.add_job(
             self._check_schedules,
-            "interval",
-            minutes=1,
+            "cron",
+            minute="*",
+            second=0,
             id="meeting_scheduler",
             replace_existing=True,
         )
