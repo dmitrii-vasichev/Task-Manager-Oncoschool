@@ -67,6 +67,8 @@ export function ZoomBlock({ meeting }: ZoomBlockProps) {
     meeting.zoom_join_url,
     meeting.zoom_meeting_id
   );
+  const isPastMeeting =
+    meeting.effective_status === "completed" || meeting.effective_status === "cancelled";
 
   const renderZoomStatus = () => {
     if (!meeting.zoom_meeting_id) return null;
@@ -112,6 +114,10 @@ export function ZoomBlock({ meeting }: ZoomBlockProps) {
           Запись есть, транскрипт обрабатывается
         </div>
       );
+    }
+
+    if (!isPastMeeting) {
+      return null;
     }
 
     return (

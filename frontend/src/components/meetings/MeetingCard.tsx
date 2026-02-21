@@ -10,7 +10,6 @@ import {
   ExternalLink,
   Trash2,
   Loader2,
-  Settings,
   Repeat,
   Users,
   StickyNote,
@@ -31,7 +30,7 @@ import { parseUTCDate } from "@/lib/dateUtils";
 import { sanitizeZoomJoinUrl } from "@/lib/zoomLink";
 
 const STATUS_STYLES: Record<MeetingStatus, string> = {
-  scheduled: "bg-blue-500/10 text-blue-600 border-blue-500/20",
+  scheduled: "bg-muted/60 text-muted-foreground border-border/50",
   in_progress: "bg-amber-500/10 text-amber-600 border-amber-500/20",
   completed: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
   cancelled: "bg-muted text-muted-foreground border-border/40",
@@ -132,37 +131,24 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
           <div className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card hover:shadow-md hover:border-border/80 transition-all duration-200">
             <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/3 to-transparent rounded-bl-3xl pointer-events-none" />
 
-            {isModerator && (
+            {isModerator && onDelete && (
               <div className="absolute top-2 right-2 sm:top-3.5 sm:right-3.5 z-10 flex items-center gap-1 opacity-100 pointer-events-auto sm:opacity-0 sm:pointer-events-none sm:group-hover:opacity-100 sm:group-hover:pointer-events-auto transition-opacity">
                 <button
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    window.location.assign(`/meetings/${meeting.id}`);
+                    setShowDeleteDialog(true);
                   }}
-                  className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg text-muted-foreground hover:text-foreground bg-card/70 backdrop-blur-[1px] flex items-center justify-center"
-                  title="Открыть настройки встречи"
+                  disabled={deleting}
+                  className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg text-muted-foreground hover:text-destructive bg-card/70 backdrop-blur-[1px] flex items-center justify-center disabled:opacity-50"
+                  title="Удалить встречу"
                 >
-                  <Settings className="h-3.5 w-3.5" />
+                  {deleting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
                 </button>
-                {onDelete && (
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setShowDeleteDialog(true);
-                    }}
-                    disabled={deleting}
-                    className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg text-muted-foreground hover:text-destructive bg-card/70 backdrop-blur-[1px] flex items-center justify-center disabled:opacity-50"
-                    title="Удалить встречу"
-                  >
-                    {deleting ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                )}
               </div>
             )}
 
@@ -174,10 +160,18 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
                   {upcomingMeta.dayShort}
                 </div>
 
-                <div className={`flex-1 min-w-0 ${isModerator ? "pr-14 sm:pr-[4.5rem]" : ""}`}>
-                  <h3 className="font-heading font-semibold text-sm leading-5 text-foreground line-clamp-1 min-h-5 sm:line-clamp-2 sm:min-h-10">
-                    {meeting.title || "Встреча без названия"}
-                  </h3>
+                <div className={`flex-1 min-w-0 ${isModerator && onDelete ? "pr-9 sm:pr-11" : ""}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="min-w-0 flex-1 font-heading font-semibold text-sm leading-5 text-foreground line-clamp-1 min-h-5 sm:line-clamp-2 sm:min-h-10">
+                      {meeting.title || "Встреча без названия"}
+                    </h3>
+                    <Badge
+                      variant="outline"
+                      className={`shrink-0 rounded-md text-2xs font-medium border whitespace-nowrap ${statusStyle}`}
+                    >
+                      {MEETING_STATUS_LABELS[effectiveStatus]}
+                    </Badge>
+                  </div>
 
                   <div className="mt-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
@@ -198,12 +192,6 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
                       >
                         <Repeat className="h-2.5 w-2.5 mr-0.5" />
                         {recurrenceLabel}
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        className={`rounded-md text-2xs font-medium border ${statusStyle}`}
-                      >
-                        {MEETING_STATUS_LABELS[effectiveStatus]}
                       </Badge>
                     </div>
                   </div>
@@ -269,37 +257,24 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
           <div className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card hover:shadow-md hover:border-border/80 transition-all duration-200">
             <div className="absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-primary/3 to-transparent rounded-bl-3xl pointer-events-none" />
 
-            {isModerator && (
+            {isModerator && onDelete && (
               <div className="absolute top-2 right-2 sm:top-3.5 sm:right-3.5 z-10 flex items-center gap-1 opacity-100 pointer-events-auto sm:opacity-0 sm:pointer-events-none sm:group-hover:opacity-100 sm:group-hover:pointer-events-auto transition-opacity">
                 <button
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    window.location.assign(`/meetings/${meeting.id}`);
+                    setShowDeleteDialog(true);
                   }}
-                  className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg text-muted-foreground hover:text-foreground bg-card/70 backdrop-blur-[1px] flex items-center justify-center"
-                  title="Открыть настройки встречи"
+                  disabled={deleting}
+                  className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg text-muted-foreground hover:text-destructive bg-card/70 backdrop-blur-[1px] flex items-center justify-center disabled:opacity-50"
+                  title="Удалить встречу"
                 >
-                  <Settings className="h-3.5 w-3.5" />
+                  {deleting ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
                 </button>
-                {onDelete && (
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setShowDeleteDialog(true);
-                    }}
-                    disabled={deleting}
-                    className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg text-muted-foreground hover:text-destructive bg-card/70 backdrop-blur-[1px] flex items-center justify-center disabled:opacity-50"
-                    title="Удалить встречу"
-                  >
-                    {deleting ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3.5 w-3.5" />
-                    )}
-                  </button>
-                )}
               </div>
             )}
 
@@ -311,10 +286,18 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
                   {upcomingMeta.dayShort}
                 </div>
 
-                <div className={`flex-1 min-w-0 ${isModerator ? "pr-14 sm:pr-[4.5rem]" : ""}`}>
-                  <h3 className="font-heading font-semibold text-sm leading-5 text-foreground line-clamp-1 min-h-5 sm:line-clamp-2 sm:min-h-10">
-                    {meeting.title || "Встреча без названия"}
-                  </h3>
+                <div className={`flex-1 min-w-0 ${isModerator && onDelete ? "pr-9 sm:pr-11" : ""}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="min-w-0 flex-1 font-heading font-semibold text-sm leading-5 text-foreground line-clamp-1 min-h-5 sm:line-clamp-2 sm:min-h-10">
+                      {meeting.title || "Встреча без названия"}
+                    </h3>
+                    <Badge
+                      variant="outline"
+                      className={`shrink-0 rounded-md text-2xs font-medium border whitespace-nowrap ${statusStyle}`}
+                    >
+                      {MEETING_STATUS_LABELS[effectiveStatus]}
+                    </Badge>
+                  </div>
 
                   <div className="mt-1 space-y-1">
                     <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
@@ -335,12 +318,6 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
                       >
                         <Repeat className="h-2.5 w-2.5 mr-0.5" />
                         {recurrenceLabel}
-                      </Badge>
-                      <Badge
-                        variant="outline"
-                        className={`rounded-md text-2xs font-medium border ${statusStyle}`}
-                      >
-                        {MEETING_STATUS_LABELS[effectiveStatus]}
                       </Badge>
                     </div>
                   </div>
