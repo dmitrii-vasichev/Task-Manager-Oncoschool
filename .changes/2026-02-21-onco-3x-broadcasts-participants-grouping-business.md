@@ -1,5 +1,5 @@
 date: 2026-02-21
-task: ONCO-XXX
+task: ONCO-3X
 scope: business
 type: improvement
 area: Рассылки Telegram
