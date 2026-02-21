@@ -80,6 +80,35 @@ export default function MeetingDetailPage() {
       .filter((m): m is TeamMember => !!m);
   }, [meeting?.participant_ids, membersById]);
 
+  const formattedScheduleNextOccurrence = useMemo(() => {
+    if (!schedule?.next_occurrence_date) return null;
+
+    try {
+      const [year, month, day] = schedule.next_occurrence_date.split("-").map(Number);
+      const effectiveTimeUtc = (schedule.next_occurrence_time_override || schedule.time_utc).slice(0, 5);
+      const [hours, minutes] = effectiveTimeUtc.split(":").map(Number);
+
+      if ([year, month, day, hours, minutes].some(Number.isNaN)) {
+        return null;
+      }
+
+      const utcDate = new Date(Date.UTC(year, month - 1, day, hours, minutes));
+      return utcDate.toLocaleString("ru-RU", {
+        day: "numeric",
+        month: "long",
+        hour: "2-digit",
+        minute: "2-digit",
+        timeZone: "Europe/Moscow",
+      });
+    } catch {
+      return null;
+    }
+  }, [
+    schedule?.next_occurrence_date,
+    schedule?.next_occurrence_time_override,
+    schedule?.time_utc,
+  ]);
+
   const fetchData = useCallback(async () => {
     try {
       const meetingData = await api.getMeeting(id);
@@ -324,7 +353,15 @@ export default function MeetingDetailPage() {
                 <Repeat className="h-3.5 w-3.5 text-primary/80" />
                 {RECURRENCE_LABELS[schedule.recurrence]}
               </p>
-              {meeting.meeting_date ? (
+              {formattedScheduleNextOccurrence ? (
+                <p>
+                  Ближайшая встреча:{" "}
+                  <span className="font-medium text-foreground">
+                    {formattedScheduleNextOccurrence}{" "}
+                    МСК
+                  </span>
+                </p>
+              ) : meeting.meeting_date ? (
                 <p>
                   Ближайшая встреча:{" "}
                   <span className="font-medium text-foreground">
@@ -342,6 +379,11 @@ export default function MeetingDetailPage() {
                 <p>
                   Следующая дата не назначена. Встреча остаётся в списке, чтобы вы могли
                   быстро назначить новый слот.
+                </p>
+              )}
+              {schedule.next_occurrence_skip && (
+                <p className="text-xs text-amber-600">
+                  Ближайший слот отменён в расписании.
                 </p>
               )}
             </div>

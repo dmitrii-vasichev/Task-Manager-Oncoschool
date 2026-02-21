@@ -705,6 +705,12 @@ export function ScheduleForm({
                     }}
                   />
                 </div>
+                {nextOccurrenceSkip && (
+                  <p className="text-2xs text-amber-700">
+                    После сохранения ближайший слот будет пропущен, встреча перейдёт на
+                    следующий слот расписания.
+                  </p>
+                )}
 
                 {/* Time override (hidden if skip is on) */}
                 {!nextOccurrenceSkip && (
