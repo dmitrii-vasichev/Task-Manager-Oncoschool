@@ -324,6 +324,7 @@ export default function BroadcastsPage() {
   const { toastSuccess, toastError } = useToast();
   const messageRef = useRef<HTMLTextAreaElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const messageSelectionRef = useRef<LinkSelection | null>(null);
 
   const [targets, setTargets] = useState<TelegramNotificationTarget[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -337,7 +338,6 @@ export default function BroadcastsPage() {
 
   const defaultSchedule = useMemo(() => getDefaultSchedule(), []);
   const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([]);
-  const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
   const [participantGroupMode, setParticipantGroupMode] = useState<ParticipantGroupMode>("department");
   const [expandedParticipantGroups, setExpandedParticipantGroups] = useState<Record<string, boolean>>({});
   const [participantQuery, setParticipantQuery] = useState("");
@@ -375,12 +375,6 @@ export default function BroadcastsPage() {
         if (valid.length > 0) return valid;
         return targetList[0] ? [targetList[0].id] : [];
       });
-
-      setSelectedParticipantIds((prev) =>
-        prev.filter((id) =>
-          teamList.some((member) => member.id === id && member.is_active)
-        )
-      );
     } catch (e) {
       toastError(e instanceof Error ? e.message : "Не удалось загрузить рассылки");
     } finally {
@@ -410,42 +404,13 @@ export default function BroadcastsPage() {
     return members.filter((member) => normalizeTelegramUsername(member.telegram_username));
   }, [members]);
 
-  const selectedParticipantSet = useMemo(
-    () => new Set(selectedParticipantIds),
-    [selectedParticipantIds]
-  );
-
-  const selectedParticipants = useMemo(() => {
-    return mentionableMembers.filter((member) => selectedParticipantSet.has(member.id));
-  }, [mentionableMembers, selectedParticipantSet]);
-
-  const mentionLine = useMemo(() => {
-    const seen = new Set<string>();
-    const handles: string[] = [];
-
-    for (const member of selectedParticipants) {
-      const username = normalizeTelegramUsername(member.telegram_username);
-      if (!username || seen.has(username)) continue;
-      seen.add(username);
-      handles.push(`@${username}`);
-    }
-
-    return handles.join(" ");
-  }, [selectedParticipants]);
+  const mentionableMembersById = useMemo(() => {
+    return new Map(mentionableMembers.map((member) => [member.id, member]));
+  }, [mentionableMembers]);
 
   const composedMessageHtml = useMemo(() => {
-    const parts: string[] = [];
-    if (mentionLine) {
-      parts.push(mentionLine);
-    }
-
-    const textPart = messageHtml.trim();
-    if (textPart) {
-      parts.push(textPart);
-    }
-
-    return parts.join("\n\n").trim();
-  }, [mentionLine, messageHtml]);
+    return messageHtml.trim();
+  }, [messageHtml]);
 
   const messageLimit = imageFile ? MAX_TELEGRAM_CAPTION_LEN : MAX_TELEGRAM_MESSAGE_LEN;
   const messageTooLong = composedMessageHtml.length > messageLimit;
@@ -560,12 +525,82 @@ export default function BroadcastsPage() {
 
       return nextState;
     });
-  }, [participantGroups, participantQuery, selectedParticipantSet]);
+  }, [participantGroups, participantQuery]);
+
+  const rememberMessageSelection = useCallback(() => {
+    const textarea = messageRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    messageSelectionRef.current = {
+      start: textarea.selectionStart ?? textarea.value.length,
+      end: textarea.selectionEnd ?? textarea.value.length,
+    };
+  }, []);
+
+  const insertMentionsAtCursor = useCallback((rawHandles: string[]) => {
+    const handles = Array.from(
+      new Set(rawHandles.map((handle) => handle.trim()).filter((handle) => handle.length > 0))
+    );
+    if (handles.length === 0) {
+      return;
+    }
+
+    const textarea = messageRef.current;
+    const isTextareaFocused =
+      !!textarea &&
+      typeof document !== "undefined" &&
+      document.activeElement === textarea;
+    const liveSelection: LinkSelection | null = isTextareaFocused && textarea
+      ? {
+          start: textarea.selectionStart ?? textarea.value.length,
+          end: textarea.selectionEnd ?? textarea.value.length,
+        }
+      : null;
+    const fallbackSelection = messageSelectionRef.current;
+    let nextCaret = 0;
+
+    setMessageHtml((prev) => {
+      const rawStart = liveSelection?.start ?? fallbackSelection?.start ?? prev.length;
+      const rawEnd = liveSelection?.end ?? fallbackSelection?.end ?? rawStart;
+      const start = Math.max(0, Math.min(rawStart, prev.length));
+      const end = Math.max(start, Math.min(rawEnd, prev.length));
+      const mentions = handles.join(" ");
+      const beforeChar = start > 0 ? prev[start - 1] : "";
+      const afterChar = end < prev.length ? prev[end] : "";
+      const prefix = start > 0 && beforeChar.trim() !== "" ? " " : "";
+      const suffix = end < prev.length && afterChar.trim() !== "" ? " " : "";
+      const replacement = `${prefix}${mentions}${suffix}`;
+
+      nextCaret = start + replacement.length;
+      messageSelectionRef.current = { start: nextCaret, end: nextCaret };
+
+      return prev.slice(0, start) + replacement + prev.slice(end);
+    });
+
+    requestAnimationFrame(() => {
+      const textareaNode = messageRef.current;
+      if (!textareaNode) {
+        return;
+      }
+
+      textareaNode.focus();
+      const safeCaret = Math.min(nextCaret, textareaNode.value.length);
+      textareaNode.setSelectionRange(safeCaret, safeCaret);
+      messageSelectionRef.current = { start: safeCaret, end: safeCaret };
+    });
+  }, []);
 
   const replaceSelection = (replacement: string, cursorOffset = replacement.length) => {
     const textarea = messageRef.current;
     if (!textarea) {
-      setMessageHtml((prev) => prev + replacement);
+      setMessageHtml((prev) => {
+        const next = prev + replacement;
+        const caret = next.length;
+        messageSelectionRef.current = { start: caret, end: caret };
+        return next;
+      });
       return;
     }
 
@@ -580,6 +615,7 @@ export default function BroadcastsPage() {
       textarea.focus();
       const caret = start + cursorOffset;
       textarea.setSelectionRange(caret, caret);
+      messageSelectionRef.current = { start: caret, end: caret };
     });
   };
 
@@ -607,6 +643,7 @@ export default function BroadcastsPage() {
       const selectionStart = start + openTag.length;
       const selectionEnd = selectionStart + selected.length;
       textarea.setSelectionRange(selectionStart, selectionEnd);
+      messageSelectionRef.current = { start: selectionStart, end: selectionEnd };
     });
   };
 
@@ -618,26 +655,28 @@ export default function BroadcastsPage() {
     );
   };
 
-  const toggleParticipant = (memberId: string) => {
-    setSelectedParticipantIds((prev) =>
-      prev.includes(memberId)
-        ? prev.filter((id) => id !== memberId)
-        : [...prev, memberId]
+  const insertParticipantMention = (memberId: string) => {
+    const username = normalizeTelegramUsername(
+      mentionableMembersById.get(memberId)?.telegram_username
     );
+    if (username) {
+      insertMentionsAtCursor([`@${username}`]);
+    }
   };
 
-  const selectParticipants = (memberIds: string[]) => {
+  const insertParticipantGroupMentions = (memberIds: string[]) => {
     if (memberIds.length === 0) return;
-    setSelectedParticipantIds((prev) => {
-      const merged = new Set([...prev, ...memberIds]);
-      return Array.from(merged);
-    });
-  };
 
-  const deselectParticipants = (memberIds: string[]) => {
-    if (memberIds.length === 0) return;
-    const idsToRemove = new Set(memberIds);
-    setSelectedParticipantIds((prev) => prev.filter((id) => !idsToRemove.has(id)));
+    const handlesToInsert = memberIds
+      .map((id) =>
+        normalizeTelegramUsername(mentionableMembersById.get(id)?.telegram_username)
+      )
+      .filter((username): username is string => !!username)
+      .map((username) => `@${username}`);
+
+    if (handlesToInsert.length > 0) {
+      insertMentionsAtCursor(handlesToInsert);
+    }
   };
 
   const toggleParticipantGroup = (groupId: string) => {
@@ -663,8 +702,10 @@ export default function BroadcastsPage() {
 
   const openLinkDialog = () => {
     const textarea = messageRef.current;
-    const start = textarea?.selectionStart ?? messageHtml.length;
-    const end = textarea?.selectionEnd ?? messageHtml.length;
+    const start =
+      textarea?.selectionStart ?? messageSelectionRef.current?.start ?? messageHtml.length;
+    const end =
+      textarea?.selectionEnd ?? messageSelectionRef.current?.end ?? messageHtml.length;
     const selectedText = messageHtml.slice(start, end).trim();
 
     setLinkSelection({ start, end });
@@ -701,6 +742,7 @@ export default function BroadcastsPage() {
         textarea.focus();
         const caret = start + `<a href="${href}">`.length + label.length;
         textarea.setSelectionRange(caret, caret);
+        messageSelectionRef.current = { start: caret, end: caret };
       });
     }
   };
@@ -787,7 +829,6 @@ export default function BroadcastsPage() {
       toastSuccess(`Рассылка запланирована в ${created.length} групп(ы)`);
       setMessageHtml("");
       setImageFile(null);
-      setSelectedParticipantIds([]);
       const next = getDefaultSchedule();
       setScheduledDate(next.date);
       setScheduledTime(next.time);
@@ -835,7 +876,6 @@ export default function BroadcastsPage() {
         toastSuccess(`Рассылка отправлена в ${sentCount} групп(ы)`);
         setMessageHtml("");
         setImageFile(null);
-        setSelectedParticipantIds([]);
       }
 
       if (failed.length > 0) {
@@ -1064,9 +1104,6 @@ export default function BroadcastsPage() {
                   ) : (
                     participantGroups.map((group) => {
                       const groupMemberIds = group.members.map((member) => member.id);
-                      const selectedCount = groupMemberIds.filter((id) =>
-                        selectedParticipantSet.has(id)
-                      ).length;
                       const expanded = participantQuery.trim()
                         ? true
                         : !!expandedParticipantGroups[group.id];
@@ -1090,22 +1127,15 @@ export default function BroadcastsPage() {
                               />
                               <span className="truncate text-sm font-medium">{group.name}</span>
                               <span className="text-xs text-muted-foreground shrink-0">
-                                {selectedCount}/{group.members.length}
+                                {group.members.length}
                               </span>
                             </button>
                             <button
                               type="button"
-                              onClick={() => selectParticipants(groupMemberIds)}
+                              onClick={() => insertParticipantGroupMentions(groupMemberIds)}
                               className="rounded-md px-2 py-1 text-xs hover:bg-muted transition-colors"
                             >
-                              Все
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => deselectParticipants(groupMemberIds)}
-                              className="rounded-md px-2 py-1 text-xs hover:bg-muted transition-colors"
-                            >
-                              Снять
+                              Вставить всех
                             </button>
                           </div>
 
@@ -1114,12 +1144,13 @@ export default function BroadcastsPage() {
                               {group.members.map((member) => {
                                 const username = normalizeTelegramUsername(member.telegram_username);
                                 if (!username) return null;
-                                const checked = selectedParticipantSet.has(member.id);
 
                                 return (
-                                  <label
+                                  <button
+                                    type="button"
                                     key={member.id}
-                                    className="flex cursor-pointer items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-muted"
+                                    onClick={() => insertParticipantMention(member.id)}
+                                    className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-muted"
                                   >
                                     <div className="min-w-0">
                                       <p className="truncate text-sm font-medium">{member.full_name}</p>
@@ -1128,13 +1159,7 @@ export default function BroadcastsPage() {
                                         {member.position ? ` · ${member.position}` : ""}
                                       </p>
                                     </div>
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => toggleParticipant(member.id)}
-                                      className="h-4 w-4 rounded border-border"
-                                    />
-                                  </label>
+                                  </button>
                                 );
                               })}
                             </div>
@@ -1145,21 +1170,8 @@ export default function BroadcastsPage() {
                   )}
                 </div>
 
-                {selectedParticipants.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedParticipants.map((member) => {
-                      const username = normalizeTelegramUsername(member.telegram_username);
-                      if (!username) return null;
-                      return (
-                        <Badge key={member.id} variant="secondary" className="rounded-lg">
-                          @{username}
-                        </Badge>
-                      );
-                    })}
-                  </div>
-                )}
                 <p className="text-xs text-muted-foreground">
-                  Выбранные участники автоматически добавляются в начало сообщения.
+                  Нажмите на участника, чтобы вставить его @username в текущую позицию курсора.
                 </p>
               </div>
 
@@ -1279,7 +1291,17 @@ export default function BroadcastsPage() {
                 <Textarea
                   ref={messageRef}
                   value={messageHtml}
-                  onChange={(e) => setMessageHtml(e.target.value)}
+                  onChange={(e) => {
+                    setMessageHtml(e.target.value);
+                    messageSelectionRef.current = {
+                      start: e.target.selectionStart ?? e.target.value.length,
+                      end: e.target.selectionEnd ?? e.target.value.length,
+                    };
+                  }}
+                  onSelect={rememberMessageSelection}
+                  onKeyUp={rememberMessageSelection}
+                  onClick={rememberMessageSelection}
+                  onBlur={rememberMessageSelection}
                   placeholder="Введите сообщение для Telegram..."
                   className="min-h-[220px] rounded-xl font-body"
                 />
