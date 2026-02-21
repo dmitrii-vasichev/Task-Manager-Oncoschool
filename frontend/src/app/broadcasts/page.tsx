@@ -330,7 +330,7 @@ export default function BroadcastsPage() {
   const defaultSchedule = useMemo(() => getDefaultSchedule(), []);
   const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([]);
   const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
-  const [participantGroupMode, setParticipantGroupMode] = useState<ParticipantGroupMode>("role");
+  const [participantGroupMode, setParticipantGroupMode] = useState<ParticipantGroupMode>("department");
   const [expandedParticipantGroups, setExpandedParticipantGroups] = useState<Record<string, boolean>>({});
   const [participantQuery, setParticipantQuery] = useState("");
   const [messageHtml, setMessageHtml] = useState("");
@@ -547,10 +547,7 @@ export default function BroadcastsPage() {
           continue;
         }
 
-        const hasSelected = group.members.some((member) =>
-          selectedParticipantSet.has(member.id)
-        );
-        nextState[group.id] = hasSelected || participantGroups.length <= 4;
+        nextState[group.id] = false;
       }
 
       return nextState;
@@ -984,17 +981,6 @@ export default function BroadcastsPage() {
                   <div className="inline-flex items-center rounded-lg border border-border/60 bg-muted/20 p-0.5">
                     <button
                       type="button"
-                      onClick={() => setParticipantGroupMode("role")}
-                      className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
-                        participantGroupMode === "role"
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      По ролям
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => setParticipantGroupMode("department")}
                       className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
                         participantGroupMode === "department"
@@ -1003,6 +989,17 @@ export default function BroadcastsPage() {
                       }`}
                     >
                       По отделам
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setParticipantGroupMode("role")}
+                      className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+                        participantGroupMode === "role"
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                    >
+                      По ролям
                     </button>
                   </div>
                   <div className="flex items-center gap-2 text-xs">
