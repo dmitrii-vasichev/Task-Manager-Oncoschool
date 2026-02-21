@@ -344,12 +344,28 @@ class TelegramBroadcastResponse(BaseModel):
     thread_id: int | None
     target_label: str | None
     message_html: str
+    image_path: str | None
     scheduled_at: datetime
     status: TelegramBroadcastStatusType
     created_by_id: uuid.UUID | None
     sent_at: datetime | None
     error_message: str | None
     created_at: datetime
+
+
+class TelegramBroadcastSendTargetResult(BaseModel):
+    target_id: uuid.UUID
+    chat_id: int
+    thread_id: int | None
+    target_label: str | None
+    ok: bool
+    error_message: str | None = None
+
+
+class TelegramBroadcastSendResponse(BaseModel):
+    sent_count: int
+    failed_count: int
+    results: list[TelegramBroadcastSendTargetResult]
 
 
 # ── NotificationSubscription ──

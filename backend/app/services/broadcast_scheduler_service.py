@@ -6,6 +6,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.repositories import TelegramBroadcastRepository
+from app.services.broadcast_media import delete_broadcast_image, get_broadcast_photo
 
 logger = logging.getLogger(__name__)
 
@@ -13,9 +14,10 @@ logger = logging.getLogger(__name__)
 class BroadcastSchedulerService:
     """Dispatches scheduled Telegram broadcasts."""
 
-    def __init__(self, bot: Bot, session_maker: async_sessionmaker):
+    def __init__(self, bot: Bot, session_maker: async_sessionmaker, storage_service=None):
         self.bot = bot
         self.session_maker = session_maker
+        self.storage_service = storage_service
         self.scheduler = AsyncIOScheduler()
         self.broadcast_repo = TelegramBroadcastRepository()
 
@@ -39,6 +41,34 @@ class BroadcastSchedulerService:
             self.scheduler.shutdown(wait=False)
             logger.info("BroadcastSchedulerService stopped")
 
+    async def _clear_image_if_unused(self, session, broadcast) -> None:
+        image_path = (broadcast.image_path or "").strip()
+        if not image_path:
+            return
+
+        broadcast.image_path = None
+        await session.flush()
+
+        still_scheduled = await self.broadcast_repo.count_scheduled_with_image_path(
+            session,
+            image_path=image_path,
+            exclude_broadcast_id=broadcast.id,
+        )
+        if still_scheduled > 0:
+            return
+
+        try:
+            await delete_broadcast_image(
+                media_path=image_path,
+                storage_service=self.storage_service,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to delete broadcast image path=%s",
+                image_path,
+                exc_info=True,
+            )
+
     async def _send_due_broadcasts(self) -> None:
         try:
             now_utc = datetime.utcnow()
@@ -53,15 +83,31 @@ class BroadcastSchedulerService:
 
                 for broadcast in due:
                     try:
-                        kwargs = {
-                            "chat_id": int(broadcast.chat_id),
-                            "text": broadcast.message_html,
-                            "parse_mode": "HTML",
-                        }
-                        if broadcast.thread_id:
-                            kwargs["message_thread_id"] = int(broadcast.thread_id)
+                        if broadcast.image_path:
+                            kwargs = {
+                                "chat_id": int(broadcast.chat_id),
+                                "photo": get_broadcast_photo(
+                                    media_path=broadcast.image_path,
+                                    storage_service=self.storage_service,
+                                ),
+                                "caption": broadcast.message_html,
+                                "parse_mode": "HTML",
+                            }
+                            if broadcast.thread_id:
+                                kwargs["message_thread_id"] = int(broadcast.thread_id)
 
-                        await self.bot.send_message(**kwargs)
+                            await self.bot.send_photo(**kwargs)
+                        else:
+                            kwargs = {
+                                "chat_id": int(broadcast.chat_id),
+                                "text": broadcast.message_html,
+                                "parse_mode": "HTML",
+                            }
+                            if broadcast.thread_id:
+                                kwargs["message_thread_id"] = int(broadcast.thread_id)
+
+                            await self.bot.send_message(**kwargs)
+
                         broadcast.status = "sent"
                         broadcast.sent_at = datetime.utcnow()
                         broadcast.error_message = None
@@ -79,6 +125,8 @@ class BroadcastSchedulerService:
                             broadcast.chat_id,
                             e,
                         )
+
+                    await self._clear_image_if_unused(session, broadcast)
 
                 await session.commit()
         except Exception as e:

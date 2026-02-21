@@ -1,7 +1,20 @@
+import json
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from aiogram.types import BufferedInputFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_moderator
@@ -11,16 +24,28 @@ from app.db.repositories import TelegramBroadcastRepository, TelegramTargetRepos
 from app.db.schemas import (
     TelegramBroadcastCreate,
     TelegramBroadcastResponse,
+    TelegramBroadcastSendResponse,
+    TelegramBroadcastSendTargetResult,
     TelegramBroadcastStatusType,
     TelegramBroadcastUpdate,
 )
+from app.services.broadcast_media import (
+    delete_broadcast_image,
+    get_broadcast_photo,
+    save_broadcast_image,
+    validate_broadcast_image_payload,
+)
 
 router = APIRouter(prefix="/broadcasts", tags=["broadcasts"])
+
+logger = logging.getLogger(__name__)
 
 broadcast_repo = TelegramBroadcastRepository()
 target_repo = TelegramTargetRepository()
 
 MAX_TELEGRAM_MESSAGE_LEN = 4096
+MAX_TELEGRAM_CAPTION_LEN = 1024
+MAX_TARGETS_PER_BROADCAST = 50
 
 
 def _to_utc_naive(dt: datetime) -> datetime:
@@ -51,6 +76,175 @@ def _validate_scheduled_at(scheduled_at: datetime) -> datetime:
     return scheduled_utc
 
 
+def _parse_target_ids(raw_value: str) -> list[uuid.UUID]:
+    try:
+        payload = json.loads(raw_value)
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail="Некорректный формат списка групп")
+
+    if not isinstance(payload, list) or not payload:
+        raise HTTPException(
+            status_code=400,
+            detail="Нужно выбрать хотя бы одну Telegram-группу",
+        )
+
+    parsed: list[uuid.UUID] = []
+    seen: set[uuid.UUID] = set()
+    for value in payload:
+        try:
+            target_id = uuid.UUID(str(value))
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="Некорректный идентификатор группы")
+        if target_id in seen:
+            continue
+        seen.add(target_id)
+        parsed.append(target_id)
+
+    if len(parsed) > MAX_TARGETS_PER_BROADCAST:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Можно отправить максимум в {MAX_TARGETS_PER_BROADCAST} групп за раз",
+        )
+
+    return parsed
+
+
+def _parse_form_datetime(raw_value: str | None) -> datetime | None:
+    if not raw_value:
+        return None
+
+    value = raw_value.strip()
+    if not value:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Некорректный формат даты отправки")
+
+    return parsed
+
+
+async def _read_image_upload(
+    image: UploadFile | None,
+) -> tuple[bytes | None, str | None]:
+    if image is None:
+        return None, None
+
+    payload = await image.read()
+    try:
+        content_type, _ = validate_broadcast_image_payload(image.content_type, payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return payload, content_type
+
+
+async def _get_ordered_targets(
+    session: AsyncSession,
+    target_ids: list[uuid.UUID],
+):
+    active_targets = await target_repo.get_all_active(session)
+    targets_by_id = {target.id: target for target in active_targets}
+
+    missing = [target_id for target_id in target_ids if target_id not in targets_by_id]
+    if missing:
+        raise HTTPException(status_code=404, detail="Одна или несколько Telegram-групп не найдены")
+
+    return [targets_by_id[target_id] for target_id in target_ids]
+
+
+async def _send_to_chat(
+    *,
+    bot,
+    chat_id: int,
+    thread_id: int | None,
+    message_html: str,
+    image_payload: bytes | None = None,
+    image_filename: str = "broadcast-image",
+    image_path: str | None = None,
+    storage_service=None,
+) -> tuple[bool, str | None]:
+    try:
+        if image_payload is not None:
+            if len(message_html) > MAX_TELEGRAM_CAPTION_LEN:
+                return (
+                    False,
+                    "С картинкой Telegram ограничивает подпись 1024 символами",
+                )
+            kwargs = {
+                "chat_id": int(chat_id),
+                "photo": BufferedInputFile(image_payload, filename=image_filename),
+                "caption": message_html,
+                "parse_mode": "HTML",
+            }
+            if thread_id:
+                kwargs["message_thread_id"] = int(thread_id)
+            await bot.send_photo(**kwargs)
+            return True, None
+
+        if image_path:
+            if len(message_html) > MAX_TELEGRAM_CAPTION_LEN:
+                return (
+                    False,
+                    "С картинкой Telegram ограничивает подпись 1024 символами",
+                )
+            photo = get_broadcast_photo(media_path=image_path, storage_service=storage_service)
+            kwargs = {
+                "chat_id": int(chat_id),
+                "photo": photo,
+                "caption": message_html,
+                "parse_mode": "HTML",
+            }
+            if thread_id:
+                kwargs["message_thread_id"] = int(thread_id)
+            await bot.send_photo(**kwargs)
+            return True, None
+
+        kwargs = {
+            "chat_id": int(chat_id),
+            "text": message_html,
+            "parse_mode": "HTML",
+        }
+        if thread_id:
+            kwargs["message_thread_id"] = int(thread_id)
+        await bot.send_message(**kwargs)
+        return True, None
+    except FileNotFoundError:
+        return False, "Картинка для рассылки не найдена"
+    except Exception as e:
+        return False, str(e)[:1000]
+
+
+async def _clear_broadcast_image_if_unused(
+    request: Request,
+    session: AsyncSession,
+    broadcast: TelegramBroadcast,
+) -> None:
+    image_path = (broadcast.image_path or "").strip()
+    if not image_path:
+        return
+
+    broadcast.image_path = None
+    await session.flush()
+
+    still_scheduled = await broadcast_repo.count_scheduled_with_image_path(
+        session,
+        image_path=image_path,
+        exclude_broadcast_id=broadcast.id,
+    )
+    if still_scheduled > 0:
+        return
+
+    storage_service = getattr(request.app.state, "storage_service", None)
+    try:
+        await delete_broadcast_image(media_path=image_path, storage_service=storage_service)
+    except Exception:
+        logger.warning(
+            "Failed to delete broadcast image path=%s", image_path, exc_info=True
+        )
+
+
 async def _send_broadcast_now(
     request: Request,
     broadcast: TelegramBroadcast,
@@ -59,19 +253,15 @@ async def _send_broadcast_now(
     if not bot:
         return False, "Telegram-бот недоступен"
 
-    kwargs = {
-        "chat_id": int(broadcast.chat_id),
-        "text": broadcast.message_html,
-        "parse_mode": "HTML",
-    }
-    if broadcast.thread_id:
-        kwargs["message_thread_id"] = int(broadcast.thread_id)
-
-    try:
-        await bot.send_message(**kwargs)
-        return True, None
-    except Exception as e:
-        return False, str(e)[:1000]
+    storage_service = getattr(request.app.state, "storage_service", None)
+    return await _send_to_chat(
+        bot=bot,
+        chat_id=broadcast.chat_id,
+        thread_id=broadcast.thread_id,
+        message_html=broadcast.message_html,
+        image_path=broadcast.image_path,
+        storage_service=storage_service,
+    )
 
 
 @router.get("", response_model=list[TelegramBroadcastResponse])
@@ -92,7 +282,7 @@ async def create_broadcast(
     member: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
 ):
-    """Create a scheduled broadcast or send immediately (moderator+)."""
+    """Create a scheduled broadcast or send immediately (single target)."""
     target = await target_repo.get_by_id(session, data.target_id)
     if not target or not target.is_active:
         raise HTTPException(status_code=404, detail="Telegram-группа не найдена")
@@ -111,6 +301,7 @@ async def create_broadcast(
         thread_id=target.thread_id,
         target_label=target.label,
         message_html=_validate_message_html(data.message_html),
+        image_path=None,
         scheduled_at=scheduled_at,
         status="scheduled",
         created_by_id=member.id,
@@ -128,6 +319,159 @@ async def create_broadcast(
 
     await session.commit()
     return broadcast
+
+
+@router.post("/batch", response_model=list[TelegramBroadcastResponse], status_code=status.HTTP_201_CREATED)
+async def create_broadcast_batch(
+    request: Request,
+    target_ids: str = Form(...),
+    message_html: str = Form(...),
+    scheduled_at: str | None = Form(default=None),
+    send_now: bool = Form(default=False),
+    image: UploadFile | None = File(default=None),
+    member: TeamMember = Depends(require_moderator),
+    session: AsyncSession = Depends(get_session),
+):
+    """Create/send broadcasts to multiple groups with optional image."""
+    message = _validate_message_html(message_html)
+    parsed_target_ids = _parse_target_ids(target_ids)
+    ordered_targets = await _get_ordered_targets(session, parsed_target_ids)
+
+    image_payload, image_content_type = await _read_image_upload(image)
+    if image_payload is not None and len(message) > MAX_TELEGRAM_CAPTION_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "С картинкой Telegram ограничивает подпись 1024 символами. "
+                "Сократите текст или отправьте без картинки."
+            ),
+        )
+
+    if send_now:
+        scheduled_at_utc = datetime.utcnow()
+    else:
+        parsed_scheduled_at = _parse_form_datetime(scheduled_at)
+        if parsed_scheduled_at is None:
+            raise HTTPException(status_code=400, detail="Укажите дату и время отправки")
+        scheduled_at_utc = _validate_scheduled_at(parsed_scheduled_at)
+
+    storage_service = getattr(request.app.state, "storage_service", None)
+    image_path: str | None = None
+
+    if not send_now and image_payload is not None and image_content_type is not None:
+        try:
+            image_path = await save_broadcast_image(
+                payload=image_payload,
+                content_type=image_content_type,
+                storage_service=storage_service,
+            )
+        except HTTPException:
+            raise
+        except Exception:
+            logger.exception("Failed to save broadcast image")
+            raise HTTPException(status_code=500, detail="Не удалось сохранить картинку")
+
+    bot = getattr(request.app.state, "bot", None)
+    if send_now and not bot:
+        raise HTTPException(status_code=503, detail="Telegram-бот недоступен")
+
+    broadcasts: list[TelegramBroadcast] = []
+    for target in ordered_targets:
+        broadcast = await broadcast_repo.create(
+            session,
+            target_id=target.id,
+            chat_id=target.chat_id,
+            thread_id=target.thread_id,
+            target_label=target.label,
+            message_html=message,
+            image_path=image_path if not send_now else None,
+            scheduled_at=scheduled_at_utc,
+            status="scheduled",
+            created_by_id=member.id,
+        )
+        broadcasts.append(broadcast)
+
+    if send_now:
+        for broadcast in broadcasts:
+            sent, error = await _send_to_chat(
+                bot=bot,
+                chat_id=broadcast.chat_id,
+                thread_id=broadcast.thread_id,
+                message_html=broadcast.message_html,
+                image_payload=image_payload,
+                image_filename=image.filename if image and image.filename else "broadcast-image",
+                storage_service=storage_service,
+            )
+            if sent:
+                broadcast.status = "sent"
+                broadcast.sent_at = datetime.utcnow()
+                broadcast.error_message = None
+            else:
+                broadcast.status = "failed"
+                broadcast.error_message = error or "Неизвестная ошибка отправки"
+
+    await session.commit()
+    return broadcasts
+
+
+@router.post("/send", response_model=TelegramBroadcastSendResponse)
+async def send_instant_broadcast(
+    request: Request,
+    target_ids: str = Form(...),
+    message_html: str = Form(...),
+    image: UploadFile | None = File(default=None),
+    _: TeamMember = Depends(require_moderator),
+    session: AsyncSession = Depends(get_session),
+):
+    """Send a one-time broadcast to multiple groups without persisting history."""
+    message = _validate_message_html(message_html)
+    target_id_list = _parse_target_ids(target_ids)
+    ordered_targets = await _get_ordered_targets(session, target_id_list)
+
+    image_payload, _ = await _read_image_upload(image)
+    if image_payload is not None and len(message) > MAX_TELEGRAM_CAPTION_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "С картинкой Telegram ограничивает подпись 1024 символами. "
+                "Сократите текст или отправьте без картинки."
+            ),
+        )
+
+    bot = getattr(request.app.state, "bot", None)
+    if not bot:
+        raise HTTPException(status_code=503, detail="Telegram-бот недоступен")
+
+    results: list[TelegramBroadcastSendTargetResult] = []
+    for target in ordered_targets:
+        sent, error = await _send_to_chat(
+            bot=bot,
+            chat_id=target.chat_id,
+            thread_id=target.thread_id,
+            message_html=message,
+            image_payload=image_payload,
+            image_filename=image.filename if image and image.filename else "broadcast-image",
+        )
+
+        results.append(
+            TelegramBroadcastSendTargetResult(
+                target_id=target.id,
+                chat_id=target.chat_id,
+                thread_id=target.thread_id,
+                target_label=target.label,
+                ok=sent,
+                error_message=error,
+            )
+        )
+
+    sent_count = sum(1 for result in results if result.ok)
+    failed_count = len(results) - sent_count
+
+    return TelegramBroadcastSendResponse(
+        sent_count=sent_count,
+        failed_count=failed_count,
+        results=results,
+    )
 
 
 @router.patch("/{broadcast_id}", response_model=TelegramBroadcastResponse)
@@ -206,6 +550,7 @@ async def send_broadcast_now(
         broadcast.status = "failed"
         broadcast.error_message = error or "Неизвестная ошибка отправки"
 
+    await _clear_broadcast_image_if_unused(request, session, broadcast)
     await session.commit()
     return broadcast
 
@@ -213,6 +558,7 @@ async def send_broadcast_now(
 @router.delete("/{broadcast_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def cancel_broadcast(
     broadcast_id: uuid.UUID,
+    request: Request,
     _: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
 ):
@@ -227,5 +573,6 @@ async def cancel_broadcast(
             detail="Можно отменить только рассылки со статусом 'scheduled'",
         )
 
-    await broadcast_repo.update(session, broadcast_id, status="cancelled")
+    broadcast.status = "cancelled"
+    await _clear_broadcast_image_if_unused(request, session, broadcast)
     await session.commit()

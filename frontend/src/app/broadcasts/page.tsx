@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import Image from "next/image";
 import {
   Bold,
   Clock3,
   Code2,
   Eye,
+  ImagePlus,
   Italic,
   Link2,
   Loader2,
@@ -14,6 +16,8 @@ import {
   Smile,
   Strikethrough,
   Underline,
+  Users,
+  X,
 } from "lucide-react";
 
 import { ModeratorGuard } from "@/components/shared/ModeratorGuard";
@@ -21,6 +25,7 @@ import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { useToast } from "@/components/shared/Toast";
 import { DatePicker } from "@/components/shared/DatePicker";
 import { TimePicker } from "@/components/shared/TimePicker";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -49,6 +54,7 @@ import { zonedDateTimeToUtcIso } from "@/lib/meetingDateTime";
 import { api } from "@/lib/api";
 import {
   TELEGRAM_BROADCAST_STATUS_LABELS,
+  type TeamMember,
   type TelegramBroadcast,
   type TelegramBroadcastStatus,
   type TelegramNotificationTarget,
@@ -94,6 +100,10 @@ const STATUS_BADGE_CLASS: Record<TelegramBroadcastStatus, string> = {
   cancelled: "bg-muted text-muted-foreground border-border/60",
 };
 
+const MAX_TELEGRAM_MESSAGE_LEN = 4096;
+const MAX_TELEGRAM_CAPTION_LEN = 1024;
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
 function formatDateValue(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -121,6 +131,18 @@ function stripHtmlTags(value: string): string {
     .replace(/<[^>]*>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeTelegramUsername(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const cleaned = value.trim().replace(/^@+/, "");
+  return cleaned || null;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} Б`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} КБ`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} МБ`;
 }
 
 function renderNode(node: ChildNode, key: string): React.ReactNode {
@@ -202,14 +224,16 @@ function renderNode(node: ChildNode, key: string): React.ReactNode {
   }
 }
 
-function TelegramPreview({ messageHtml }: { messageHtml: string }) {
+function TelegramPreview({
+  messageHtml,
+  imagePreviewUrl,
+}: {
+  messageHtml: string;
+  imagePreviewUrl: string | null;
+}) {
   const nodes = useMemo(() => {
     if (!messageHtml.trim()) {
-      return (
-        <span className="text-muted-foreground">
-          Добавьте текст сообщения, чтобы увидеть предпросмотр.
-        </span>
-      );
+      return null;
     }
 
     if (typeof window === "undefined") {
@@ -229,16 +253,38 @@ function TelegramPreview({ messageHtml }: { messageHtml: string }) {
     );
   }, [messageHtml]);
 
+  const hasAnyContent = !!imagePreviewUrl || !!messageHtml.trim();
+
   return (
     <div className="rounded-2xl border border-border/60 bg-card p-4">
       <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.12em] text-muted-foreground">
         <Eye className="h-3.5 w-3.5" />
         Предпросмотр
       </div>
-      <div className="max-h-[360px] overflow-auto rounded-xl border border-border/40 bg-muted/20 p-4">
-        <div className="ml-auto max-w-[92%] rounded-2xl bg-primary/10 px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words">
-          {nodes}
-        </div>
+      <div className="max-h-[520px] overflow-auto rounded-xl border border-border/40 bg-muted/20 p-4">
+        {!hasAnyContent ? (
+          <div className="rounded-2xl border border-dashed border-border/60 bg-card/60 px-4 py-6 text-center text-sm text-muted-foreground">
+            Добавьте текст и при необходимости прикрепите картинку, чтобы увидеть итог.
+          </div>
+        ) : (
+          <div className="ml-auto max-w-[92%] overflow-hidden rounded-2xl bg-primary/10 text-sm leading-relaxed break-words">
+            {imagePreviewUrl && (
+              <Image
+                src={imagePreviewUrl}
+                alt="Вложение"
+                width={1280}
+                height={720}
+                unoptimized
+                className="max-h-[320px] w-full object-cover"
+              />
+            )}
+            {nodes && (
+              <div className="px-3.5 py-2.5 whitespace-pre-wrap">
+                {nodes}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -247,8 +293,10 @@ function TelegramPreview({ messageHtml }: { messageHtml: string }) {
 export default function BroadcastsPage() {
   const { toastSuccess, toastError } = useToast();
   const messageRef = useRef<HTMLTextAreaElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
 
   const [targets, setTargets] = useState<TelegramNotificationTarget[]>([]);
+  const [members, setMembers] = useState<TeamMember[]>([]);
   const [broadcasts, setBroadcasts] = useState<TelegramBroadcast[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingAction, setSavingAction] = useState<"schedule" | "now" | null>(null);
@@ -257,8 +305,12 @@ export default function BroadcastsPage() {
   const [pendingAction, setPendingAction] = useState<PendingBroadcastAction | null>(null);
 
   const defaultSchedule = useMemo(() => getDefaultSchedule(), []);
-  const [targetId, setTargetId] = useState("");
+  const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([]);
+  const [selectedParticipantIds, setSelectedParticipantIds] = useState<string[]>([]);
+  const [participantQuery, setParticipantQuery] = useState("");
   const [messageHtml, setMessageHtml] = useState("");
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [scheduledDate, setScheduledDate] = useState(defaultSchedule.date);
   const [scheduledTime, setScheduledTime] = useState(defaultSchedule.time);
   const scheduledTimezone = "Europe/Moscow";
@@ -270,16 +322,30 @@ export default function BroadcastsPage() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const [targetList, broadcastList] = await Promise.all([
+      const [targetList, teamList, broadcastList] = await Promise.all([
         api.getTelegramTargets(),
+        api.getTeam(),
         api.getTelegramBroadcasts({
           status: filter === "all" ? undefined : filter,
           limit: 100,
         }),
       ]);
+
       setTargets(targetList);
+      setMembers(teamList.filter((member) => member.is_active));
       setBroadcasts(broadcastList);
-      setTargetId((prev) => (prev ? prev : (targetList[0]?.id ?? "")));
+
+      setSelectedTargetIds((prev) => {
+        const valid = prev.filter((id) => targetList.some((target) => target.id === id));
+        if (valid.length > 0) return valid;
+        return targetList[0] ? [targetList[0].id] : [];
+      });
+
+      setSelectedParticipantIds((prev) =>
+        prev.filter((id) =>
+          teamList.some((member) => member.id === id && member.is_active)
+        )
+      );
     } catch (e) {
       toastError(e instanceof Error ? e.message : "Не удалось загрузить рассылки");
     } finally {
@@ -290,6 +356,78 @@ export default function BroadcastsPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!imageFile) {
+      setImagePreviewUrl(null);
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(imageFile);
+    setImagePreviewUrl(objectUrl);
+
+    return () => {
+      URL.revokeObjectURL(objectUrl);
+    };
+  }, [imageFile]);
+
+  const mentionableMembers = useMemo(() => {
+    return members.filter((member) => normalizeTelegramUsername(member.telegram_username));
+  }, [members]);
+
+  const selectedParticipants = useMemo(() => {
+    const selectedSet = new Set(selectedParticipantIds);
+    return mentionableMembers.filter((member) => selectedSet.has(member.id));
+  }, [mentionableMembers, selectedParticipantIds]);
+
+  const mentionLine = useMemo(() => {
+    const seen = new Set<string>();
+    const handles: string[] = [];
+
+    for (const member of selectedParticipants) {
+      const username = normalizeTelegramUsername(member.telegram_username);
+      if (!username || seen.has(username)) continue;
+      seen.add(username);
+      handles.push(`@${username}`);
+    }
+
+    return handles.join(" ");
+  }, [selectedParticipants]);
+
+  const composedMessageHtml = useMemo(() => {
+    const parts: string[] = [];
+    if (mentionLine) {
+      parts.push(mentionLine);
+    }
+
+    const textPart = messageHtml.trim();
+    if (textPart) {
+      parts.push(textPart);
+    }
+
+    return parts.join("\n\n").trim();
+  }, [mentionLine, messageHtml]);
+
+  const messageLimit = imageFile ? MAX_TELEGRAM_CAPTION_LEN : MAX_TELEGRAM_MESSAGE_LEN;
+  const messageTooLong = composedMessageHtml.length > messageLimit;
+
+  const filteredMembers = useMemo(() => {
+    const normalizedQuery = participantQuery.trim().toLowerCase();
+    if (!normalizedQuery) {
+      return mentionableMembers;
+    }
+
+    return mentionableMembers.filter((member) => {
+      const fullName = member.full_name.toLowerCase();
+      const username = normalizeTelegramUsername(member.telegram_username) || "";
+      const position = member.position?.toLowerCase() || "";
+      return (
+        fullName.includes(normalizedQuery) ||
+        username.includes(normalizedQuery) ||
+        position.includes(normalizedQuery)
+      );
+    });
+  }, [mentionableMembers, participantQuery]);
 
   const replaceSelection = (replacement: string, cursorOffset = replacement.length) => {
     const textarea = messageRef.current;
@@ -339,6 +477,22 @@ export default function BroadcastsPage() {
     });
   };
 
+  const toggleTarget = (targetId: string) => {
+    setSelectedTargetIds((prev) =>
+      prev.includes(targetId)
+        ? prev.filter((id) => id !== targetId)
+        : [...prev, targetId]
+    );
+  };
+
+  const toggleParticipant = (memberId: string) => {
+    setSelectedParticipantIds((prev) =>
+      prev.includes(memberId)
+        ? prev.filter((id) => id !== memberId)
+        : [...prev, memberId]
+    );
+  };
+
   const openLinkDialog = () => {
     const textarea = messageRef.current;
     const start = textarea?.selectionStart ?? messageHtml.length;
@@ -360,8 +514,15 @@ export default function BroadcastsPage() {
 
     const label = linkLabel.trim() || "ссылка";
     const replacement = `<a href="${href}">${label}</a>`;
-    const start = Math.max(0, Math.min(linkSelection?.start ?? messageHtml.length, messageHtml.length));
-    const end = Math.max(start, Math.min(linkSelection?.end ?? start, messageHtml.length));
+    const start = Math.max(
+      0,
+      Math.min(linkSelection?.start ?? messageHtml.length, messageHtml.length)
+    );
+    const end = Math.max(
+      start,
+      Math.min(linkSelection?.end ?? start, messageHtml.length)
+    );
+
     const next = messageHtml.slice(0, start) + replacement + messageHtml.slice(end);
     setMessageHtml(next);
     setLinkDialogOpen(false);
@@ -376,14 +537,42 @@ export default function BroadcastsPage() {
     }
   };
 
-  const handleCreate = async () => {
-    if (!targetId) {
-      toastError("Выберите группу");
+  const handleSelectImage = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] || null;
+    event.target.value = "";
+
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toastError("Можно прикрепить только изображение");
       return;
     }
 
-    if (!messageHtml.trim()) {
+    if (file.size > MAX_IMAGE_BYTES) {
+      toastError("Картинка слишком большая (максимум 10 МБ)");
+      return;
+    }
+
+    setImageFile(file);
+  };
+
+  const handleCreate = async () => {
+    if (selectedTargetIds.length === 0) {
+      toastError("Выберите хотя бы одну группу");
+      return;
+    }
+
+    if (!composedMessageHtml) {
       toastError("Введите текст сообщения");
+      return;
+    }
+
+    if (messageTooLong) {
+      toastError(
+        imageFile
+          ? "С картинкой Telegram поддерживает до 1024 символов подписи"
+          : `Сообщение слишком длинное (максимум ${MAX_TELEGRAM_MESSAGE_LEN} символов)`
+      );
       return;
     }
 
@@ -394,18 +583,22 @@ export default function BroadcastsPage() {
 
     setSavingAction("schedule");
     try {
-      await api.createTelegramBroadcast({
-        target_id: targetId,
-        message_html: messageHtml.trim(),
-        scheduled_at: zonedDateTimeToUtcIso(
+      const created = await api.createTelegramBroadcastBatch({
+        targetIds: selectedTargetIds,
+        messageHtml: composedMessageHtml,
+        scheduledAt: zonedDateTimeToUtcIso(
           scheduledDate,
           scheduledTime,
           scheduledTimezone
         ),
+        sendNow: false,
+        imageFile,
       });
 
-      toastSuccess("Рассылка запланирована");
+      toastSuccess(`Рассылка запланирована в ${created.length} групп(ы)`);
       setMessageHtml("");
+      setImageFile(null);
+      setSelectedParticipantIds([]);
       const next = getDefaultSchedule();
       setScheduledDate(next.date);
       setScheduledTime(next.time);
@@ -418,33 +611,50 @@ export default function BroadcastsPage() {
   };
 
   const handleSendNow = async () => {
-    if (!targetId) {
-      toastError("Выберите группу");
+    if (selectedTargetIds.length === 0) {
+      toastError("Выберите хотя бы одну группу");
       return;
     }
 
-    if (!messageHtml.trim()) {
+    if (!composedMessageHtml) {
       toastError("Введите текст сообщения");
+      return;
+    }
+
+    if (messageTooLong) {
+      toastError(
+        imageFile
+          ? "С картинкой Telegram поддерживает до 1024 символов подписи"
+          : `Сообщение слишком длинное (максимум ${MAX_TELEGRAM_MESSAGE_LEN} символов)`
+      );
       return;
     }
 
     setSavingAction("now");
     try {
-      const result = await api.createTelegramBroadcast({
-        target_id: targetId,
-        message_html: messageHtml.trim(),
-        send_now: true,
+      const result = await api.createTelegramBroadcastBatch({
+        targetIds: selectedTargetIds,
+        messageHtml: composedMessageHtml,
+        sendNow: true,
+        imageFile,
       });
 
-      if (result.status === "failed") {
-        toastError(
-          result.error_message
-            ? `Ошибка отправки: ${result.error_message}`
-            : "Не удалось отправить рассылку"
-        );
-      } else {
-        toastSuccess("Рассылка отправлена");
+      const sentCount = result.filter((item) => item.status === "sent").length;
+      const failed = result.filter((item) => item.status === "failed");
+
+      if (sentCount > 0) {
+        toastSuccess(`Рассылка отправлена в ${sentCount} групп(ы)`);
         setMessageHtml("");
+        setImageFile(null);
+        setSelectedParticipantIds([]);
+      }
+
+      if (failed.length > 0) {
+        const failedLabels = failed
+          .map((item) => item.target_label || `Chat ${item.chat_id}`)
+          .slice(0, 4);
+        const suffix = failed.length > failedLabels.length ? "…" : "";
+        toastError(`Ошибка в ${failed.length} групп(е): ${failedLabels.join(", ")}${suffix}`);
       }
 
       await fetchData();
@@ -514,13 +724,13 @@ export default function BroadcastsPage() {
               <div>
                 <h1 className="font-heading text-lg font-semibold">Рассылки в Telegram</h1>
                 <p className="text-sm text-muted-foreground">
-                  Планируйте информационные сообщения в группы и проверяйте формат перед отправкой.
+                  Планируйте рассылки или отправляйте сразу в несколько групп,
+                  добавляйте теги участников и предпросматривайте итоговое сообщение.
                 </p>
               </div>
             </div>
             <div className="rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              Время отправки по{" "}
-              <span className="font-medium text-foreground">МСК</span>
+              Время отправки по <span className="font-medium text-foreground">МСК</span>
             </div>
           </div>
         </section>
@@ -529,26 +739,137 @@ export default function BroadcastsPage() {
           <section className="rounded-2xl border border-border/60 bg-card p-6">
             <div className="space-y-5">
               <div className="space-y-2">
-                <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Группа
-                </Label>
-                <Select value={targetId} onValueChange={setTargetId}>
-                  <SelectTrigger className="rounded-xl">
-                    <SelectValue placeholder="Выберите группу" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {targets.map((target) => (
-                      <SelectItem key={target.id} value={target.id}>
-                        {target.label || `Chat ${target.chat_id}`}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {targets.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Нет доступных групп. Администратор может добавить их в разделе /settings.
-                  </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Группы Telegram (мультивыбор)
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="rounded-lg"
+                      onClick={() => setSelectedTargetIds(targets.map((target) => target.id))}
+                      disabled={targets.length === 0}
+                    >
+                      Выбрать все
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="rounded-lg"
+                      onClick={() => setSelectedTargetIds([])}
+                      disabled={selectedTargetIds.length === 0}
+                    >
+                      Очистить
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="max-h-52 overflow-y-auto rounded-xl border border-border/60 bg-muted/15 p-2 space-y-1.5">
+                  {loading ? (
+                    <p className="px-2 py-6 text-center text-sm text-muted-foreground">Загрузка групп...</p>
+                  ) : targets.length === 0 ? (
+                    <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                      Нет доступных групп. Администратор может добавить их в разделе /settings.
+                    </p>
+                  ) : (
+                    targets.map((target) => {
+                      const checked = selectedTargetIds.includes(target.id);
+                      return (
+                        <label
+                          key={target.id}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleTarget(target.id)}
+                            className="h-4 w-4 rounded border-border"
+                          />
+                          <span className="text-sm">{target.label || `Chat ${target.chat_id}`}</span>
+                          {target.thread_id ? (
+                            <span className="text-xs text-muted-foreground">· topic {target.thread_id}</span>
+                          ) : null}
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Выбрано групп: {selectedTargetIds.length}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                    Участники для тегов (@username)
+                  </Label>
+                </div>
+
+                <Input
+                  value={participantQuery}
+                  onChange={(e) => setParticipantQuery(e.target.value)}
+                  placeholder="Поиск по имени, username или должности"
+                  className="rounded-xl"
+                />
+
+                <div className="max-h-52 overflow-y-auto rounded-xl border border-border/60 bg-muted/15 p-2 space-y-1.5">
+                  {loading ? (
+                    <p className="px-2 py-6 text-center text-sm text-muted-foreground">Загрузка участников...</p>
+                  ) : filteredMembers.length === 0 ? (
+                    <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                      Участники с Telegram username не найдены.
+                    </p>
+                  ) : (
+                    filteredMembers.map((member) => {
+                      const username = normalizeTelegramUsername(member.telegram_username);
+                      if (!username) return null;
+                      const checked = selectedParticipantIds.includes(member.id);
+
+                      return (
+                        <label
+                          key={member.id}
+                          className="flex cursor-pointer items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-muted"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium">{member.full_name}</p>
+                            <p className="truncate text-xs text-muted-foreground">
+                              @{username}
+                              {member.position ? ` · ${member.position}` : ""}
+                            </p>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleParticipant(member.id)}
+                            className="h-4 w-4 rounded border-border"
+                          />
+                        </label>
+                      );
+                    })
+                  )}
+                </div>
+
+                {selectedParticipants.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedParticipants.map((member) => {
+                      const username = normalizeTelegramUsername(member.telegram_username);
+                      if (!username) return null;
+                      return (
+                        <Badge key={member.id} variant="secondary" className="rounded-lg">
+                          @{username}
+                        </Badge>
+                      );
+                    })}
+                  </div>
                 )}
+                <p className="text-xs text-muted-foreground">
+                  Выбранные участники автоматически добавляются в начало сообщения.
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -556,8 +877,8 @@ export default function BroadcastsPage() {
                   <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                     Сообщение
                   </Label>
-                  <div className="text-xs text-muted-foreground">
-                    {messageHtml.length} / 4096
+                  <div className={`text-xs ${messageTooLong ? "text-destructive" : "text-muted-foreground"}`}>
+                    {composedMessageHtml.length} / {messageLimit}
                   </div>
                 </div>
 
@@ -675,6 +996,61 @@ export default function BroadcastsPage() {
                 <p className="text-xs text-muted-foreground">
                   Поддерживаются Telegram HTML-теги: b, i, u, s, code, pre, a, tg-spoiler.
                 </p>
+                {messageTooLong && (
+                  <p className="text-xs text-destructive">
+                    {imageFile
+                      ? "С картинкой подпись ограничена 1024 символами."
+                      : `Лимит Telegram: ${MAX_TELEGRAM_MESSAGE_LEN} символов.`}
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  Картинка
+                </Label>
+                <div className="rounded-xl border border-border/60 bg-muted/20 p-3 space-y-3">
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={handleSelectImage}
+                  />
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-lg"
+                      onClick={() => imageInputRef.current?.click()}
+                    >
+                      <ImagePlus className="mr-2 h-4 w-4" />
+                      {imageFile ? "Заменить картинку" : "Прикрепить картинку"}
+                    </Button>
+                    {imageFile && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        className="rounded-lg"
+                        onClick={() => setImageFile(null)}
+                      >
+                        <X className="mr-2 h-4 w-4" />
+                        Удалить
+                      </Button>
+                    )}
+                  </div>
+
+                  {imageFile ? (
+                    <div className="text-xs text-muted-foreground">
+                      {imageFile.name} · {formatFileSize(imageFile.size)}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Форматы: JPG, PNG, WEBP. Максимальный размер: 10 МБ.
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -700,11 +1076,12 @@ export default function BroadcastsPage() {
                   />
                 </div>
               </div>
+
               <div className="grid gap-2 sm:grid-cols-2">
                 <Button
                   className="w-full rounded-xl"
                   onClick={handleCreate}
-                  disabled={savingAction !== null || targets.length === 0}
+                  disabled={savingAction !== null || targets.length === 0 || messageTooLong}
                 >
                   {savingAction === "schedule" ? (
                     <>
@@ -722,7 +1099,7 @@ export default function BroadcastsPage() {
                   variant="secondary"
                   className="w-full rounded-xl"
                   onClick={handleSendNow}
-                  disabled={savingAction !== null || targets.length === 0}
+                  disabled={savingAction !== null || targets.length === 0 || messageTooLong}
                 >
                   {savingAction === "now" ? (
                     <>
@@ -740,7 +1117,10 @@ export default function BroadcastsPage() {
             </div>
           </section>
 
-          <TelegramPreview messageHtml={messageHtml} />
+          <TelegramPreview
+            messageHtml={composedMessageHtml}
+            imagePreviewUrl={imagePreviewUrl}
+          />
         </div>
 
         <section className="rounded-2xl border border-border/60 bg-card p-6">
@@ -798,6 +1178,11 @@ export default function BroadcastsPage() {
                           >
                             {TELEGRAM_BROADCAST_STATUS_LABELS[broadcast.status]}
                           </span>
+                          {broadcast.status === "scheduled" && broadcast.image_path && (
+                            <Badge variant="outline" className="rounded-md text-2xs">
+                              С фото
+                            </Badge>
+                          )}
                         </div>
 
                         <p className="mt-1 text-xs text-muted-foreground">

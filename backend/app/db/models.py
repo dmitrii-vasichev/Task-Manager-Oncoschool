@@ -512,6 +512,7 @@ class TelegramBroadcast(Base):
     thread_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     target_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
     message_html: Mapped[str] = mapped_column(Text, nullable=False)
+    image_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     scheduled_at: Mapped[datetime] = mapped_column(nullable=False)
     status: Mapped[str] = mapped_column(
         String(30), default="scheduled", server_default="scheduled"

@@ -173,12 +173,28 @@ export interface TelegramBroadcast {
   thread_id: number | null;
   target_label: string | null;
   message_html: string;
+  image_path: string | null;
   scheduled_at: string;
   status: TelegramBroadcastStatus;
   created_by_id: string | null;
   sent_at: string | null;
   error_message: string | null;
   created_at: string;
+}
+
+export interface TelegramBroadcastSendResult {
+  target_id: string;
+  chat_id: number;
+  thread_id: number | null;
+  target_label: string | null;
+  ok: boolean;
+  error_message: string | null;
+}
+
+export interface TelegramBroadcastSendResponse {
+  sent_count: number;
+  failed_count: number;
+  results: TelegramBroadcastSendResult[];
 }
 
 export interface TelegramBroadcastCreateRequest {

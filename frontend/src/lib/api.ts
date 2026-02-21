@@ -29,6 +29,7 @@ import type {
   TelegramNotificationTarget,
   TelegramBroadcast,
   TelegramBroadcastCreateRequest,
+  TelegramBroadcastSendResponse,
   TelegramBroadcastUpdateRequest,
   ZoomStatusResponse,
   TeamMemberUpdateRequest,
@@ -474,6 +475,75 @@ class ApiClient {
     return this.request<TelegramBroadcast>(`/api/broadcasts/${id}/send-now`, {
       method: "POST",
     });
+  }
+
+  async createTelegramBroadcastBatch(data: {
+    targetIds: string[];
+    messageHtml: string;
+    scheduledAt?: string;
+    sendNow?: boolean;
+    imageFile?: File | null;
+  }): Promise<TelegramBroadcast[]> {
+    const formData = new FormData();
+    formData.append("target_ids", JSON.stringify(data.targetIds));
+    formData.append("message_html", data.messageHtml);
+    if (data.scheduledAt) {
+      formData.append("scheduled_at", data.scheduledAt);
+    }
+    formData.append("send_now", data.sendNow ? "true" : "false");
+    if (data.imageFile) {
+      formData.append("image", data.imageFile);
+    }
+
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await this.fetchWithApiFallback("/api/broadcasts/batch", {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async sendTelegramBroadcast(
+    data: {
+      targetIds: string[];
+      messageHtml: string;
+      imageFile?: File | null;
+    }
+  ): Promise<TelegramBroadcastSendResponse> {
+    const formData = new FormData();
+    formData.append("target_ids", JSON.stringify(data.targetIds));
+    formData.append("message_html", data.messageHtml);
+    if (data.imageFile) {
+      formData.append("image", data.imageFile);
+    }
+
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await this.fetchWithApiFallback("/api/broadcasts/send", {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${res.status}`);
+    }
+
+    return res.json();
   }
 
   // ==================== Departments ====================

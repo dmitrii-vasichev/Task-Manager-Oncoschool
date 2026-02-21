@@ -537,6 +537,22 @@ class TelegramBroadcastRepository:
         await session.flush()
         return broadcast
 
+    async def count_scheduled_with_image_path(
+        self,
+        session: AsyncSession,
+        *,
+        image_path: str,
+        exclude_broadcast_id: uuid.UUID | None = None,
+    ) -> int:
+        stmt = select(func.count(TelegramBroadcast.id)).where(
+            TelegramBroadcast.status == "scheduled",
+            TelegramBroadcast.image_path == image_path,
+        )
+        if exclude_broadcast_id is not None:
+            stmt = stmt.where(TelegramBroadcast.id != exclude_broadcast_id)
+        result = await session.execute(stmt)
+        return int(result.scalar_one() or 0)
+
 
 class NotificationSubscriptionRepository:
     async def get_by_member(

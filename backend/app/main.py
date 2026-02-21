@@ -153,7 +153,11 @@ reminder_service = ReminderService(bot=bot, session_maker=async_session)
 meeting_scheduler = MeetingSchedulerService(
     bot=bot, session_maker=async_session, zoom_service=zoom_service
 )
-broadcast_scheduler = BroadcastSchedulerService(bot=bot, session_maker=async_session)
+broadcast_scheduler = BroadcastSchedulerService(
+    bot=bot,
+    session_maker=async_session,
+    storage_service=storage_service,
+)
 
 
 @app.on_event("startup")
