@@ -2,8 +2,9 @@ import logging
 import time
 import uuid
 from datetime import datetime
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +18,7 @@ BULK_COOLDOWN_SECONDS = 30
 REMINDER_TIMEZONE = "Europe/Moscow"
 MEETING_REMINDER_TEXTS_KEY = "meeting_reminder_texts"
 MEETING_WEEKLY_DIGEST_SETTINGS_KEY = "meeting_weekly_digest_settings"
+WEEKLY_DIGEST_ALLOWED_STATUSES = {"pending", "sent", "failed"}
 ALLOWED_MEETING_REMINDER_OFFSETS_MINUTES = {0, 15, 30, 60, 120}
 DEFAULT_MEETING_WEEKLY_DIGEST_DAY = 7
 DEFAULT_MEETING_WEEKLY_DIGEST_TIME = "21:00"
@@ -137,6 +139,16 @@ def _normalize_meeting_weekly_digest_settings(raw_value: dict | None) -> dict:
         "template": template,
         "last_sent_week_start": normalized_last_sent_week_start,
     }
+
+
+def _get_meeting_scheduler(request: Request):
+    scheduler = getattr(request.app.state, "meeting_scheduler", None)
+    if scheduler is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Сервис планировщика встреч недоступен",
+        )
+    return scheduler
 
 
 # ── Notification Subscriptions ──
@@ -362,6 +374,17 @@ async def update_meeting_reminder_texts(
     )
 
 
+class MeetingWeeklyDigestTargetStatusResponse(BaseModel):
+    target_id: uuid.UUID
+    status: Literal["pending", "sent", "failed"] = "pending"
+    sent_at: datetime | None = None
+    error_message: str | None = None
+    last_attempt_at: datetime | None = None
+    target_label: str | None = None
+    chat_id: int | None = None
+    thread_id: int | None = None
+
+
 class MeetingWeeklyDigestSettingsResponse(BaseModel):
     enabled: bool = False
     day_of_week: int = DEFAULT_MEETING_WEEKLY_DIGEST_DAY
@@ -369,6 +392,9 @@ class MeetingWeeklyDigestSettingsResponse(BaseModel):
     timezone: str = REMINDER_TIMEZONE
     target_ids: list[uuid.UUID] = Field(default_factory=list)
     template: str = DEFAULT_MEETING_WEEKLY_DIGEST_TEMPLATE
+    delivery_week_start: str | None = None
+    delivery_week_end: str | None = None
+    target_statuses: list[MeetingWeeklyDigestTargetStatusResponse] = Field(default_factory=list)
     updated_by_id: uuid.UUID | None = None
     updated_at: datetime | None = None
 
@@ -381,28 +407,71 @@ class MeetingWeeklyDigestSettingsUpdate(BaseModel):
     template: str = DEFAULT_MEETING_WEEKLY_DIGEST_TEMPLATE
 
 
+class MeetingWeeklyDigestSendRequest(BaseModel):
+    target_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+class MeetingWeeklyDigestSendResponse(BaseModel):
+    ok: bool
+    reason: str
+    delivery_week_start: str
+    delivery_week_end: str
+    attempted: int
+    sent_count: int
+    failed_count: int
+    skipped_sent_count: int
+    target_results: list[MeetingWeeklyDigestTargetStatusResponse]
+
+
+def _weekly_snapshot_to_response(snapshot: dict) -> MeetingWeeklyDigestSettingsResponse:
+    target_statuses: list[MeetingWeeklyDigestTargetStatusResponse] = []
+    for raw in snapshot.get("target_statuses") or []:
+        status = str(raw.get("status") or "pending").strip().lower()
+        if status not in WEEKLY_DIGEST_ALLOWED_STATUSES:
+            status = "pending"
+        target_statuses.append(
+            MeetingWeeklyDigestTargetStatusResponse(
+                target_id=uuid.UUID(str(raw.get("target_id"))),
+                status=status,
+                sent_at=raw.get("sent_at"),
+                error_message=raw.get("error_message"),
+                last_attempt_at=raw.get("last_attempt_at"),
+                target_label=raw.get("target_label"),
+                chat_id=raw.get("chat_id"),
+                thread_id=raw.get("thread_id"),
+            )
+        )
+
+    return MeetingWeeklyDigestSettingsResponse(
+        enabled=bool(snapshot.get("enabled", False)),
+        day_of_week=int(snapshot.get("day_of_week", DEFAULT_MEETING_WEEKLY_DIGEST_DAY)),
+        time_local=str(snapshot.get("time_local", DEFAULT_MEETING_WEEKLY_DIGEST_TIME)),
+        timezone=str(snapshot.get("timezone", REMINDER_TIMEZONE)),
+        target_ids=[
+            uuid.UUID(str(raw_target_id))
+            for raw_target_id in (snapshot.get("target_ids") or [])
+        ],
+        template=str(snapshot.get("template") or DEFAULT_MEETING_WEEKLY_DIGEST_TEMPLATE),
+        delivery_week_start=snapshot.get("delivery_week_start"),
+        delivery_week_end=snapshot.get("delivery_week_end"),
+        target_statuses=target_statuses,
+        updated_by_id=snapshot.get("updated_by_id"),
+        updated_at=snapshot.get("updated_at"),
+    )
+
+
 @router.get(
     "/meeting-weekly-digest",
     response_model=MeetingWeeklyDigestSettingsResponse,
 )
 async def get_meeting_weekly_digest_settings(
-    member: TeamMember = Depends(require_moderator),
-    session: AsyncSession = Depends(get_session),
+    request: Request,
+    _: TeamMember = Depends(require_moderator),
 ):
     """Get weekly meeting digest settings. Moderator only."""
-    setting = await app_settings_repo.get(session, MEETING_WEEKLY_DIGEST_SETTINGS_KEY)
-    normalized = _normalize_meeting_weekly_digest_settings(setting.value if setting else None)
-
-    return MeetingWeeklyDigestSettingsResponse(
-        enabled=normalized["enabled"],
-        day_of_week=normalized["day_of_week"],
-        time_local=normalized["time_local"],
-        timezone=REMINDER_TIMEZONE,
-        target_ids=[uuid.UUID(value) for value in normalized["target_ids"]],
-        template=normalized["template"],
-        updated_by_id=setting.updated_by_id if setting else None,
-        updated_at=setting.updated_at if setting else None,
-    )
+    scheduler = _get_meeting_scheduler(request)
+    snapshot = await scheduler.get_weekly_digest_status_snapshot()
+    return _weekly_snapshot_to_response(snapshot)
 
 
 @router.put(
@@ -410,6 +479,7 @@ async def get_meeting_weekly_digest_settings(
     response_model=MeetingWeeklyDigestSettingsResponse,
 )
 async def update_meeting_weekly_digest_settings(
+    request: Request,
     data: MeetingWeeklyDigestSettingsUpdate,
     member: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
@@ -452,12 +522,6 @@ async def update_meeting_weekly_digest_settings(
         }
     )
 
-    existing = await app_settings_repo.get(session, MEETING_WEEKLY_DIGEST_SETTINGS_KEY)
-    if existing and isinstance(existing.value, dict):
-        last_sent_week_start = existing.value.get("last_sent_week_start")
-        if isinstance(last_sent_week_start, str) and last_sent_week_start.strip():
-            normalized["last_sent_week_start"] = last_sent_week_start.strip()
-
     setting = await app_settings_repo.set(
         session,
         MEETING_WEEKLY_DIGEST_SETTINGS_KEY,
@@ -466,15 +530,55 @@ async def update_meeting_weekly_digest_settings(
     )
     await session.commit()
 
-    return MeetingWeeklyDigestSettingsResponse(
-        enabled=normalized["enabled"],
-        day_of_week=normalized["day_of_week"],
-        time_local=normalized["time_local"],
-        timezone=REMINDER_TIMEZONE,
-        target_ids=[uuid.UUID(value) for value in normalized["target_ids"]],
-        template=normalized["template"],
-        updated_by_id=setting.updated_by_id,
-        updated_at=setting.updated_at,
+    scheduler = _get_meeting_scheduler(request)
+    snapshot = await scheduler.get_weekly_digest_status_snapshot()
+    snapshot["updated_by_id"] = setting.updated_by_id
+    snapshot["updated_at"] = setting.updated_at
+    return _weekly_snapshot_to_response(snapshot)
+
+
+@router.post(
+    "/meeting-weekly-digest/send-pending-now",
+    response_model=MeetingWeeklyDigestSendResponse,
+)
+async def send_pending_meeting_weekly_digest(
+    request: Request,
+    data: MeetingWeeklyDigestSendRequest,
+    _: TeamMember = Depends(require_moderator),
+):
+    scheduler = _get_meeting_scheduler(request)
+    result = await scheduler.send_weekly_digest_pending_now(
+        requested_target_ids=data.target_ids or None
+    )
+
+    target_results: list[MeetingWeeklyDigestTargetStatusResponse] = []
+    for raw in result.get("target_results") or []:
+        status = str(raw.get("status") or "pending").strip().lower()
+        if status not in WEEKLY_DIGEST_ALLOWED_STATUSES:
+            status = "pending"
+        target_results.append(
+            MeetingWeeklyDigestTargetStatusResponse(
+                target_id=uuid.UUID(str(raw.get("target_id"))),
+                status=status,
+                sent_at=raw.get("sent_at"),
+                error_message=raw.get("error_message"),
+                last_attempt_at=raw.get("last_attempt_at"),
+                target_label=raw.get("target_label"),
+                chat_id=raw.get("chat_id"),
+                thread_id=raw.get("thread_id"),
+            )
+        )
+
+    return MeetingWeeklyDigestSendResponse(
+        ok=bool(result.get("ok")),
+        reason=str(result.get("reason") or ""),
+        delivery_week_start=str(result.get("delivery_week_start") or ""),
+        delivery_week_end=str(result.get("delivery_week_end") or ""),
+        attempted=int(result.get("attempted") or 0),
+        sent_count=int(result.get("sent_count") or 0),
+        failed_count=int(result.get("failed_count") or 0),
+        skipped_sent_count=int(result.get("skipped_sent_count") or 0),
+        target_results=target_results,
     )
 
 

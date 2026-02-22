@@ -27,13 +27,16 @@ ALLOWED_REMINDER_OFFSETS_MINUTES = (0, 15, 30, 60, 120)
 DEFAULT_REMINDER_OFFSET_MINUTES = 60
 MEETING_REMINDER_TEXTS_KEY = "meeting_reminder_texts"
 MEETING_WEEKLY_DIGEST_SETTINGS_KEY = "meeting_weekly_digest_settings"
+MEETING_WEEKLY_DIGEST_STATE_KEY = "meeting_weekly_digest_delivery_state"
 DEFAULT_MEETING_WEEKLY_DIGEST_DAY = 7
 DEFAULT_MEETING_WEEKLY_DIGEST_TIME = "21:00"
 DEFAULT_MEETING_WEEKLY_DIGEST_TEMPLATE = (
     "Наши встречи с {week_start} по {week_end}:\n\n{meetings}"
 )
 MEETING_DIGEST_TIMEZONE = "Europe/Moscow"
-WEEKLY_DIGEST_LAST_SENT_WEEK_START_KEY = "last_sent_week_start"
+WEEKLY_DIGEST_STATUS_PENDING = "pending"
+WEEKLY_DIGEST_STATUS_SENT = "sent"
+WEEKLY_DIGEST_STATUS_FAILED = "failed"
 REMINDER_PARTICIPANTS_PLACEHOLDERS = (
     "{участники}",
     "{юзернеймы}",
@@ -82,6 +85,7 @@ class MeetingSchedulerService:
         self.zoom_service = zoom_service
         self.app_settings_repo = AppSettingsRepository()
         self.scheduler = AsyncIOScheduler()
+        self._weekly_digest_lock = asyncio.Lock()
 
     def start(self) -> None:
         """Start the scheduler with a per-minute check."""
@@ -310,12 +314,6 @@ class MeetingSchedulerService:
                 if parsed_target_id not in target_ids:
                     target_ids.append(parsed_target_id)
 
-        last_sent_week_start = source.get(WEEKLY_DIGEST_LAST_SENT_WEEK_START_KEY)
-        if not isinstance(last_sent_week_start, str) or not last_sent_week_start.strip():
-            last_sent_week_start = None
-        else:
-            last_sent_week_start = last_sent_week_start.strip()
-
         return {
             "enabled": enabled,
             "day_of_week": day_of_week,
@@ -325,7 +323,6 @@ class MeetingSchedulerService:
             "target_ids": target_ids,
             "template": template,
             "timezone": MEETING_DIGEST_TIMEZONE,
-            WEEKLY_DIGEST_LAST_SENT_WEEK_START_KEY: last_sent_week_start,
         }
 
     @staticmethod
@@ -339,9 +336,6 @@ class MeetingSchedulerService:
             "template": str(
                 normalized.get("template") or DEFAULT_MEETING_WEEKLY_DIGEST_TEMPLATE
             ),
-            WEEKLY_DIGEST_LAST_SENT_WEEK_START_KEY: normalized.get(
-                WEEKLY_DIGEST_LAST_SENT_WEEK_START_KEY
-            ),
         }
 
     @staticmethod
@@ -351,56 +345,409 @@ class MeetingSchedulerService:
         week_end = week_start + timedelta(days=6)
         return week_start, week_end
 
+    @staticmethod
+    def _default_target_delivery_status() -> dict:
+        return {
+            "status": WEEKLY_DIGEST_STATUS_PENDING,
+            "sent_at": None,
+            "error_message": None,
+            "last_attempt_at": None,
+        }
+
+    @classmethod
+    def _normalize_weekly_digest_state(cls, value: dict | None) -> dict:
+        source = value if isinstance(value, dict) else {}
+        week_start = str(source.get("week_start") or "").strip() or None
+        week_end = str(source.get("week_end") or "").strip() or None
+        message_text = str(source.get("message_text") or "").strip()
+
+        statuses_raw = source.get("statuses")
+        statuses: dict[str, dict] = {}
+        if isinstance(statuses_raw, dict):
+            for raw_target_id, raw_entry in statuses_raw.items():
+                try:
+                    target_id = str(uuid.UUID(str(raw_target_id)))
+                except (TypeError, ValueError):
+                    continue
+                entry = raw_entry if isinstance(raw_entry, dict) else {}
+                status_value = str(entry.get("status") or "").strip().lower()
+                if status_value not in (
+                    WEEKLY_DIGEST_STATUS_PENDING,
+                    WEEKLY_DIGEST_STATUS_SENT,
+                    WEEKLY_DIGEST_STATUS_FAILED,
+                ):
+                    status_value = WEEKLY_DIGEST_STATUS_PENDING
+
+                sent_at = entry.get("sent_at")
+                if not isinstance(sent_at, str) or not sent_at.strip():
+                    sent_at = None
+                else:
+                    sent_at = sent_at.strip()
+
+                last_attempt_at = entry.get("last_attempt_at")
+                if not isinstance(last_attempt_at, str) or not last_attempt_at.strip():
+                    last_attempt_at = None
+                else:
+                    last_attempt_at = last_attempt_at.strip()
+
+                error_message = entry.get("error_message")
+                if not isinstance(error_message, str) or not error_message.strip():
+                    error_message = None
+                else:
+                    error_message = error_message.strip()[:1000]
+
+                statuses[target_id] = {
+                    "status": status_value,
+                    "sent_at": sent_at,
+                    "error_message": error_message,
+                    "last_attempt_at": last_attempt_at,
+                }
+
+        return {
+            "week_start": week_start,
+            "week_end": week_end,
+            "message_text": message_text,
+            "statuses": statuses,
+        }
+
+    @staticmethod
+    def _serialize_weekly_digest_state(normalized: dict) -> dict:
+        return {
+            "week_start": normalized.get("week_start"),
+            "week_end": normalized.get("week_end"),
+            "message_text": normalized.get("message_text") or "",
+            "statuses": normalized.get("statuses") or {},
+        }
+
+    @classmethod
+    def _ensure_weekly_digest_state_for_week(
+        cls,
+        state: dict,
+        *,
+        week_start: date,
+        week_end: date,
+    ) -> tuple[dict, bool]:
+        week_start_key = week_start.isoformat()
+        week_end_key = week_end.isoformat()
+        changed = False
+
+        if (
+            state.get("week_start") != week_start_key
+            or state.get("week_end") != week_end_key
+        ):
+            state = {
+                "week_start": week_start_key,
+                "week_end": week_end_key,
+                "message_text": "",
+                "statuses": {},
+            }
+            changed = True
+
+        statuses = state.get("statuses")
+        if not isinstance(statuses, dict):
+            state["statuses"] = {}
+            changed = True
+        return state, changed
+
+    @classmethod
+    def _ensure_target_statuses(
+        cls,
+        state: dict,
+        target_ids: list[uuid.UUID],
+    ) -> bool:
+        changed = False
+        statuses = state.setdefault("statuses", {})
+        for target_id in target_ids:
+            key = str(target_id)
+            if key not in statuses or not isinstance(statuses.get(key), dict):
+                statuses[key] = cls._default_target_delivery_status()
+                changed = True
+                continue
+            status_value = str(statuses[key].get("status") or "").strip().lower()
+            if status_value not in (
+                WEEKLY_DIGEST_STATUS_PENDING,
+                WEEKLY_DIGEST_STATUS_SENT,
+                WEEKLY_DIGEST_STATUS_FAILED,
+            ):
+                statuses[key]["status"] = WEEKLY_DIGEST_STATUS_PENDING
+                changed = True
+        return changed
+
+    def _build_weekly_digest_target_statuses(
+        self,
+        *,
+        target_ids: list[uuid.UUID],
+        targets_by_id: dict[uuid.UUID, TelegramNotificationTarget],
+        state: dict,
+    ) -> list[dict]:
+        statuses = state.get("statuses") or {}
+        payload: list[dict] = []
+        for target_id in target_ids:
+            key = str(target_id)
+            entry = statuses.get(key) if isinstance(statuses.get(key), dict) else {}
+            status_value = str(entry.get("status") or "").strip().lower()
+            if status_value not in (
+                WEEKLY_DIGEST_STATUS_PENDING,
+                WEEKLY_DIGEST_STATUS_SENT,
+                WEEKLY_DIGEST_STATUS_FAILED,
+            ):
+                status_value = WEEKLY_DIGEST_STATUS_PENDING
+            target = targets_by_id.get(target_id)
+            payload.append(
+                {
+                    "target_id": key,
+                    "status": status_value,
+                    "sent_at": entry.get("sent_at") if isinstance(entry.get("sent_at"), str) else None,
+                    "error_message": (
+                        entry.get("error_message")
+                        if isinstance(entry.get("error_message"), str)
+                        else None
+                    ),
+                    "last_attempt_at": (
+                        entry.get("last_attempt_at")
+                        if isinstance(entry.get("last_attempt_at"), str)
+                        else None
+                    ),
+                    "target_label": target.label if target else None,
+                    "chat_id": int(target.chat_id) if target else None,
+                    "thread_id": int(target.thread_id) if (target and target.thread_id) else None,
+                }
+            )
+        return payload
+
     async def _check_weekly_meeting_digest(self) -> None:
         try:
+            await self._dispatch_weekly_digest(
+                respect_schedule=True,
+                requested_target_ids=None,
+            )
+        except Exception as e:
+            logger.error("Error in _check_weekly_meeting_digest: %s", e, exc_info=True)
+
+    async def send_weekly_digest_pending_now(
+        self,
+        requested_target_ids: list[uuid.UUID] | None = None,
+    ) -> dict:
+        return await self._dispatch_weekly_digest(
+            respect_schedule=False,
+            requested_target_ids=requested_target_ids,
+        )
+
+    async def get_weekly_digest_status_snapshot(self) -> dict:
+        async with self._weekly_digest_lock:
             now_utc = datetime.now(ZoneInfo("UTC"))
             now_msk = now_utc.astimezone(ZoneInfo(MEETING_DIGEST_TIMEZONE))
+            week_start, week_end = self._next_week_bounds(now_msk)
 
             async with self.session_maker() as session:
-                setting = await self.app_settings_repo.get(
+                settings_setting = await self.app_settings_repo.get(
                     session, MEETING_WEEKLY_DIGEST_SETTINGS_KEY
                 )
-                normalized = self._normalize_weekly_digest_settings(
-                    setting.value if setting else None
+                normalized_settings = self._normalize_weekly_digest_settings(
+                    settings_setting.value if settings_setting else None
                 )
-                if not normalized["enabled"]:
-                    return
-
-                if now_msk.isoweekday() != normalized["day_of_week"]:
-                    return
-                if now_msk.hour != normalized["hour"] or now_msk.minute != normalized["minute"]:
-                    return
-
-                week_start, week_end = self._next_week_bounds(now_msk)
-                week_start_key = week_start.isoformat()
-                if normalized.get(WEEKLY_DIGEST_LAST_SENT_WEEK_START_KEY) == week_start_key:
-                    return
 
                 targets = await self._resolve_weekly_digest_targets(
                     session,
-                    normalized["target_ids"],
+                    normalized_settings["target_ids"],
                 )
-                if not targets:
-                    logger.warning("Weekly meeting digest skipped: no Telegram targets configured")
-                    return
+                targets_by_id = {target.id: target for target in targets}
 
-                digest_items = await self._build_weekly_digest_items(
+                state_setting = await self.app_settings_repo.get(
+                    session, MEETING_WEEKLY_DIGEST_STATE_KEY
+                )
+                normalized_state = self._normalize_weekly_digest_state(
+                    state_setting.value if state_setting else None
+                )
+                normalized_state, _ = self._ensure_weekly_digest_state_for_week(
+                    normalized_state,
+                    week_start=week_start,
+                    week_end=week_end,
+                )
+                self._ensure_target_statuses(
+                    normalized_state,
+                    normalized_settings["target_ids"],
+                )
+
+                target_statuses = self._build_weekly_digest_target_statuses(
+                    target_ids=normalized_settings["target_ids"],
+                    targets_by_id=targets_by_id,
+                    state=normalized_state,
+                )
+
+                return {
+                    "enabled": normalized_settings["enabled"],
+                    "day_of_week": normalized_settings["day_of_week"],
+                    "time_local": normalized_settings["time_local"],
+                    "timezone": MEETING_DIGEST_TIMEZONE,
+                    "target_ids": [str(value) for value in normalized_settings["target_ids"]],
+                    "template": normalized_settings["template"],
+                    "delivery_week_start": week_start.isoformat(),
+                    "delivery_week_end": week_end.isoformat(),
+                    "target_statuses": target_statuses,
+                    "updated_by_id": settings_setting.updated_by_id if settings_setting else None,
+                    "updated_at": settings_setting.updated_at if settings_setting else None,
+                }
+
+    async def _dispatch_weekly_digest(
+        self,
+        *,
+        respect_schedule: bool,
+        requested_target_ids: list[uuid.UUID] | None,
+    ) -> dict:
+        async with self._weekly_digest_lock:
+            now_utc = datetime.now(ZoneInfo("UTC"))
+            now_msk = now_utc.astimezone(ZoneInfo(MEETING_DIGEST_TIMEZONE))
+            week_start, week_end = self._next_week_bounds(now_msk)
+            week_start_key = week_start.isoformat()
+            week_end_key = week_end.isoformat()
+
+            async with self.session_maker() as session:
+                settings_setting = await self.app_settings_repo.get(
+                    session, MEETING_WEEKLY_DIGEST_SETTINGS_KEY
+                )
+                normalized_settings = self._normalize_weekly_digest_settings(
+                    settings_setting.value if settings_setting else None
+                )
+
+                if not normalized_settings["enabled"]:
+                    return {
+                        "ok": False,
+                        "reason": "disabled",
+                        "delivery_week_start": week_start_key,
+                        "delivery_week_end": week_end_key,
+                        "attempted": 0,
+                        "sent_count": 0,
+                        "failed_count": 0,
+                        "skipped_sent_count": 0,
+                        "target_results": [],
+                    }
+
+                if respect_schedule:
+                    if (
+                        now_msk.isoweekday() != normalized_settings["day_of_week"]
+                        or now_msk.hour != normalized_settings["hour"]
+                        or now_msk.minute != normalized_settings["minute"]
+                    ):
+                        return {
+                            "ok": False,
+                            "reason": "outside_schedule_window",
+                            "delivery_week_start": week_start_key,
+                            "delivery_week_end": week_end_key,
+                            "attempted": 0,
+                            "sent_count": 0,
+                            "failed_count": 0,
+                            "skipped_sent_count": 0,
+                            "target_results": [],
+                        }
+
+                configured_targets = await self._resolve_weekly_digest_targets(
                     session,
-                    week_start=week_start,
-                    week_end=week_end,
-                    now_utc=now_utc,
+                    normalized_settings["target_ids"],
                 )
-                message_text = self._render_weekly_digest_message(
-                    template=normalized["template"],
-                    week_start=week_start,
-                    week_end=week_end,
-                    items=digest_items,
-                )
-                if len(message_text) > 4096:
-                    message_text = message_text[:4000].rstrip() + "\n\n..."
+                targets_by_id = {target.id: target for target in configured_targets}
 
+                selected_target_ids = list(normalized_settings["target_ids"])
+                if requested_target_ids:
+                    requested_set = set(requested_target_ids)
+                    selected_target_ids = [
+                        target_id
+                        for target_id in selected_target_ids
+                        if target_id in requested_set
+                    ]
+
+                selected_targets = [
+                    targets_by_id[target_id]
+                    for target_id in selected_target_ids
+                    if target_id in targets_by_id
+                ]
+                selected_target_ids = [target.id for target in selected_targets]
+                if not selected_targets:
+                    return {
+                        "ok": False,
+                        "reason": "no_targets",
+                        "delivery_week_start": week_start_key,
+                        "delivery_week_end": week_end_key,
+                        "attempted": 0,
+                        "sent_count": 0,
+                        "failed_count": 0,
+                        "skipped_sent_count": 0,
+                        "target_results": [],
+                    }
+
+                state_setting = await self.app_settings_repo.get(
+                    session, MEETING_WEEKLY_DIGEST_STATE_KEY
+                )
+                normalized_state = self._normalize_weekly_digest_state(
+                    state_setting.value if state_setting else None
+                )
+                normalized_state, state_changed = self._ensure_weekly_digest_state_for_week(
+                    normalized_state,
+                    week_start=week_start,
+                    week_end=week_end,
+                )
+                if self._ensure_target_statuses(
+                    normalized_state,
+                    normalized_settings["target_ids"],
+                ):
+                    state_changed = True
+
+                statuses = normalized_state["statuses"]
+                any_sent = any(
+                    str((entry or {}).get("status")).lower() == WEEKLY_DIGEST_STATUS_SENT
+                    for entry in statuses.values()
+                    if isinstance(entry, dict)
+                )
+                message_text = str(normalized_state.get("message_text") or "").strip()
+                if not message_text or not any_sent:
+                    digest_items = await self._build_weekly_digest_items(
+                        session,
+                        week_start=week_start,
+                        week_end=week_end,
+                        now_utc=now_utc,
+                    )
+                    message_text = self._render_weekly_digest_message(
+                        template=normalized_settings["template"],
+                        week_start=week_start,
+                        week_end=week_end,
+                        items=digest_items,
+                    )
+                    if len(message_text) > 4096:
+                        message_text = message_text[:4000].rstrip() + "\n\n..."
+                    normalized_state["message_text"] = message_text
+                    state_changed = True
+
+                attempted = 0
                 sent_count = 0
-                for target in targets:
+                failed_count = 0
+                skipped_sent_count = 0
+                target_results: list[dict] = []
+                now_attempt_at = datetime.now(ZoneInfo("UTC")).isoformat()
+
+                for target in selected_targets:
+                    key = str(target.id)
+                    current_entry = statuses.get(key) or self._default_target_delivery_status()
+                    current_status = str(current_entry.get("status") or "").lower()
+
+                    if current_status == WEEKLY_DIGEST_STATUS_SENT:
+                        skipped_sent_count += 1
+                        target_results.append(
+                            {
+                                "target_id": key,
+                                "status": WEEKLY_DIGEST_STATUS_SENT,
+                                "sent_at": current_entry.get("sent_at"),
+                                "error_message": None,
+                                "last_attempt_at": current_entry.get("last_attempt_at"),
+                                "target_label": target.label,
+                                "chat_id": int(target.chat_id),
+                                "thread_id": (
+                                    int(target.thread_id) if target.thread_id else None
+                                ),
+                            }
+                        )
+                        continue
+
+                    attempted += 1
                     try:
                         kwargs = {
                             "chat_id": int(target.chat_id),
@@ -410,8 +757,54 @@ class MeetingSchedulerService:
                         if target.thread_id:
                             kwargs["message_thread_id"] = int(target.thread_id)
                         await self.bot.send_message(**kwargs)
+
+                        sent_at = datetime.now(ZoneInfo("UTC")).isoformat()
+                        statuses[key] = {
+                            "status": WEEKLY_DIGEST_STATUS_SENT,
+                            "sent_at": sent_at,
+                            "error_message": None,
+                            "last_attempt_at": sent_at,
+                        }
                         sent_count += 1
+                        state_changed = True
+                        target_results.append(
+                            {
+                                "target_id": key,
+                                "status": WEEKLY_DIGEST_STATUS_SENT,
+                                "sent_at": sent_at,
+                                "error_message": None,
+                                "last_attempt_at": sent_at,
+                                "target_label": target.label,
+                                "chat_id": int(target.chat_id),
+                                "thread_id": (
+                                    int(target.thread_id) if target.thread_id else None
+                                ),
+                            }
+                        )
                     except Exception as e:
+                        error_message = str(e)[:1000]
+                        statuses[key] = {
+                            "status": WEEKLY_DIGEST_STATUS_FAILED,
+                            "sent_at": None,
+                            "error_message": error_message,
+                            "last_attempt_at": now_attempt_at,
+                        }
+                        failed_count += 1
+                        state_changed = True
+                        target_results.append(
+                            {
+                                "target_id": key,
+                                "status": WEEKLY_DIGEST_STATUS_FAILED,
+                                "sent_at": None,
+                                "error_message": error_message,
+                                "last_attempt_at": now_attempt_at,
+                                "target_label": target.label,
+                                "chat_id": int(target.chat_id),
+                                "thread_id": (
+                                    int(target.thread_id) if target.thread_id else None
+                                ),
+                            }
+                        )
                         logger.error(
                             "Weekly meeting digest failed for chat=%s thread=%s: %s",
                             target.chat_id,
@@ -419,25 +812,26 @@ class MeetingSchedulerService:
                             e,
                         )
 
-                if sent_count == 0:
-                    return
+                if state_changed:
+                    await self.app_settings_repo.set(
+                        session,
+                        MEETING_WEEKLY_DIGEST_STATE_KEY,
+                        self._serialize_weekly_digest_state(normalized_state),
+                        updated_by_id=settings_setting.updated_by_id if settings_setting else None,
+                    )
+                    await session.commit()
 
-                normalized[WEEKLY_DIGEST_LAST_SENT_WEEK_START_KEY] = week_start_key
-                await self.app_settings_repo.set(
-                    session,
-                    MEETING_WEEKLY_DIGEST_SETTINGS_KEY,
-                    self._serialize_weekly_digest_settings(normalized),
-                    updated_by_id=setting.updated_by_id if setting else None,
-                )
-                await session.commit()
-                logger.info(
-                    "Weekly meeting digest sent (week=%s, targets=%s, items=%s)",
-                    week_start_key,
-                    sent_count,
-                    len(digest_items),
-                )
-        except Exception as e:
-            logger.error("Error in _check_weekly_meeting_digest: %s", e, exc_info=True)
+                return {
+                    "ok": True,
+                    "reason": "sent" if sent_count > 0 else "no_pending_targets",
+                    "delivery_week_start": week_start_key,
+                    "delivery_week_end": week_end_key,
+                    "attempted": attempted,
+                    "sent_count": sent_count,
+                    "failed_count": failed_count,
+                    "skipped_sent_count": skipped_sent_count,
+                    "target_results": target_results,
+                }
 
     async def _resolve_weekly_digest_targets(
         self,

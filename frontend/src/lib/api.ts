@@ -20,6 +20,7 @@ import type {
   ReminderSettings,
   MeetingReminderTextsSettings,
   MeetingWeeklyDigestSettings,
+  MeetingWeeklyDigestSendResponse,
   AppSettingsValue,
   AISettingsResponse,
   ParseSummaryResponse,
@@ -770,6 +771,16 @@ class ApiClient {
       {
         method: "PUT",
         body: JSON.stringify(data),
+      }
+    );
+  }
+
+  async sendPendingMeetingWeeklyDigest(targetIds?: string[]): Promise<MeetingWeeklyDigestSendResponse> {
+    return this.request<MeetingWeeklyDigestSendResponse>(
+      "/api/settings/meeting-weekly-digest/send-pending-now",
+      {
+        method: "POST",
+        body: JSON.stringify({ target_ids: targetIds ?? [] }),
       }
     );
   }

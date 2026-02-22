@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Loader2,
   Bold,
@@ -40,7 +40,11 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { TimePicker } from "@/components/shared/TimePicker";
-import type { TelegramNotificationTarget } from "@/lib/types";
+import type {
+  MeetingWeeklyDigestSettings,
+  MeetingWeeklyDigestTargetStatus,
+  TelegramNotificationTarget,
+} from "@/lib/types";
 
 const REMINDER_OPTIONS = [120, 60, 30, 15, 0];
 const DEFAULT_LINK_LABEL = "Подключиться ↗";
@@ -107,6 +111,24 @@ interface WeeklyDigestState {
   template: string;
 }
 
+const WEEKLY_DIGEST_STATUS_LABELS: Record<
+  MeetingWeeklyDigestTargetStatus["status"],
+  string
+> = {
+  pending: "Ожидает",
+  sent: "Отправлено",
+  failed: "Ошибка",
+};
+
+const WEEKLY_DIGEST_STATUS_CLASS: Record<
+  MeetingWeeklyDigestTargetStatus["status"],
+  string
+> = {
+  pending: "border-amber-500/30 bg-amber-500/10 text-amber-700",
+  sent: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700",
+  failed: "border-destructive/30 bg-destructive/10 text-destructive",
+};
+
 function formatReminderOffsetLabel(offsetMinutes: number): string {
   if (offsetMinutes === 0) return "В момент начала";
   if (offsetMinutes === 60) return "За 1 час";
@@ -141,6 +163,38 @@ function normalizeDigestTargetIds(
     if (!normalized.includes(id)) normalized.push(id);
   }
   return normalized;
+}
+
+function indexWeeklyDigestStatuses(
+  statuses: MeetingWeeklyDigestTargetStatus[] | null | undefined
+): Record<string, MeetingWeeklyDigestTargetStatus> {
+  const source = Array.isArray(statuses) ? statuses : [];
+  const indexed: Record<string, MeetingWeeklyDigestTargetStatus> = {};
+  for (const status of source) {
+    if (!status?.target_id) continue;
+    indexed[status.target_id] = status;
+  }
+  return indexed;
+}
+
+function formatDigestStatusTime(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatDigestWeekRange(
+  weekStart: string | null | undefined,
+  weekEnd: string | null | undefined
+): string {
+  if (!weekStart || !weekEnd) return "Период дайджеста: не определён";
+  return `Период дайджеста: ${weekStart} — ${weekEnd}`;
 }
 
 function applyReminderTemplate(
@@ -253,6 +307,12 @@ export function MeetingReminderTextsDialog({
     target_ids: [],
     template: DEFAULT_WEEKLY_DIGEST_TEMPLATE,
   });
+  const [weeklyDigestWeekStart, setWeeklyDigestWeekStart] = useState<string | null>(null);
+  const [weeklyDigestWeekEnd, setWeeklyDigestWeekEnd] = useState<string | null>(null);
+  const [weeklyDigestStatusByTarget, setWeeklyDigestStatusByTarget] = useState<
+    Record<string, MeetingWeeklyDigestTargetStatus>
+  >({});
+  const [sendingWeeklyPending, setSendingWeeklyPending] = useState(false);
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("{zoom_link}");
   const [linkLabel, setLinkLabel] = useState(DEFAULT_LINK_LABEL);
@@ -262,6 +322,19 @@ export function MeetingReminderTextsDialog({
   const weeklyTemplateRef = useRef<HTMLTextAreaElement | null>(null);
   const activeReminderOffsetKey = String(activeReminderOffset);
   const activeReminderText = textsByOffset[activeReminderOffsetKey] ?? "";
+
+  const applyWeeklyDigestSettings = useCallback((digest: MeetingWeeklyDigestSettings) => {
+    setWeeklyDigest({
+      enabled: !!digest.enabled,
+      day_of_week: digest.day_of_week || 7,
+      time_local: digest.time_local || "21:00",
+      target_ids: normalizeDigestTargetIds(digest.target_ids, telegramTargets),
+      template: digest.template?.trim() || DEFAULT_WEEKLY_DIGEST_TEMPLATE,
+    });
+    setWeeklyDigestWeekStart(digest.delivery_week_start ?? null);
+    setWeeklyDigestWeekEnd(digest.delivery_week_end ?? null);
+    setWeeklyDigestStatusByTarget(indexWeeklyDigestStatuses(digest.target_statuses));
+  }, [telegramTargets]);
 
   useEffect(() => {
     if (!open) return;
@@ -285,14 +358,7 @@ export function MeetingReminderTextsDialog({
         }
 
         if (digestResult.status === "fulfilled") {
-          const digest = digestResult.value;
-          setWeeklyDigest({
-            enabled: !!digest.enabled,
-            day_of_week: digest.day_of_week || 7,
-            time_local: digest.time_local || "21:00",
-            target_ids: normalizeDigestTargetIds(digest.target_ids, telegramTargets),
-            template: digest.template?.trim() || DEFAULT_WEEKLY_DIGEST_TEMPLATE,
-          });
+          applyWeeklyDigestSettings(digestResult.value);
         }
 
         const failedMessages: string[] = [];
@@ -326,7 +392,7 @@ export function MeetingReminderTextsDialog({
     return () => {
       cancelled = true;
     };
-  }, [open, telegramTargets, toastError]);
+  }, [open, applyWeeklyDigestSettings, toastError]);
 
   useEffect(() => {
     setWeeklyDigest((prev) => ({
@@ -334,6 +400,24 @@ export function MeetingReminderTextsDialog({
       target_ids: normalizeDigestTargetIds(prev.target_ids, telegramTargets),
     }));
   }, [telegramTargets]);
+
+  const weeklyPendingTargetIds = useMemo(
+    () =>
+      weeklyDigest.target_ids.filter(
+        (targetId) => weeklyDigestStatusByTarget[targetId]?.status !== "sent"
+      ),
+    [weeklyDigest.target_ids, weeklyDigestStatusByTarget]
+  );
+
+  const firstWeeklyFailedStatus = useMemo(
+    () =>
+      weeklyDigest.target_ids
+        .map((targetId) => weeklyDigestStatusByTarget[targetId])
+        .find(
+          (status) => status?.status === "failed" && !!status.error_message
+        ),
+    [weeklyDigest.target_ids, weeklyDigestStatusByTarget]
+  );
 
   const setReminderTextForOffset = (offset: number, text: string) => {
     setTextsByOffset((prev) => {
@@ -551,22 +635,54 @@ export function MeetingReminderTextsDialog({
         target_ids: weeklyDigest.target_ids,
         template: weeklyDigest.template.trim() || DEFAULT_WEEKLY_DIGEST_TEMPLATE,
       });
-      setWeeklyDigest((prev) => ({
-        ...prev,
-        enabled: saved.enabled,
-        day_of_week: saved.day_of_week,
-        time_local: saved.time_local,
-        target_ids: normalizeDigestTargetIds(saved.target_ids, telegramTargets),
-        template: saved.template?.trim() || DEFAULT_WEEKLY_DIGEST_TEMPLATE,
-      }));
+      applyWeeklyDigestSettings(saved);
       toastSuccess("Настройки недельного дайджеста сохранены");
-      onOpenChange(false);
     } catch (e) {
       const message = e instanceof Error ? e.message : "Ошибка сохранения";
       setError(message);
       toastError(message);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const refreshWeeklyDigestStatuses = async () => {
+    const snapshot = await api.getMeetingWeeklyDigestSettings();
+    applyWeeklyDigestSettings(snapshot);
+  };
+
+  const handleSendWeeklyPendingNow = async () => {
+    if (!weeklyDigest.enabled) {
+      setError("Включите авто-дайджест перед ручной отправкой");
+      return;
+    }
+    if (weeklyDigest.target_ids.length === 0) {
+      setError("Выберите хотя бы одну Telegram-группу для дайджеста");
+      return;
+    }
+
+    setSendingWeeklyPending(true);
+    setError(null);
+    try {
+      const result = await api.sendPendingMeetingWeeklyDigest(weeklyDigest.target_ids);
+
+      if (result.sent_count > 0) {
+        toastSuccess(`Дайджест отправлен в ${result.sent_count} групп(ы)`);
+      } else if (result.failed_count === 0) {
+        toastSuccess("Нет неотправленных групп для текущей недели");
+      }
+
+      if (result.failed_count > 0) {
+        toastError(`Ошибка отправки в ${result.failed_count} групп(ы)`);
+      }
+
+      await refreshWeeklyDigestStatuses();
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Ошибка отправки дайджеста";
+      setError(message);
+      toastError(message);
+    } finally {
+      setSendingWeeklyPending(false);
     }
   };
 
@@ -848,6 +964,44 @@ export function MeetingReminderTextsDialog({
                       </div>
                     </div>
 
+                    <div className="rounded-xl border border-border/60 bg-card px-3 py-2">
+                      <p className="text-2xs text-muted-foreground">
+                        {formatDigestWeekRange(weeklyDigestWeekStart, weeklyDigestWeekEnd)}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-8 rounded-lg text-2xs"
+                          onClick={handleSendWeeklyPendingNow}
+                          disabled={
+                            saving ||
+                            sendingWeeklyPending ||
+                            !weeklyDigest.enabled ||
+                            weeklyPendingTargetIds.length === 0
+                          }
+                        >
+                          {sendingWeeklyPending ? (
+                            <>
+                              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                              Отправка...
+                            </>
+                          ) : (
+                            `Отправить неотправленные сейчас (${weeklyPendingTargetIds.length})`
+                          )}
+                        </Button>
+                        <span className="text-2xs text-muted-foreground/80">
+                          Уже отправлено:{" "}
+                          {
+                            weeklyDigest.target_ids.filter(
+                              (targetId) =>
+                                weeklyDigestStatusByTarget[targetId]?.status === "sent"
+                            ).length
+                          }
+                        </span>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <Label className="text-2xs text-muted-foreground">День отправки</Label>
@@ -898,6 +1052,10 @@ export function MeetingReminderTextsDialog({
                         <div className="mt-1.5 max-h-44 overflow-y-auto rounded-xl border border-border/60 bg-muted/15 p-2 space-y-1.5">
                           {telegramTargets.map((target) => {
                             const selected = weeklyDigest.target_ids.includes(target.id);
+                            const statusEntry = weeklyDigestStatusByTarget[target.id];
+                            const status = statusEntry?.status ?? "pending";
+                            const statusLabel = WEEKLY_DIGEST_STATUS_LABELS[status];
+                            const statusTime = formatDigestStatusTime(statusEntry?.sent_at);
                             return (
                               <button
                                 key={target.id}
@@ -935,6 +1093,12 @@ export function MeetingReminderTextsDialog({
                                 <span className="flex-1 truncate font-medium">
                                   {target.label || `Chat ${target.chat_id}`}
                                 </span>
+                                <span
+                                  className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${WEEKLY_DIGEST_STATUS_CLASS[status]}`}
+                                >
+                                  {statusLabel}
+                                  {status === "sent" && statusTime ? ` · ${statusTime}` : ""}
+                                </span>
                                 {target.thread_id && (
                                   <span className="text-2xs text-muted-foreground">
                                     тема #{target.thread_id}
@@ -943,6 +1107,21 @@ export function MeetingReminderTextsDialog({
                               </button>
                             );
                           })}
+                        </div>
+                      )}
+                      {weeklyDigest.target_ids.some(
+                        (targetId) =>
+                          weeklyDigestStatusByTarget[targetId]?.status === "failed"
+                      ) && (
+                        <div className="mt-1 space-y-1">
+                          <p className="text-2xs text-destructive">
+                            Для статуса «Ошибка» нажмите «Отправить неотправленные сейчас».
+                          </p>
+                          {firstWeeklyFailedStatus?.error_message && (
+                            <p className="text-2xs text-destructive/80">
+                              Причина: {firstWeeklyFailedStatus.error_message}
+                            </p>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1010,7 +1189,11 @@ export function MeetingReminderTextsDialog({
             >
               Отмена
             </Button>
-            <Button type="button" onClick={handleSave} disabled={saving || loading}>
+            <Button
+              type="button"
+              onClick={handleSave}
+              disabled={saving || loading || sendingWeeklyPending}
+            >
               {saving ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

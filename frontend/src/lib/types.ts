@@ -344,8 +344,36 @@ export interface MeetingWeeklyDigestSettings {
   timezone: string;
   target_ids: string[];
   template: string;
+  delivery_week_start: string | null;
+  delivery_week_end: string | null;
+  target_statuses: MeetingWeeklyDigestTargetStatus[];
   updated_by_id: string | null;
   updated_at: string | null;
+}
+
+export type MeetingWeeklyDigestTargetDeliveryStatus = "pending" | "sent" | "failed";
+
+export interface MeetingWeeklyDigestTargetStatus {
+  target_id: string;
+  status: MeetingWeeklyDigestTargetDeliveryStatus;
+  sent_at: string | null;
+  error_message: string | null;
+  last_attempt_at: string | null;
+  target_label: string | null;
+  chat_id: number | null;
+  thread_id: number | null;
+}
+
+export interface MeetingWeeklyDigestSendResponse {
+  ok: boolean;
+  reason: string;
+  delivery_week_start: string;
+  delivery_week_end: string;
+  attempted: number;
+  sent_count: number;
+  failed_count: number;
+  skipped_sent_count: number;
+  target_results: MeetingWeeklyDigestTargetStatus[];
 }
 
 export interface AppSettingsValue {

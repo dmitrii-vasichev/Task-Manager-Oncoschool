@@ -153,6 +153,7 @@ reminder_service = ReminderService(bot=bot, session_maker=async_session)
 meeting_scheduler = MeetingSchedulerService(
     bot=bot, session_maker=async_session, zoom_service=zoom_service
 )
+app.state.meeting_scheduler = meeting_scheduler
 broadcast_scheduler = BroadcastSchedulerService(
     bot=bot,
     session_maker=async_session,
