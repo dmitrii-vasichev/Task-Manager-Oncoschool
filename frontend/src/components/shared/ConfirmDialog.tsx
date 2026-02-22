@@ -20,6 +20,7 @@ interface ConfirmDialogProps {
   cancelLabel?: string;
   variant?: "default" | "destructive";
   onConfirm: () => void;
+  onCancel?: () => void;
 }
 
 export function ConfirmDialog({
@@ -31,6 +32,7 @@ export function ConfirmDialog({
   cancelLabel = "Отмена",
   variant = "destructive",
   onConfirm,
+  onCancel,
 }: ConfirmDialogProps) {
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -42,7 +44,7 @@ export function ConfirmDialog({
           )}
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel className="rounded-xl">
+          <AlertDialogCancel className="rounded-xl" onClick={onCancel}>
             {cancelLabel}
           </AlertDialogCancel>
           <AlertDialogAction

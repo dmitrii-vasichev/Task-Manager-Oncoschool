@@ -25,6 +25,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import type { Meeting, TeamMember } from "@/lib/types";
 import { DAY_OF_WEEK_SHORT, RECURRENCE_LABELS } from "@/lib/types";
@@ -76,10 +77,23 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
   const hasMeetingDate = !!meeting.meeting_date;
   const [deleting, setDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showNotifyParticipantsDialog, setShowNotifyParticipantsDialog] = useState(false);
   const safeJoinUrl = sanitizeZoomJoinUrl(
     meeting.zoom_join_url,
     meeting.zoom_meeting_id
   );
+
+  const handleDelete = async (notifyParticipants: boolean) => {
+    if (!onDelete || deleting) return;
+    setDeleting(true);
+    try {
+      await onDelete(meeting, { notifyParticipants });
+    } finally {
+      setDeleting(false);
+      setShowNotifyParticipantsDialog(false);
+      setShowDeleteDialog(false);
+    }
+  };
 
   const participants = useMemo(() => {
     const byId = new Map(members.map((m) => [m.id, m]));
@@ -465,17 +479,9 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
                 variant="destructive"
                 className="rounded-xl"
                 disabled={deleting}
-                onClick={async () => {
-                  setDeleting(true);
-                  try {
-                    const notifyParticipants = window.confirm(
-                      "Оповестить участников об удалении встречи в выбранные Telegram-группы? Нажмите «ОК», чтобы оповестить, или «Отмена», чтобы удалить без оповещения."
-                    );
-                    await onDelete(meeting, { notifyParticipants });
-                  } finally {
-                    setDeleting(false);
-                    setShowDeleteDialog(false);
-                  }
+                onClick={() => {
+                  setShowDeleteDialog(false);
+                  setShowNotifyParticipantsDialog(true);
                 }}
               >
                 {deleting ? (
@@ -494,6 +500,21 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
           </DialogContent>
         </Dialog>
       )}
+      <ConfirmDialog
+        open={showNotifyParticipantsDialog}
+        onOpenChange={setShowNotifyParticipantsDialog}
+        title="Оповестить участников?"
+        description="Отправить сообщение об удалении встречи в выбранные Telegram-группы."
+        confirmLabel="Оповестить и удалить"
+        cancelLabel="Удалить без оповещения"
+        variant="default"
+        onConfirm={() => {
+          void handleDelete(true);
+        }}
+        onCancel={() => {
+          void handleDelete(false);
+        }}
+      />
     </>
   );
 }

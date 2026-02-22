@@ -32,6 +32,7 @@ import {
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { DatePicker } from "@/components/shared/DatePicker";
 import { TimePicker } from "@/components/shared/TimePicker";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ParticipantsPickerDialog } from "@/components/meetings/ParticipantsPickerDialog";
 import type {
   MeetingSchedule,
@@ -178,6 +179,10 @@ export function ScheduleForm({
     return "";
   });
   const [participantPickerOpen, setParticipantPickerOpen] = useState(false);
+  const [notifyParticipantsDialogOpen, setNotifyParticipantsDialogOpen] = useState(false);
+  const [pendingSaveData, setPendingSaveData] = useState<MeetingScheduleCreateRequest | null>(
+    null
+  );
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -235,6 +240,34 @@ export function ScheduleForm({
     recurrence === "monthly_last_workday";
   const isOneTimeMode = recurrence === "one_time";
   const isOnDemandMode = recurrence === "on_demand";
+
+  const submitSchedule = async (data: MeetingScheduleCreateRequest) => {
+    try {
+      setSaving(true);
+      setError(null);
+      await onSave(data);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка сохранения");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleNotifyParticipantsChoice = (shouldNotifyParticipants: boolean) => {
+    if (!pendingSaveData || saving) return;
+    const dataWithNotificationPreference: MeetingScheduleCreateRequest = {
+      ...pendingSaveData,
+      notify_participants: shouldNotifyParticipants,
+    };
+    setPendingSaveData(null);
+    setNotifyParticipantsDialogOpen(false);
+    void submitSchedule(dataWithNotificationPreference);
+  };
+
+  const handleNotifyParticipantsDialogOpenChange = (open: boolean) => {
+    setNotifyParticipantsDialogOpen(open);
+  };
 
   const handleSubmit = async () => {
     if (!title.trim()) {
@@ -302,26 +335,21 @@ export function ScheduleForm({
       }
 
       if (isEdit) {
-        const shouldNotifyParticipants = window.confirm(
-          "Оповестить участников об изменениях встречи в выбранные Telegram-группы?"
-        );
-        data.notify_participants = shouldNotifyParticipants;
+        setPendingSaveData(data);
+        setNotifyParticipantsDialogOpen(true);
+        return;
       }
 
-      setSaving(true);
-      setError(null);
-      await onSave(data);
-      onClose();
+      await submitSchedule(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка сохранения");
-    } finally {
-      setSaving(false);
     }
   };
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
+    <>
+      <Dialog open onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-heading">
             {isEdit ? "Редактировать встречу" : "Новая встреча"}
@@ -781,7 +809,19 @@ export function ScheduleForm({
             </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+      <ConfirmDialog
+        open={notifyParticipantsDialogOpen}
+        onOpenChange={handleNotifyParticipantsDialogOpenChange}
+        title="Оповестить участников?"
+        description="Отправить сообщение об изменениях встречи в выбранные Telegram-группы."
+        confirmLabel="Оповестить"
+        cancelLabel="Без оповещения"
+        variant="default"
+        onConfirm={() => handleNotifyParticipantsChoice(true)}
+        onCancel={() => handleNotifyParticipantsChoice(false)}
+      />
+    </>
   );
 }

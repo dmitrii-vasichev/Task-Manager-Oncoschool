@@ -21,6 +21,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import type { Meeting, MeetingStatus } from "@/lib/types";
 import { MEETING_STATUS_LABELS } from "@/lib/types";
 import { formatMeetingHeaderDateTime } from "@/lib/meetingDateTime";
@@ -51,6 +52,19 @@ export function MeetingHeader({
   const [titleValue, setTitleValue] = useState(meeting.title || "");
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [notifyParticipantsDialogOpen, setNotifyParticipantsDialogOpen] = useState(false);
+
+  const handleDelete = async (notifyParticipants: boolean) => {
+    if (!onDelete || deleting) return;
+    setDeleting(true);
+    try {
+      await onDelete({ notifyParticipants });
+    } finally {
+      setDeleting(false);
+      setNotifyParticipantsDialogOpen(false);
+      setConfirmDelete(false);
+    }
+  };
 
   const handleTitleSave = async () => {
     if (titleValue.trim() && titleValue !== meeting.title) {
@@ -71,7 +85,8 @@ export function MeetingHeader({
   const statusStyle = STATUS_STYLES[effectiveStatus] || STATUS_STYLES.scheduled;
 
   return (
-    <div className="space-y-4 animate-fade-in-up stagger-1">
+    <>
+      <div className="space-y-4 animate-fade-in-up stagger-1">
       {/* Back link */}
       <Link
         href="/meetings"
@@ -180,18 +195,7 @@ export function MeetingHeader({
                   {meeting.zoom_meeting_id ? "Удалить встречу и Zoom-конференцию?" : "Удалить встречу?"}
                 </span>
                 <button
-                  onClick={async () => {
-                    setDeleting(true);
-                    try {
-                      const notifyParticipants = window.confirm(
-                        "Оповестить участников об удалении встречи в выбранные Telegram-группы? Нажмите «ОК», чтобы оповестить, или «Отмена», чтобы удалить без оповещения."
-                      );
-                      await onDelete({ notifyParticipants });
-                    } finally {
-                      setDeleting(false);
-                      setConfirmDelete(false);
-                    }
-                  }}
+                  onClick={() => setNotifyParticipantsDialogOpen(true)}
                   disabled={deleting}
                   className="text-xs font-semibold text-destructive hover:text-destructive/80 disabled:opacity-50"
                 >
@@ -217,6 +221,22 @@ export function MeetingHeader({
           </div>
         )}
       </div>
-    </div>
+      </div>
+      <ConfirmDialog
+        open={notifyParticipantsDialogOpen}
+        onOpenChange={setNotifyParticipantsDialogOpen}
+        title="Оповестить участников?"
+        description="Отправить сообщение об удалении встречи в выбранные Telegram-группы."
+        confirmLabel="Оповестить и удалить"
+        cancelLabel="Удалить без оповещения"
+        variant="default"
+        onConfirm={() => {
+          void handleDelete(true);
+        }}
+        onCancel={() => {
+          void handleDelete(false);
+        }}
+      />
+    </>
   );
 }
