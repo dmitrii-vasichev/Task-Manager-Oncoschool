@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Video,
@@ -78,18 +78,21 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
   const [deleting, setDeleting] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showNotifyParticipantsDialog, setShowNotifyParticipantsDialog] = useState(false);
+  const deleteInFlightRef = useRef(false);
   const safeJoinUrl = sanitizeZoomJoinUrl(
     meeting.zoom_join_url,
     meeting.zoom_meeting_id
   );
 
   const handleDelete = async (notifyParticipants: boolean) => {
-    if (!onDelete || deleting) return;
+    if (!onDelete || deleting || deleteInFlightRef.current) return;
+    deleteInFlightRef.current = true;
     setDeleting(true);
     try {
       await onDelete(meeting, { notifyParticipants });
     } finally {
       setDeleting(false);
+      deleteInFlightRef.current = false;
       setShowNotifyParticipantsDialog(false);
       setShowDeleteDialog(false);
     }
@@ -507,6 +510,8 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
         description="Отправить сообщение об удалении встречи в выбранные Telegram-группы."
         confirmLabel="Оповестить и удалить"
         cancelLabel="Удалить без оповещения"
+        confirmDisabled={deleting}
+        cancelDisabled={deleting}
         variant="default"
         onConfirm={() => {
           void handleDelete(true);

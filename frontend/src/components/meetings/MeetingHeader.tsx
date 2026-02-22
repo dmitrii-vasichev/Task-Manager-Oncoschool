@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -53,14 +53,17 @@ export function MeetingHeader({
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [notifyParticipantsDialogOpen, setNotifyParticipantsDialogOpen] = useState(false);
+  const deleteInFlightRef = useRef(false);
 
   const handleDelete = async (notifyParticipants: boolean) => {
-    if (!onDelete || deleting) return;
+    if (!onDelete || deleting || deleteInFlightRef.current) return;
+    deleteInFlightRef.current = true;
     setDeleting(true);
     try {
       await onDelete({ notifyParticipants });
     } finally {
       setDeleting(false);
+      deleteInFlightRef.current = false;
       setNotifyParticipantsDialogOpen(false);
       setConfirmDelete(false);
     }
@@ -229,6 +232,8 @@ export function MeetingHeader({
         description="Отправить сообщение об удалении встречи в выбранные Telegram-группы."
         confirmLabel="Оповестить и удалить"
         cancelLabel="Удалить без оповещения"
+        confirmDisabled={deleting}
+        cancelDisabled={deleting}
         variant="default"
         onConfirm={() => {
           void handleDelete(true);

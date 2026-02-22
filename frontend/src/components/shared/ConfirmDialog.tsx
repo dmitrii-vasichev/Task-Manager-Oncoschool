@@ -19,6 +19,8 @@ interface ConfirmDialogProps {
   description?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
+  confirmDisabled?: boolean;
+  cancelDisabled?: boolean;
   variant?: "default" | "destructive";
   onConfirm: () => void;
   onCancel?: () => void;
@@ -31,6 +33,8 @@ export function ConfirmDialog({
   description,
   confirmLabel = "Удалить",
   cancelLabel = "Отмена",
+  confirmDisabled = false,
+  cancelDisabled = false,
   variant = "destructive",
   onConfirm,
   onCancel,
@@ -45,11 +49,16 @@ export function ConfirmDialog({
           )}
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel className="rounded-xl" onClick={onCancel}>
+          <AlertDialogCancel
+            className="rounded-xl"
+            onClick={onCancel}
+            disabled={cancelDisabled}
+          >
             {cancelLabel}
           </AlertDialogCancel>
           <AlertDialogAction
             onClick={onConfirm}
+            disabled={confirmDisabled}
             className={`rounded-xl ${
               variant === "destructive"
                 ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"

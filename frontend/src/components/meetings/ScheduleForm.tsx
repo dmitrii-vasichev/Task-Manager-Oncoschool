@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Loader2,
   Bell,
@@ -185,6 +185,7 @@ export function ScheduleForm({
   );
 
   const [saving, setSaving] = useState(false);
+  const submitInFlightRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   const membersById = useMemo(
@@ -257,6 +258,8 @@ export function ScheduleForm({
   const isOnDemandMode = recurrence === "on_demand";
 
   const submitSchedule = async (data: MeetingScheduleCreateRequest) => {
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     try {
       setSaving(true);
       setError(null);
@@ -266,11 +269,12 @@ export function ScheduleForm({
       setError(e instanceof Error ? e.message : "Ошибка сохранения");
     } finally {
       setSaving(false);
+      submitInFlightRef.current = false;
     }
   };
 
   const handleNotifyParticipantsChoice = (shouldNotifyParticipants: boolean) => {
-    if (!pendingSaveData || saving) return;
+    if (!pendingSaveData || saving || submitInFlightRef.current) return;
     const dataWithNotificationPreference: MeetingScheduleCreateRequest = {
       ...pendingSaveData,
       notify_participants: shouldNotifyParticipants,
@@ -851,6 +855,8 @@ export function ScheduleForm({
         }
         confirmLabel="Оповестить"
         cancelLabel="Без оповещения"
+        confirmDisabled={saving}
+        cancelDisabled={saving}
         variant="default"
         onConfirm={() => handleNotifyParticipantsChoice(true)}
         onCancel={() => handleNotifyParticipantsChoice(false)}
