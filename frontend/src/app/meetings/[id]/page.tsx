@@ -237,12 +237,29 @@ export default function MeetingDetailPage() {
 
   const handleUpdateSchedule = async (data: MeetingScheduleCreateRequest) => {
     if (!schedule) return;
+    const previousUpdatedAt = schedule.updated_at;
     try {
       const updated = await api.updateMeetingSchedule(schedule.id, data);
       setSchedule(updated);
       await fetchData();
       toastSuccess("Настройки встречи обновлены");
     } catch (e) {
+      const isNetworkError =
+        e instanceof Error &&
+        (e.message.includes("Сервер недоступен") || e.message.includes("Failed to fetch"));
+      if (isNetworkError) {
+        try {
+          const latest = await api.getMeetingSchedule(schedule.id);
+          if (latest.updated_at !== previousUpdatedAt) {
+            setSchedule(latest);
+            await fetchData();
+            toastSuccess("Настройки встречи обновлены");
+            return;
+          }
+        } catch {
+          // Keep the original error handling below.
+        }
+      }
       toastError(e instanceof Error ? e.message : "Ошибка обновления расписания");
       throw e;
     }
