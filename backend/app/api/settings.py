@@ -394,6 +394,8 @@ class MeetingWeeklyDigestSettingsResponse(BaseModel):
     template: str = DEFAULT_MEETING_WEEKLY_DIGEST_TEMPLATE
     delivery_week_start: str | None = None
     delivery_week_end: str | None = None
+    preview_meetings_count: int = 0
+    preview_meetings_block: str = ""
     target_statuses: list[MeetingWeeklyDigestTargetStatusResponse] = Field(default_factory=list)
     updated_by_id: uuid.UUID | None = None
     updated_at: datetime | None = None
@@ -454,6 +456,8 @@ def _weekly_snapshot_to_response(snapshot: dict) -> MeetingWeeklyDigestSettingsR
         template=str(snapshot.get("template") or DEFAULT_MEETING_WEEKLY_DIGEST_TEMPLATE),
         delivery_week_start=snapshot.get("delivery_week_start"),
         delivery_week_end=snapshot.get("delivery_week_end"),
+        preview_meetings_count=int(snapshot.get("preview_meetings_count") or 0),
+        preview_meetings_block=str(snapshot.get("preview_meetings_block") or ""),
         target_statuses=target_statuses,
         updated_by_id=snapshot.get("updated_by_id"),
         updated_at=snapshot.get("updated_at"),

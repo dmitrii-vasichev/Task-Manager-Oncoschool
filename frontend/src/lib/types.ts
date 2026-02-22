@@ -346,6 +346,8 @@ export interface MeetingWeeklyDigestSettings {
   template: string;
   delivery_week_start: string | null;
   delivery_week_end: string | null;
+  preview_meetings_count: number;
+  preview_meetings_block: string;
   target_statuses: MeetingWeeklyDigestTargetStatus[];
   updated_by_id: string | null;
   updated_at: string | null;

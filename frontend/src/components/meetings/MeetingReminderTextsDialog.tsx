@@ -51,6 +51,7 @@ const REMINDER_OPTIONS = [120, 60, 30, 15, 0];
 const DEFAULT_LINK_LABEL = "Подключиться ↗";
 const DEFAULT_WEEKLY_DIGEST_TEMPLATE =
   "Наши встречи с {week_start} по {week_end}:\n\n{meetings}";
+const DEFAULT_WEEKLY_DIGEST_EMPTY_MEETINGS = "На следующей неделе встречи не запланированы.";
 const WEEKLY_DIGEST_DAY_OPTIONS = [
   { value: 1, label: "Понедельник" },
   { value: 2, label: "Вторник" },
@@ -198,6 +199,20 @@ function formatDigestWeekRange(
   return `Период дайджеста: ${weekStart} — ${weekEnd}`;
 }
 
+function formatDigestTemplateDate(
+  value: string | null | undefined,
+  mode: "short" | "long"
+): string {
+  const raw = String(value ?? "").trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (match) {
+    const [, year, month, day] = match;
+    return mode === "long" ? `${day}.${month}.${year}` : `${day}.${month}`;
+  }
+  if (!raw) return mode === "long" ? "дд.мм.гггг" : "дд.мм";
+  return raw;
+}
+
 function applyReminderTemplate(
   template: string,
   values: {
@@ -310,6 +325,10 @@ export function MeetingReminderTextsDialog({
   });
   const [weeklyDigestWeekStart, setWeeklyDigestWeekStart] = useState<string | null>(null);
   const [weeklyDigestWeekEnd, setWeeklyDigestWeekEnd] = useState<string | null>(null);
+  const [weeklyPreviewMeetingsCount, setWeeklyPreviewMeetingsCount] = useState(0);
+  const [weeklyPreviewMeetingsBlock, setWeeklyPreviewMeetingsBlock] = useState(
+    DEFAULT_WEEKLY_DIGEST_EMPTY_MEETINGS
+  );
   const [weeklyDigestStatusByTarget, setWeeklyDigestStatusByTarget] = useState<
     Record<string, MeetingWeeklyDigestTargetStatus>
   >({});
@@ -334,6 +353,14 @@ export function MeetingReminderTextsDialog({
     });
     setWeeklyDigestWeekStart(digest.delivery_week_start ?? null);
     setWeeklyDigestWeekEnd(digest.delivery_week_end ?? null);
+    setWeeklyPreviewMeetingsCount(
+      Number.isFinite(digest.preview_meetings_count)
+        ? Math.max(0, Math.trunc(digest.preview_meetings_count))
+        : 0
+    );
+    setWeeklyPreviewMeetingsBlock(
+      digest.preview_meetings_block?.trim() || DEFAULT_WEEKLY_DIGEST_EMPTY_MEETINGS
+    );
     setWeeklyDigestStatusByTarget(indexWeeklyDigestStatuses(digest.target_statuses));
   }, [telegramTargets]);
 
@@ -574,26 +601,22 @@ export function MeetingReminderTextsDialog({
   }, [activeReminderOffset, activeReminderText, previewTemplateValues]);
 
   const weeklyDigestPreview = useMemo(() => {
-    const meetingsBlock = [
-      "<b>Пн 11:00 по мск</b>",
-      "Планерка по продажам",
-      "@Danil126 @Valentina_Parkosidi @oksigon",
-      "",
-      "<b>Вт 15:00 по мск</b>",
-      "Планерка технического отдела и отдела маркетинга",
-      "@TatjanaTsoy @darya_pleshkova @Nasten25",
-    ].join("\n");
-
     const template = weeklyDigest.template.trim() || DEFAULT_WEEKLY_DIGEST_TEMPLATE;
     return applyWeeklyDigestTemplate(template, {
-      weekStart: "23.02",
-      weekEnd: "01.03",
-      weekStartDate: "23.02.2026",
-      weekEndDate: "01.03.2026",
-      meetingsCount: "2",
-      meetings: meetingsBlock,
+      weekStart: formatDigestTemplateDate(weeklyDigestWeekStart, "short"),
+      weekEnd: formatDigestTemplateDate(weeklyDigestWeekEnd, "short"),
+      weekStartDate: formatDigestTemplateDate(weeklyDigestWeekStart, "long"),
+      weekEndDate: formatDigestTemplateDate(weeklyDigestWeekEnd, "long"),
+      meetingsCount: String(weeklyPreviewMeetingsCount),
+      meetings: weeklyPreviewMeetingsBlock,
     });
-  }, [weeklyDigest.template]);
+  }, [
+    weeklyDigest.template,
+    weeklyDigestWeekStart,
+    weeklyDigestWeekEnd,
+    weeklyPreviewMeetingsCount,
+    weeklyPreviewMeetingsBlock,
+  ]);
 
   const toggleWeeklyDigestTarget = (targetId: string) => {
     setWeeklyDigest((prev) => ({

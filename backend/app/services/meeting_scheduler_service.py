@@ -574,6 +574,13 @@ class MeetingSchedulerService:
                     targets_by_id=targets_by_id,
                     state=normalized_state,
                 )
+                digest_items = await self._build_weekly_digest_items(
+                    session,
+                    week_start=week_start,
+                    week_end=week_end,
+                    now_utc=now_utc,
+                )
+                preview_meetings_block = self._format_weekly_digest_items_block(digest_items)
 
                 return {
                     "enabled": normalized_settings["enabled"],
@@ -584,6 +591,8 @@ class MeetingSchedulerService:
                     "template": normalized_settings["template"],
                     "delivery_week_start": week_start.isoformat(),
                     "delivery_week_end": week_end.isoformat(),
+                    "preview_meetings_count": len(digest_items),
+                    "preview_meetings_block": preview_meetings_block,
                     "target_statuses": target_statuses,
                     "updated_by_id": settings_setting.updated_by_id if settings_setting else None,
                     "updated_at": settings_setting.updated_at if settings_setting else None,
