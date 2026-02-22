@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Dialog,
   DialogContent,
@@ -736,8 +737,12 @@ export function MeetingReminderTextsDialog({
                       <Eye className="h-3.5 w-3.5" />
                       Предпросмотр
                     </div>
-                    <div className="max-h-[420px] overflow-auto rounded-xl border border-border/40 bg-muted/20 p-4">
-                      <Skeleton className="ml-auto h-[130px] w-[95%] rounded-2xl" />
+                    <div className="rounded-xl border border-border/40 bg-muted/20">
+                      <ScrollArea className="h-[min(44vh,420px)]">
+                        <div className="p-4">
+                          <Skeleton className="ml-auto h-[130px] w-[95%] rounded-2xl" />
+                        </div>
+                      </ScrollArea>
                     </div>
                   </div>
                 </div>
@@ -921,11 +926,15 @@ export function MeetingReminderTextsDialog({
                       <Eye className="h-3.5 w-3.5" />
                       {`Предпросмотр (${formatReminderOffsetLabel(activeReminderOffset)})`}
                     </div>
-                    <div className="max-h-[420px] overflow-auto rounded-xl border border-border/40 bg-muted/20 p-4">
-                      <div
-                        className="ml-auto max-w-[96%] rounded-2xl bg-primary/10 px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words"
-                        dangerouslySetInnerHTML={renderTelegramHtmlPreview(reminderPreviewWithZoom)}
-                      />
+                    <div className="rounded-xl border border-border/40 bg-muted/20">
+                      <ScrollArea className="h-[min(44vh,420px)]">
+                        <div className="p-4">
+                          <div
+                            className="ml-auto max-w-[96%] rounded-2xl bg-primary/10 px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words"
+                            dangerouslySetInnerHTML={renderTelegramHtmlPreview(reminderPreviewWithZoom)}
+                          />
+                        </div>
+                      </ScrollArea>
                     </div>
                   </div>
                 </div>
@@ -1162,11 +1171,15 @@ export function MeetingReminderTextsDialog({
                       <Eye className="h-3.5 w-3.5" />
                       Предпросмотр дайджеста
                     </div>
-                    <div className="max-h-[520px] overflow-auto rounded-xl border border-border/40 bg-muted/20 p-4">
-                      <div
-                        className="ml-auto max-w-[96%] rounded-2xl bg-primary/10 px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words"
-                        dangerouslySetInnerHTML={renderTelegramHtmlPreview(weeklyDigestPreview)}
-                      />
+                    <div className="rounded-xl border border-border/40 bg-muted/20">
+                      <ScrollArea className="h-[min(52vh,520px)]">
+                        <div className="p-4">
+                          <div
+                            className="ml-auto max-w-[96%] rounded-2xl bg-primary/10 px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words"
+                            dangerouslySetInnerHTML={renderTelegramHtmlPreview(weeklyDigestPreview)}
+                          />
+                        </div>
+                      </ScrollArea>
                     </div>
                   </div>
                 </div>
