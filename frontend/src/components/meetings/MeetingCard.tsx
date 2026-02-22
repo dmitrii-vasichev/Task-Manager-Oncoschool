@@ -63,7 +63,10 @@ interface MeetingCardProps {
   variant: "upcoming" | "past";
   members?: TeamMember[];
   isModerator?: boolean;
-  onDelete?: (meeting: Meeting) => Promise<void>;
+  onDelete?: (
+    meeting: Meeting,
+    options?: { notifyParticipants?: boolean }
+  ) => Promise<void>;
 }
 
 export function MeetingCard({ meeting, variant, members = [], isModerator, onDelete }: MeetingCardProps) {
@@ -465,7 +468,10 @@ export function MeetingCard({ meeting, variant, members = [], isModerator, onDel
                 onClick={async () => {
                   setDeleting(true);
                   try {
-                    await onDelete(meeting);
+                    const notifyParticipants = window.confirm(
+                      "Оповестить участников об удалении встречи в выбранные Telegram-группы? Нажмите «ОК», чтобы оповестить, или «Отмена», чтобы удалить без оповещения."
+                    );
+                    await onDelete(meeting, { notifyParticipants });
                   } finally {
                     setDeleting(false);
                     setShowDeleteDialog(false);

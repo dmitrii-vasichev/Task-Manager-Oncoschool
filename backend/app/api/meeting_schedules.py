@@ -1,8 +1,9 @@
+import html
 import logging
 import uuid
 from datetime import date, datetime, time, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import delete as sa_delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from zoneinfo import ZoneInfo
@@ -34,6 +35,15 @@ VALID_RECURRENCES = {
 RECURRING_RECURRENCES = {"weekly", "biweekly", "monthly_last_workday"}
 ALLOWED_REMINDER_OFFSETS_MINUTES = (0, 15, 30, 60, 120)
 DEFAULT_REMINDER_OFFSETS_MINUTES = [60, 0]
+RUSSIAN_WEEKDAYS_LONG = {
+    1: "Понедельник",
+    2: "Вторник",
+    3: "Среда",
+    4: "Четверг",
+    5: "Пятница",
+    6: "Суббота",
+    7: "Воскресенье",
+}
 
 
 def _normalize_reminder_offsets(
@@ -267,6 +277,274 @@ def _calc_next_occurrence_datetime(schedule: MeetingSchedule) -> datetime | None
         else None
     ) or schedule.time_utc
     return datetime.combine(next_date, effective_time)
+
+
+def _to_utc_aware(dt_value: datetime | None) -> datetime | None:
+    if not dt_value:
+        return None
+    if dt_value.tzinfo is None:
+        return dt_value.replace(tzinfo=ZoneInfo("UTC"))
+    return dt_value.astimezone(ZoneInfo("UTC"))
+
+
+def _format_datetime_msk(dt_value: datetime | None) -> str | None:
+    dt_utc = _to_utc_aware(dt_value)
+    if not dt_utc:
+        return None
+    dt_msk = dt_utc.astimezone(ZoneInfo("Europe/Moscow"))
+    weekday = RUSSIAN_WEEKDAYS_LONG.get(dt_msk.isoweekday(), "")
+    if weekday:
+        return f"{weekday}, {dt_msk.strftime('%d.%m.%Y %H:%M')} МСК"
+    return dt_msk.strftime("%d.%m.%Y %H:%M МСК")
+
+
+def _copy_telegram_targets(raw_targets: list | None) -> list[dict]:
+    copied_targets: list[dict] = []
+    for target in raw_targets or []:
+        if not isinstance(target, dict):
+            continue
+        copied_targets.append(
+            {
+                "chat_id": target.get("chat_id"),
+                "thread_id": target.get("thread_id"),
+            }
+        )
+    return copied_targets
+
+
+def _build_schedule_notification_snapshot(schedule: MeetingSchedule) -> dict[str, object]:
+    return {
+        "title": schedule.title,
+        "participant_ids": list(schedule.participant_ids or []),
+        "telegram_targets": _copy_telegram_targets(schedule.telegram_targets),
+        "next_occurrence_skip": bool(schedule.next_occurrence_skip),
+        "next_occurrence_time_override": schedule.next_occurrence_time_override,
+        "next_occurrence_dt": _calc_next_occurrence_datetime(schedule),
+    }
+
+
+def _extract_unique_notification_targets(raw_targets: list | None) -> list[tuple[int, int | None]]:
+    unique_targets: list[tuple[int, int | None]] = []
+    seen: set[tuple[int, int | None]] = set()
+
+    for target in raw_targets or []:
+        if not isinstance(target, dict):
+            continue
+
+        chat_raw = target.get("chat_id")
+        if chat_raw in (None, ""):
+            continue
+        try:
+            chat_id = int(chat_raw)
+        except (TypeError, ValueError):
+            continue
+
+        thread_raw = target.get("thread_id")
+        thread_id: int | None = None
+        if thread_raw not in (None, ""):
+            try:
+                thread_id = int(thread_raw)
+            except (TypeError, ValueError):
+                continue
+
+        target_key = (chat_id, thread_id)
+        if target_key in seen:
+            continue
+        seen.add(target_key)
+        unique_targets.append(target_key)
+
+    return unique_targets
+
+
+async def _build_participants_mentions(
+    session: AsyncSession,
+    participant_ids: list[uuid.UUID],
+) -> str:
+    ordered_ids: list[uuid.UUID] = []
+    seen_ids: set[uuid.UUID] = set()
+    for participant_id in participant_ids:
+        if participant_id in seen_ids:
+            continue
+        seen_ids.add(participant_id)
+        ordered_ids.append(participant_id)
+
+    if not ordered_ids:
+        return ""
+
+    stmt = select(TeamMember).where(
+        TeamMember.id.in_(ordered_ids),
+        TeamMember.is_active.is_(True),
+    )
+    result = await session.execute(stmt)
+    members = list(result.scalars().all())
+    members_by_id = {member.id: member for member in members}
+
+    mentions: list[str] = []
+    seen_usernames: set[str] = set()
+    for participant_id in ordered_ids:
+        member = members_by_id.get(participant_id)
+        if not member:
+            continue
+        username = (member.telegram_username or "").strip().lstrip("@")
+        if not username:
+            continue
+        username_key = username.casefold()
+        if username_key in seen_usernames:
+            continue
+        seen_usernames.add(username_key)
+        mentions.append(f"@{username}")
+
+    return " ".join(mentions)
+
+
+def _detect_schedule_change_kind(
+    previous_snapshot: dict[str, object],
+    schedule: MeetingSchedule | None,
+    *,
+    deleted: bool,
+) -> str:
+    if deleted:
+        return "deleted"
+    if not schedule:
+        return "updated"
+
+    previous_skip = bool(previous_snapshot.get("next_occurrence_skip", False))
+    current_skip = bool(schedule.next_occurrence_skip)
+    if not previous_skip and current_skip:
+        return "cancel_next"
+
+    previous_override = previous_snapshot.get("next_occurrence_time_override")
+    current_override = schedule.next_occurrence_time_override
+    if previous_override != current_override and current_override is not None:
+        return "reschedule_next"
+
+    previous_next = previous_snapshot.get("next_occurrence_dt")
+    current_next = _calc_next_occurrence_datetime(schedule)
+    if isinstance(previous_next, datetime) and isinstance(current_next, datetime):
+        if previous_next != current_next:
+            return "reschedule_next"
+
+    return "updated"
+
+
+def _build_schedule_change_message_html(
+    *,
+    previous_snapshot: dict[str, object],
+    schedule: MeetingSchedule | None,
+    deleted: bool,
+    participants_mentions: str,
+) -> str:
+    title_source = (
+        schedule.title
+        if schedule and schedule.title
+        else str(previous_snapshot.get("title") or "")
+    )
+    safe_title = html.escape(title_source.strip() or "Встреча")
+    change_kind = _detect_schedule_change_kind(
+        previous_snapshot,
+        schedule,
+        deleted=deleted,
+    )
+
+    lines = [f"Добрый день! По встрече <b>{safe_title}</b> произошли изменения."]
+    if change_kind == "deleted":
+        lines.append("Расписание удалено, новые повторения больше не будут создаваться.")
+    elif change_kind == "cancel_next":
+        lines.append("Ближайшая встреча отменена.")
+    elif change_kind == "reschedule_next":
+        lines.append("Ближайшая встреча перенесена.")
+    else:
+        lines.append("Расписание встречи обновлено.")
+
+    previous_next = previous_snapshot.get("next_occurrence_dt")
+    previous_next_label = _format_datetime_msk(
+        previous_next if isinstance(previous_next, datetime) else None
+    )
+    current_next = None if deleted or not schedule else _calc_next_occurrence_datetime(schedule)
+    current_next_label = _format_datetime_msk(current_next)
+
+    if previous_next_label and (deleted or previous_next_label != current_next_label):
+        lines.append(f"Было: <b>{html.escape(previous_next_label)}</b>")
+
+    if current_next_label and not deleted:
+        prefix = (
+            "Стало"
+            if previous_next_label and previous_next_label != current_next_label
+            else "Ближайшая встреча"
+        )
+        lines.append(f"{prefix}: <b>{html.escape(current_next_label)}</b>")
+
+    if participants_mentions:
+        lines.append(f"Участники: {participants_mentions}")
+
+    return "\n".join(lines)
+
+
+async def _notify_schedule_change(
+    request: Request,
+    session: AsyncSession,
+    *,
+    previous_snapshot: dict[str, object],
+    schedule: MeetingSchedule | None,
+    deleted: bool,
+) -> None:
+    bot = getattr(request.app.state, "bot", None)
+    if not bot:
+        logger.warning("Telegram bot unavailable, skip schedule change notification")
+        return
+
+    raw_targets = (
+        schedule.telegram_targets
+        if schedule is not None
+        else previous_snapshot.get("telegram_targets")
+    )
+    targets = _extract_unique_notification_targets(
+        raw_targets if isinstance(raw_targets, list) else []
+    )
+    if not targets:
+        logger.info("No telegram targets configured for schedule change notification")
+        return
+
+    participant_ids_raw = (
+        list(schedule.participant_ids or [])
+        if schedule is not None
+        else list(previous_snapshot.get("participant_ids") or [])
+    )
+    participant_ids: list[uuid.UUID] = []
+    for participant_id in participant_ids_raw:
+        if isinstance(participant_id, uuid.UUID):
+            participant_ids.append(participant_id)
+            continue
+        try:
+            participant_ids.append(uuid.UUID(str(participant_id)))
+        except (TypeError, ValueError):
+            continue
+
+    participants_mentions = await _build_participants_mentions(session, participant_ids)
+    message_html = _build_schedule_change_message_html(
+        previous_snapshot=previous_snapshot,
+        schedule=schedule,
+        deleted=deleted,
+        participants_mentions=participants_mentions,
+    )
+
+    for chat_id, thread_id in targets:
+        try:
+            kwargs = {
+                "chat_id": chat_id,
+                "text": message_html,
+                "parse_mode": "HTML",
+            }
+            if thread_id is not None:
+                kwargs["message_thread_id"] = thread_id
+            await bot.send_message(**kwargs)
+        except Exception as e:
+            logger.warning(
+                "Failed to send schedule change notification to chat %s thread %s: %s",
+                chat_id,
+                thread_id,
+                e,
+            )
 
 
 async def _sync_next_scheduled_meeting(
@@ -717,7 +995,7 @@ async def update_schedule(
     schedule_id: uuid.UUID,
     data: MeetingScheduleUpdate,
     request: Request,
-    _: TeamMember = Depends(require_moderator),
+    member: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
 ):
     """Update a meeting schedule (moderator only)."""
@@ -728,6 +1006,12 @@ async def update_schedule(
     previous_recurrence = schedule.recurrence
 
     update_data = data.model_dump(exclude_unset=True)
+    notify_participants = bool(update_data.pop("notify_participants", False))
+    notification_snapshot = (
+        _build_schedule_notification_snapshot(schedule)
+        if notify_participants
+        else None
+    )
 
     new_recurrence = update_data.get("recurrence", schedule.recurrence)
     if new_recurrence not in VALID_RECURRENCES:
@@ -1062,13 +1346,31 @@ async def update_schedule(
         await _sync_next_scheduled_meeting(session, schedule, zoom_service)
 
     await session.commit()
+    if notify_participants and notification_snapshot:
+        try:
+            await _notify_schedule_change(
+                request,
+                session,
+                previous_snapshot=notification_snapshot,
+                schedule=schedule,
+                deleted=False,
+            )
+        except Exception:
+            logger.warning(
+                "Unexpected error while notifying participants about schedule %s change by %s",
+                schedule.id,
+                member.id,
+                exc_info=True,
+            )
     return _enrich_response(schedule)
 
 
 @router.delete("/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_schedule(
     schedule_id: uuid.UUID,
-    _: TeamMember = Depends(require_moderator),
+    request: Request,
+    notify_participants: bool = Query(default=False),
+    member: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
 ):
     """Soft-delete a meeting schedule (moderator only)."""
@@ -1076,5 +1378,28 @@ async def delete_schedule(
     if not schedule:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Расписание не найдено")
 
+    notification_snapshot = (
+        _build_schedule_notification_snapshot(schedule)
+        if notify_participants
+        else None
+    )
+
     await schedule_repo.delete(session, schedule_id)
     await session.commit()
+
+    if notify_participants and notification_snapshot:
+        try:
+            await _notify_schedule_change(
+                request,
+                session,
+                previous_snapshot=notification_snapshot,
+                schedule=None,
+                deleted=True,
+            )
+        except Exception:
+            logger.warning(
+                "Unexpected error while notifying participants about schedule %s deletion by %s",
+                schedule_id,
+                member.id,
+                exc_info=True,
+            )

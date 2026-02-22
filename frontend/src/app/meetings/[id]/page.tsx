@@ -218,9 +218,11 @@ export default function MeetingDetailPage() {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = async (options?: { notifyParticipants?: boolean }) => {
     try {
-      await api.deleteMeeting(id);
+      await api.deleteMeeting(id, {
+        notifyParticipants: options?.notifyParticipants,
+      });
       toastSuccess("Встреча удалена");
       router.push("/meetings");
     } catch (e) {

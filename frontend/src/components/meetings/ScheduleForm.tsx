@@ -258,9 +258,6 @@ export function ScheduleForm({
       return;
     }
 
-    setSaving(true);
-    setError(null);
-
     try {
       const tgTargets = telegramTargets
         .filter((t) => selectedTargetIds.includes(t.id))
@@ -304,6 +301,15 @@ export function ScheduleForm({
         }
       }
 
+      if (isEdit) {
+        const shouldNotifyParticipants = window.confirm(
+          "Оповестить участников об изменениях встречи в выбранные Telegram-группы?"
+        );
+        data.notify_participants = shouldNotifyParticipants;
+      }
+
+      setSaving(true);
+      setError(null);
       await onSave(data);
       onClose();
     } catch (e) {

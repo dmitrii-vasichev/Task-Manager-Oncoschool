@@ -37,7 +37,7 @@ interface MeetingHeaderProps {
   isModerator: boolean;
   onUpdateTitle: (title: string) => Promise<void>;
   onUpdateStatus: (status: MeetingStatus) => Promise<void>;
-  onDelete?: () => Promise<void>;
+  onDelete?: (options?: { notifyParticipants?: boolean }) => Promise<void>;
 }
 
 export function MeetingHeader({
@@ -183,7 +183,10 @@ export function MeetingHeader({
                   onClick={async () => {
                     setDeleting(true);
                     try {
-                      await onDelete();
+                      const notifyParticipants = window.confirm(
+                        "Оповестить участников об удалении встречи в выбранные Telegram-группы? Нажмите «ОК», чтобы оповестить, или «Отмена», чтобы удалить без оповещения."
+                      );
+                      await onDelete({ notifyParticipants });
                     } finally {
                       setDeleting(false);
                       setConfirmDelete(false);

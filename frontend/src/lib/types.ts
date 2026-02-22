@@ -263,6 +263,7 @@ export interface MeetingScheduleCreateRequest {
   next_occurrence_skip?: boolean;
   next_occurrence_time_local?: string | null;
   next_occurrence_datetime_local?: string | null;
+  notify_participants?: boolean;
 }
 
 export interface ZoomStatusResponse {

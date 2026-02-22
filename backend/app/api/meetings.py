@@ -1,10 +1,12 @@
+import html
 import logging
 import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user, require_moderator
@@ -146,6 +148,149 @@ def _hide_redundant_on_demand_templates(meetings: list) -> list:
             continue
         filtered.append(meeting)
     return filtered
+
+
+def _extract_unique_telegram_targets(
+    raw_targets: list | None,
+) -> list[tuple[int, int | None]]:
+    unique_targets: list[tuple[int, int | None]] = []
+    seen: set[tuple[int, int | None]] = set()
+
+    for target in raw_targets or []:
+        if not isinstance(target, dict):
+            continue
+
+        chat_raw = target.get("chat_id")
+        if chat_raw in (None, ""):
+            continue
+        try:
+            chat_id = int(chat_raw)
+        except (TypeError, ValueError):
+            continue
+
+        thread_raw = target.get("thread_id")
+        thread_id: int | None = None
+        if thread_raw not in (None, ""):
+            try:
+                thread_id = int(thread_raw)
+            except (TypeError, ValueError):
+                continue
+
+        target_key = (chat_id, thread_id)
+        if target_key in seen:
+            continue
+        seen.add(target_key)
+        unique_targets.append(target_key)
+
+    return unique_targets
+
+
+def _format_meeting_datetime_msk(meeting_date: datetime | None) -> str | None:
+    if not meeting_date:
+        return None
+    if meeting_date.tzinfo is None:
+        meeting_date = meeting_date.replace(tzinfo=ZoneInfo("UTC"))
+    else:
+        meeting_date = meeting_date.astimezone(ZoneInfo("UTC"))
+    date_msk = meeting_date.astimezone(ZoneInfo("Europe/Moscow"))
+    return date_msk.strftime("%d.%m.%Y %H:%M МСК")
+
+
+def _build_meeting_deleted_message_html(
+    *,
+    title: str,
+    meeting_date: datetime | None,
+    participants_mentions: str,
+) -> str:
+    safe_title = html.escape((title or "").strip() or "Встреча")
+    lines = [f"Добрый день! Встреча <b>{safe_title}</b> отменена."]
+    meeting_date_label = _format_meeting_datetime_msk(meeting_date)
+    if meeting_date_label:
+        lines.append(f"Дата/время: <b>{html.escape(meeting_date_label)}</b>")
+    if participants_mentions:
+        lines.append(f"Участники: {participants_mentions}")
+    return "\n".join(lines)
+
+
+async def _build_participants_mentions(
+    session: AsyncSession,
+    participant_ids: list[uuid.UUID],
+) -> str:
+    ordered_ids: list[uuid.UUID] = []
+    seen_ids: set[uuid.UUID] = set()
+    for participant_id in participant_ids:
+        if participant_id in seen_ids:
+            continue
+        seen_ids.add(participant_id)
+        ordered_ids.append(participant_id)
+
+    if not ordered_ids:
+        return ""
+
+    stmt = select(TeamMember).where(
+        TeamMember.id.in_(ordered_ids),
+        TeamMember.is_active.is_(True),
+    )
+    result = await session.execute(stmt)
+    members = list(result.scalars().all())
+    members_by_id = {member.id: member for member in members}
+
+    mentions: list[str] = []
+    seen_usernames: set[str] = set()
+    for participant_id in ordered_ids:
+        member = members_by_id.get(participant_id)
+        if not member:
+            continue
+        username = (member.telegram_username or "").strip().lstrip("@")
+        if not username:
+            continue
+        username_key = username.casefold()
+        if username_key in seen_usernames:
+            continue
+        seen_usernames.add(username_key)
+        mentions.append(f"@{username}")
+
+    return " ".join(mentions)
+
+
+async def _notify_meeting_deleted(
+    request: Request,
+    session: AsyncSession,
+    *,
+    title: str,
+    meeting_date: datetime | None,
+    participant_ids: list[uuid.UUID],
+    telegram_targets: list | None,
+) -> None:
+    bot = getattr(request.app.state, "bot", None)
+    if not bot:
+        logger.warning("Telegram bot unavailable, skip meeting deletion notification")
+        return
+
+    targets = _extract_unique_telegram_targets(telegram_targets)
+    if not targets:
+        return
+
+    participants_mentions = await _build_participants_mentions(session, participant_ids)
+    message_html = _build_meeting_deleted_message_html(
+        title=title,
+        meeting_date=meeting_date,
+        participants_mentions=participants_mentions,
+    )
+
+    for chat_id, thread_id in targets:
+        try:
+            kwargs = {"chat_id": chat_id, "text": message_html, "parse_mode": "HTML"}
+            if thread_id is not None:
+                kwargs["message_thread_id"] = thread_id
+            await bot.send_message(**kwargs)
+        except Exception as e:
+            logger.warning(
+                "Failed to send meeting deletion notification to chat %s thread %s: %s",
+                chat_id,
+                thread_id,
+                e,
+            )
 
 
 # ── LIST / GET endpoints ──
@@ -417,6 +562,7 @@ async def update_meeting(
 async def delete_meeting(
     meeting_id: uuid.UUID,
     request: Request,
+    notify_participants: bool = Query(default=False),
     member: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
 ):
@@ -425,23 +571,36 @@ async def delete_meeting(
     if not meeting:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
 
-    # For schedule-generated meetings, mark current occurrence as handled so
-    # background scheduler does not recreate the same meeting after manual delete.
+    schedule = None
     if meeting.schedule_id:
         schedule = await session.get(MeetingSchedule, meeting.schedule_id)
-        if schedule and schedule.is_active:
-            if schedule.recurrence == "on_demand":
-                schedule.next_occurrence_at = None
-                schedule.next_occurrence_skip = False
-            elif meeting.meeting_date:
-                occurrence_date = meeting.meeting_date.date()
-                if (
-                    schedule.last_triggered_date is None
-                    or schedule.last_triggered_date < occurrence_date
-                ):
-                    schedule.last_triggered_date = occurrence_date
-                if schedule.recurrence == "one_time":
-                    schedule.is_active = False
+
+    notification_payload = None
+    if notify_participants:
+        notification_payload = {
+            "title": (meeting.title or (schedule.title if schedule else "Встреча")),
+            "meeting_date": meeting.meeting_date,
+            "participant_ids": [
+                participant.member_id for participant in (meeting.participants or [])
+            ],
+            "telegram_targets": list(schedule.telegram_targets or []) if schedule else [],
+        }
+
+    # For schedule-generated meetings, mark current occurrence as handled so
+    # background scheduler does not recreate the same meeting after manual delete.
+    if schedule and schedule.is_active:
+        if schedule.recurrence == "on_demand":
+            schedule.next_occurrence_at = None
+            schedule.next_occurrence_skip = False
+        elif meeting.meeting_date:
+            occurrence_date = meeting.meeting_date.date()
+            if (
+                schedule.last_triggered_date is None
+                or schedule.last_triggered_date < occurrence_date
+            ):
+                schedule.last_triggered_date = occurrence_date
+            if schedule.recurrence == "one_time":
+                schedule.is_active = False
 
     # Delete from Zoom if possible
     zoom_svc = _get_zoom_service(request)
@@ -454,6 +613,24 @@ async def delete_meeting(
 
     await meeting_repo.delete(session, meeting_id)
     await session.commit()
+
+    if notify_participants and notification_payload:
+        try:
+            await _notify_meeting_deleted(
+                request,
+                session,
+                title=notification_payload["title"],
+                meeting_date=notification_payload["meeting_date"],
+                participant_ids=notification_payload["participant_ids"],
+                telegram_targets=notification_payload["telegram_targets"],
+            )
+        except Exception:
+            logger.warning(
+                "Unexpected error while notifying participants about meeting %s deletion by %s",
+                meeting_id,
+                member.id,
+                exc_info=True,
+            )
 
 
 # ── TRANSCRIPT endpoints ──

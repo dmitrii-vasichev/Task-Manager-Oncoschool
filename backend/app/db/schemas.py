@@ -268,6 +268,7 @@ class MeetingScheduleUpdate(BaseModel):
     next_occurrence_skip: bool | None = None
     next_occurrence_time_local: str | None = None  # "HH:MM" local, converted to UTC
     next_occurrence_datetime_local: str | None = None  # "YYYY-MM-DDTHH:MM" local, converted to UTC
+    notify_participants: bool | None = None
 
 
 class MeetingScheduleResponse(BaseModel):

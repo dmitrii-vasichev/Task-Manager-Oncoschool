@@ -309,8 +309,16 @@ class ApiClient {
     });
   }
 
-  async deleteMeeting(id: string): Promise<void> {
-    return this.request<void>(`/api/meetings/${id}`, {
+  async deleteMeeting(
+    id: string,
+    options?: { notifyParticipants?: boolean }
+  ): Promise<void> {
+    const params = new URLSearchParams();
+    if (options?.notifyParticipants) {
+      params.set("notify_participants", "true");
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<void>(`/api/meetings/${id}${query}`, {
       method: "DELETE",
     });
   }
@@ -403,8 +411,16 @@ class ApiClient {
     });
   }
 
-  async deleteMeetingSchedule(id: string): Promise<void> {
-    return this.request<void>(`/api/meeting-schedules/${id}`, {
+  async deleteMeetingSchedule(
+    id: string,
+    options?: { notifyParticipants?: boolean }
+  ): Promise<void> {
+    const params = new URLSearchParams();
+    if (options?.notifyParticipants) {
+      params.set("notify_participants", "true");
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<void>(`/api/meeting-schedules/${id}${query}`, {
       method: "DELETE",
     });
   }
