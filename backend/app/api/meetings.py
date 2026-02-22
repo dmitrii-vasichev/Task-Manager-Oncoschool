@@ -203,13 +203,16 @@ def _build_meeting_deleted_message_html(
     participants_mentions: str,
 ) -> str:
     safe_title = html.escape((title or "").strip() or "Встреча")
-    lines = [f"Добрый день! Встреча <b>{safe_title}</b> отменена."]
+    sections = [
+        "Внимание! ⚠️",
+        f"Встреча <b>{safe_title}</b> отменена.",
+    ]
     meeting_date_label = _format_meeting_datetime_msk(meeting_date)
     if meeting_date_label:
-        lines.append(f"Дата/время: <b>{html.escape(meeting_date_label)}</b>")
+        sections.append(f"Дата/время: <b>{html.escape(meeting_date_label)}</b>")
     if participants_mentions:
-        lines.append(f"Участники: {participants_mentions}")
-    return "\n".join(lines)
+        sections.append(f"Участники: {participants_mentions}")
+    return "\n\n".join(sections)
 
 
 async def _build_participants_mentions(
