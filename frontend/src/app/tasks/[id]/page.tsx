@@ -105,6 +105,9 @@ const PRIORITY_OPTIONS: { value: TaskPriority; label: string }[] = [
   { value: "low", label: "Низкий" },
 ];
 
+const MOSCOW_TIMEZONE = "Europe/Moscow";
+const MOSCOW_UTC_OFFSET_HOURS = 3;
+
 function isOverdue(deadline: string | null, status: string): boolean {
   if (!deadline) return false;
   if (status === "done" || status === "cancelled") return false;
@@ -126,17 +129,34 @@ function formatDateShort(dateStr: string): string {
   });
 }
 
-function formatLocalInputDate(dateValue: Date): string {
-  const year = dateValue.getFullYear();
-  const month = String(dateValue.getMonth() + 1).padStart(2, "0");
-  const day = String(dateValue.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+function formatMoscowInputDateTime(
+  dateValue: Date
+): { date: string; time: string } | null {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: MOSCOW_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
+  }).formatToParts(dateValue);
 
-function formatLocalInputTime(dateValue: Date): string {
-  const hours = String(dateValue.getHours()).padStart(2, "0");
-  const minutes = String(dateValue.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
+  const year = parts.find((p) => p.type === "year")?.value;
+  const month = parts.find((p) => p.type === "month")?.value;
+  const day = parts.find((p) => p.type === "day")?.value;
+  const hours = parts.find((p) => p.type === "hour")?.value;
+  const minutes = parts.find((p) => p.type === "minute")?.value;
+
+  if (!year || !month || !day || !hours || !minutes) {
+    return null;
+  }
+
+  return {
+    date: `${year}-${month}-${day}`,
+    time: `${hours}:${minutes}`,
+  };
 }
 
 function buildReminderIso(dateValue: string, timeValue: string): string | null {
@@ -159,30 +179,55 @@ function buildReminderIso(dateValue: string, timeValue: string): string | null {
     return null;
   }
 
-  const localDate = new Date(year, month - 1, day, hours, minutes, 0, 0);
-  if (Number.isNaN(localDate.getTime())) {
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > 31 ||
+    hours < 0 ||
+    hours > 23 ||
+    minutes < 0 ||
+    minutes > 59
+  ) {
     return null;
   }
-  return localDate.toISOString();
+
+  // Input is interpreted as Moscow local time (UTC+3), independent of browser timezone.
+  const utcTimestamp = Date.UTC(
+    year,
+    month - 1,
+    day,
+    hours - MOSCOW_UTC_OFFSET_HOURS,
+    minutes,
+    0,
+    0
+  );
+  const utcDate = new Date(utcTimestamp);
+  if (Number.isNaN(utcDate.getTime())) {
+    return null;
+  }
+  return utcDate.toISOString();
 }
 
 function formatReminderDateTime(value: string): string {
-  return parseUTCDate(value).toLocaleString("ru-RU", {
+  return `${parseUTCDate(value).toLocaleString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  });
+    timeZone: MOSCOW_TIMEZONE,
+  })} МСК`;
 }
 
 function formatReminderCompactDateTime(value: string): string {
-  return parseUTCDate(value).toLocaleString("ru-RU", {
+  return `${parseUTCDate(value).toLocaleString("ru-RU", {
     day: "2-digit",
     month: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-  });
+    timeZone: MOSCOW_TIMEZONE,
+  })} МСК`;
 }
 
 /* ============================================
@@ -238,8 +283,11 @@ export default function TaskDetailPage() {
     }
 
     const reminderDt = parseUTCDate(task.reminder_at);
-    setReminderDate(formatLocalInputDate(reminderDt));
-    setReminderTime(formatLocalInputTime(reminderDt));
+    const moscowDateTime = formatMoscowInputDateTime(reminderDt);
+    if (moscowDateTime) {
+      setReminderDate(moscowDateTime.date);
+      setReminderTime(moscowDateTime.time);
+    }
     setReminderComment(task.reminder_comment || "");
   }, [task]);
 
@@ -754,18 +802,22 @@ export default function TaskDetailPage() {
                   <DatePicker
                     value={reminderDate}
                     onChange={setReminderDate}
-                    placeholder="Дата напоминания"
+                    placeholder="Дата напоминания (МСК)"
                     clearable={false}
                     className="h-9 w-full sm:w-[240px]"
                   />
                   <TimePicker
                     value={reminderTime}
                     onChange={setReminderTime}
-                    placeholder="Время"
+                    placeholder="Время (МСК)"
                     minuteStep={5}
                     className="h-9 w-full sm:w-[130px]"
                   />
                 </div>
+
+                <p className="text-2xs text-muted-foreground">
+                  Дата и время напоминания указываются по МСК (UTC+3).
+                </p>
 
                 <Textarea
                   value={reminderComment}
