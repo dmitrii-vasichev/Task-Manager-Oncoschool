@@ -200,21 +200,16 @@ async def update_task(
             detail="Нет доступа к задаче: она вне вашей зоны видимости",
         )
 
-    # Permission: moderator can edit any, member can edit if assignee or author
+    # Permission: moderator can edit any, member can edit if assignee or author.
     is_moderator = PermissionService.is_moderator(member)
-    is_assignee = task.assignee_id == member.id
     is_author = task.created_by_id == member.id
-    if not is_moderator and not (is_assignee or is_author):
+    if not PermissionService.can_edit_task(member, task):
         raise HTTPException(status_code=403, detail="Нет прав на редактирование этой задачи")
 
-    # Members can edit only selected fields:
-    # - assignee: status, checklist, title
-    # - author:  status, checklist, title, description, priority, deadline, assignee_id
+    # Members can edit only selected fields (same matrix as web and bot).
     if not is_moderator:
         provided_fields = set(data.model_dump(exclude_unset=True).keys())
-        allowed_fields = {"status", "checklist", "title"}
-        if is_author:
-            allowed_fields |= {"description", "priority", "deadline", "assignee_id"}
+        allowed_fields = PermissionService.allowed_task_edit_fields(member, task)
         forbidden = provided_fields - allowed_fields
         if forbidden:
             raise HTTPException(

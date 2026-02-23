@@ -1,4 +1,5 @@
 import logging
+import re
 import uuid
 from datetime import date
 from html import escape
@@ -96,11 +97,41 @@ STATUS_USAGE_TEXT = (
     "Пример: /status 42 in_progress"
 )
 
+TASK_EDIT_USAGE_TEXT = (
+    "Использование: /edit <id>\n"
+    "Пример: /edit 42\n"
+    "Можно использовать #42"
+)
+
+TASK_EDIT_FIELD_LABELS = {
+    "title": "📌 Название",
+    "description": "📝 Описание",
+    "priority": "⚡ Приоритет",
+    "deadline": "📅 Дедлайн",
+    "assignee": "👤 Исполнитель",
+}
+
+TASK_EDIT_CLEAR_VALUES = {"-", "none", "null", "clear", "нет", "очистить"}
+TASK_PRIORITY_ALIASES = {
+    "low": "low",
+    "medium": "medium",
+    "high": "high",
+    "urgent": "urgent",
+    "низкий": "low",
+    "средний": "medium",
+    "высокий": "high",
+    "срочный": "urgent",
+}
+
 
 class TaskCommandFSM(StatesGroup):
     waiting_new_text = State()
     waiting_done_id = State()
     waiting_status_payload = State()
+
+
+class TaskEditFSM(StatesGroup):
+    waiting_value = State()
 
 
 NEW_TASK_PROMPT_TEXT = (
@@ -121,6 +152,154 @@ def _parse_short_id(raw_value: str) -> int | None:
         return int(raw_value.strip().lstrip("#"))
     except ValueError:
         return None
+
+
+def _task_editable_fields(member: TeamMember, task: Task) -> list[str]:
+    allowed = PermissionService.allowed_task_edit_fields(member, task)
+    fields: list[str] = []
+    for field in ("title", "description", "priority", "deadline"):
+        if field in allowed:
+            fields.append(field)
+    if "assignee_id" in allowed:
+        fields.append("assignee")
+    return fields
+
+
+def _task_edit_fields_keyboard(short_id: int, fields: list[str]) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    for field in fields:
+        rows.append([
+            InlineKeyboardButton(
+                text=TASK_EDIT_FIELD_LABELS[field],
+                callback_data=f"task_edit_field:{short_id}:{field}",
+            )
+        ])
+    rows.append([
+        InlineKeyboardButton(
+            text="ℹ️ Подсказка по форматам",
+            callback_data=f"task_edit_help:{short_id}",
+        )
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _task_edit_assignee_keyboard(
+    short_id: int,
+    *,
+    members: list[TeamMember],
+    current_assignee_id: uuid.UUID | None,
+) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    for member in members:
+        label = f"{'✓ ' if member.id == current_assignee_id else ''}{member.full_name}"
+        rows.append([
+            InlineKeyboardButton(
+                text=label,
+                callback_data=f"task_edit_assign:{short_id}:{member.id}",
+            )
+        ])
+    rows.append([
+        InlineKeyboardButton(
+            text="➖ Снять исполнителя",
+            callback_data=f"task_edit_assign:{short_id}:none",
+        )
+    ])
+    rows.append([
+        InlineKeyboardButton(
+            text="↩️ К полям",
+            callback_data=f"task_edit_fields:{short_id}",
+        )
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _task_edit_prompt_text(field: str) -> str:
+    prompts = {
+        "title": "📌 Введите новое название задачи:",
+        "description": (
+            "📝 Введите новое описание.\n"
+            "Чтобы очистить описание: <code>-</code>, <code>none</code> или <code>нет</code>."
+        ),
+        "priority": (
+            "⚡ Введите приоритет: <code>low</code>, <code>medium</code>, "
+            "<code>high</code>, <code>urgent</code>."
+        ),
+        "deadline": (
+            "📅 Введите дедлайн: <code>ДД.ММ</code> или <code>ДД.ММ.ГГГГ</code>.\n"
+            "Чтобы снять дедлайн: <code>-</code>, <code>none</code> или <code>нет</code>."
+        ),
+    }
+    return prompts.get(field, "Введите новое значение:")
+
+
+def _normalize_priority_input(raw_value: str) -> str | None:
+    value = raw_value.strip().lower()
+    return TASK_PRIORITY_ALIASES.get(value)
+
+
+def _parse_deadline_input(raw_value: str) -> tuple[date | None, bool]:
+    value = raw_value.strip().lower()
+    if value in TASK_EDIT_CLEAR_VALUES:
+        return None, True
+
+    match = re.match(r"^(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?$", value)
+    if not match:
+        return None, False
+
+    day = int(match.group(1))
+    month = int(match.group(2))
+    year_str = match.group(3)
+
+    if year_str:
+        year = int(year_str)
+        if year < 100:
+            year += 2000
+    else:
+        year = date.today().year
+        try:
+            candidate = date(year, month, day)
+            if candidate < date.today():
+                year += 1
+        except ValueError:
+            pass
+
+    try:
+        return date(year, month, day), True
+    except ValueError:
+        return None, False
+
+
+def _format_task_edit_panel(task: Task, *, editable_fields: list[str]) -> str:
+    lines = [
+        f"✏️ Редактирование задачи <b>#{task.short_id}</b>",
+        "",
+        f"<b>{escape(task.title)}</b>",
+        "",
+        "Доступные поля:",
+    ]
+    for field in editable_fields:
+        lines.append(f"• {TASK_EDIT_FIELD_LABELS[field]}")
+    lines.append("")
+    lines.append("Выберите поле кнопкой ниже.")
+    return "\n".join(lines)
+
+
+async def _load_task_for_edit(
+    *,
+    session,
+    member: TeamMember,
+    short_id: int,
+) -> tuple[Task | None, list[str], str | None]:
+    task = await task_service.get_task_by_short_id(session, short_id)
+    if not task:
+        return None, [], "not_found"
+    if not await can_access_task(session, member, task):
+        return None, [], "no_access"
+
+    editable_fields = _task_editable_fields(member, task)
+    if not editable_fields:
+        return task, [], "forbidden"
+    return task, editable_fields, None
 
 
 def _default_department_token(member: TeamMember) -> str:
@@ -1236,6 +1415,418 @@ async def fsm_status_payload(
         await state.clear()
 
 
+# ── /edit <id> — Редактирование полей задачи ──
+
+
+@router.message(Command("edit"))
+async def cmd_edit_task(
+    message: Message,
+    member: TeamMember,
+    session_maker: async_sessionmaker,
+    state: FSMContext,
+) -> None:
+    args = (message.text or "").split(maxsplit=1)
+    if len(args) < 2:
+        await message.answer(TASK_EDIT_USAGE_TEXT)
+        return
+
+    short_id = _parse_short_id(args[1])
+    if short_id is None:
+        await message.answer("❌ ID задачи должен быть числом.\n\n" + TASK_EDIT_USAGE_TEXT)
+        return
+
+    async with session_maker() as session:
+        task, editable_fields, error = await _load_task_for_edit(
+            session=session,
+            member=member,
+            short_id=short_id,
+        )
+
+    if error == "not_found":
+        await message.answer(f"❌ Задача #{short_id} не найдена")
+        return
+    if error == "no_access":
+        await message.answer("⛔ Задача недоступна в вашей зоне видимости")
+        return
+    if error == "forbidden":
+        await message.answer("⛔ У вас нет прав на редактирование этой задачи")
+        return
+
+    await state.clear()
+    await message.answer(
+        _format_task_edit_panel(task, editable_fields=editable_fields),
+        parse_mode="HTML",
+        reply_markup=_task_edit_fields_keyboard(short_id, editable_fields),
+    )
+
+
+@router.callback_query(F.data.startswith("task_edit:"))
+async def cb_task_edit_open(
+    callback: CallbackQuery,
+    member: TeamMember,
+    session_maker: async_sessionmaker,
+    state: FSMContext,
+) -> None:
+    if not callback.message:
+        await callback.answer("Сообщение больше недоступно", show_alert=True)
+        return
+
+    try:
+        short_id = int((callback.data or "").split(":", maxsplit=1)[1])
+    except (IndexError, ValueError):
+        await callback.answer("Некорректный callback", show_alert=True)
+        return
+
+    async with session_maker() as session:
+        task, editable_fields, error = await _load_task_for_edit(
+            session=session,
+            member=member,
+            short_id=short_id,
+        )
+
+    if error == "not_found":
+        await callback.answer(f"Задача #{short_id} не найдена", show_alert=True)
+        return
+    if error == "no_access":
+        await callback.answer("Нет доступа к задаче", show_alert=True)
+        return
+    if error == "forbidden":
+        await callback.answer("Нет прав на редактирование", show_alert=True)
+        return
+
+    await state.clear()
+    await callback.answer()
+    await _safe_edit_text(
+        callback.message,
+        _format_task_edit_panel(task, editable_fields=editable_fields),
+        parse_mode="HTML",
+        reply_markup=_task_edit_fields_keyboard(short_id, editable_fields),
+    )
+
+
+@router.callback_query(F.data.startswith("task_edit_fields:"))
+async def cb_task_edit_fields(
+    callback: CallbackQuery,
+    member: TeamMember,
+    session_maker: async_sessionmaker,
+) -> None:
+    if not callback.message:
+        await callback.answer("Сообщение больше недоступно", show_alert=True)
+        return
+
+    parts = (callback.data or "").split(":")
+    if len(parts) != 2:
+        await callback.answer("Некорректный callback", show_alert=True)
+        return
+    try:
+        short_id = int(parts[1])
+    except ValueError:
+        await callback.answer("Некорректный ID задачи", show_alert=True)
+        return
+
+    async with session_maker() as session:
+        task, editable_fields, error = await _load_task_for_edit(
+            session=session,
+            member=member,
+            short_id=short_id,
+        )
+
+    if error == "not_found":
+        await callback.answer(f"Задача #{short_id} не найдена", show_alert=True)
+        return
+    if error == "no_access":
+        await callback.answer("Нет доступа к задаче", show_alert=True)
+        return
+    if error == "forbidden":
+        await callback.answer("Нет прав на редактирование", show_alert=True)
+        return
+
+    await callback.answer()
+    await _safe_edit_text(
+        callback.message,
+        _format_task_edit_panel(task, editable_fields=editable_fields),
+        parse_mode="HTML",
+        reply_markup=_task_edit_fields_keyboard(short_id, editable_fields),
+    )
+
+
+@router.callback_query(F.data.startswith("task_edit_help:"))
+async def cb_task_edit_help(callback: CallbackQuery) -> None:
+    await callback.answer(
+        "Приоритет: low/medium/high/urgent. "
+        "Дедлайн: ДД.ММ или ДД.ММ.ГГГГ. "
+        "Очистка: '-', none, нет.",
+        show_alert=True,
+    )
+
+
+@router.callback_query(F.data.startswith("task_edit_field:"))
+async def cb_task_edit_field(
+    callback: CallbackQuery,
+    member: TeamMember,
+    session_maker: async_sessionmaker,
+    state: FSMContext,
+) -> None:
+    if not callback.message:
+        await callback.answer("Сообщение больше недоступно", show_alert=True)
+        return
+
+    parts = (callback.data or "").split(":")
+    if len(parts) != 3:
+        await callback.answer("Некорректный callback", show_alert=True)
+        return
+
+    try:
+        short_id = int(parts[1])
+    except ValueError:
+        await callback.answer("Некорректный ID задачи", show_alert=True)
+        return
+
+    field = parts[2]
+    if field not in TASK_EDIT_FIELD_LABELS:
+        await callback.answer("Неизвестное поле", show_alert=True)
+        return
+
+    async with session_maker() as session:
+        task, editable_fields, error = await _load_task_for_edit(
+            session=session,
+            member=member,
+            short_id=short_id,
+        )
+        if error == "not_found":
+            await callback.answer(f"Задача #{short_id} не найдена", show_alert=True)
+            return
+        if error == "no_access":
+            await callback.answer("Нет доступа к задаче", show_alert=True)
+            return
+        if error == "forbidden":
+            await callback.answer("Нет прав на редактирование", show_alert=True)
+            return
+        if field not in editable_fields:
+            await callback.answer("Нет прав на это поле", show_alert=True)
+            return
+
+        if field == "assignee":
+            team_members = await member_repo.get_all_active(session)
+            await callback.answer()
+            await _safe_edit_text(
+                callback.message,
+                (
+                    f"👤 Выберите исполнителя для задачи #{task.short_id}\n\n"
+                    f"<b>{escape(task.title)}</b>"
+                ),
+                parse_mode="HTML",
+                reply_markup=_task_edit_assignee_keyboard(
+                    short_id,
+                    members=team_members,
+                    current_assignee_id=task.assignee_id,
+                ),
+            )
+            return
+
+    await state.set_state(TaskEditFSM.waiting_value)
+    await state.update_data(task_edit_short_id=short_id, task_edit_field=field)
+    await callback.answer()
+    await callback.message.answer(
+        _task_edit_prompt_text(field) + "\n\nДля отмены: /cancel",
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data.startswith("task_edit_assign:"))
+async def cb_task_edit_assign(
+    callback: CallbackQuery,
+    member: TeamMember,
+    session_maker: async_sessionmaker,
+    bot: Bot,
+    state: FSMContext,
+) -> None:
+    if not callback.message:
+        await callback.answer("Сообщение больше недоступно", show_alert=True)
+        return
+
+    parts = (callback.data or "").split(":")
+    if len(parts) != 3:
+        await callback.answer("Некорректный callback", show_alert=True)
+        return
+
+    try:
+        short_id = int(parts[1])
+    except ValueError:
+        await callback.answer("Некорректный ID задачи", show_alert=True)
+        return
+    assignee_token = parts[2].strip().lower()
+    context = _extract_list_context_from_markup(callback.message.reply_markup, member)
+
+    async with session_maker() as session:
+        async with session.begin():
+            task, editable_fields, error = await _load_task_for_edit(
+                session=session,
+                member=member,
+                short_id=short_id,
+            )
+            if error == "not_found":
+                await callback.answer(f"Задача #{short_id} не найдена", show_alert=True)
+                return
+            if error == "no_access":
+                await callback.answer("Нет доступа к задаче", show_alert=True)
+                return
+            if error == "forbidden":
+                await callback.answer("Нет прав на редактирование", show_alert=True)
+                return
+            if "assignee" not in editable_fields:
+                await callback.answer("Нет прав на изменение исполнителя", show_alert=True)
+                return
+
+            if assignee_token in {"none", "null", "-"}:
+                if task.assignee_id is None:
+                    updated_task = task
+                else:
+                    updated_task = await task_repo.update(session, task.id, assignee_id=None)
+            else:
+                try:
+                    new_assignee_id = uuid.UUID(assignee_token)
+                except ValueError:
+                    await callback.answer("Некорректный исполнитель", show_alert=True)
+                    return
+
+                try:
+                    updated_task = await task_service.assign_task(
+                        session, task, member, new_assignee_id
+                    )
+                except (PermissionError, ValueError) as e:
+                    await callback.answer(str(e), show_alert=True)
+                    return
+
+                new_assignee = await member_repo.get_by_id(session, new_assignee_id)
+                notification_service = NotificationService(bot)
+                await notification_service.notify_task_assigned(
+                    session, updated_task, member, new_assignee
+                )
+
+    await state.clear()
+    await callback.answer("✅ Исполнитель обновлён")
+    await _safe_edit_text(
+        callback.message,
+        _format_task_detail(updated_task),
+        parse_mode="HTML",
+        reply_markup=_task_detail_keyboard(
+            task_id=updated_task.short_id,
+            is_moderator=PermissionService.is_moderator(member),
+            context=context,
+        ),
+    )
+
+
+@router.message(TaskEditFSM.waiting_value, Command("cancel"))
+async def fsm_cancel_task_edit_value(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("❌ Редактирование задачи отменено")
+
+
+@router.message(TaskEditFSM.waiting_value)
+async def fsm_task_edit_value(
+    message: Message,
+    member: TeamMember,
+    session_maker: async_sessionmaker,
+    state: FSMContext,
+) -> None:
+    state_data = await state.get_data()
+    short_id_raw = state_data.get("task_edit_short_id")
+    field = state_data.get("task_edit_field")
+    if not short_id_raw or not field:
+        await state.clear()
+        await message.answer("❌ Сессия редактирования устарела. Используйте /edit <id>.")
+        return
+
+    try:
+        short_id = int(short_id_raw)
+    except (TypeError, ValueError):
+        await state.clear()
+        await message.answer("❌ Некорректный ID задачи. Используйте /edit <id>.")
+        return
+
+    raw_value = message.text.strip() if message.text else ""
+    if not raw_value:
+        await message.answer("❌ Значение не может быть пустым. Попробуйте ещё раз или /cancel")
+        return
+
+    async with session_maker() as session:
+        async with session.begin():
+            task, editable_fields, error = await _load_task_for_edit(
+                session=session,
+                member=member,
+                short_id=short_id,
+            )
+            if error == "not_found":
+                await state.clear()
+                await message.answer(f"❌ Задача #{short_id} не найдена")
+                return
+            if error == "no_access":
+                await state.clear()
+                await message.answer("⛔ Задача недоступна в вашей зоне видимости")
+                return
+            if error == "forbidden" or field not in editable_fields:
+                await state.clear()
+                await message.answer("⛔ Нет прав на изменение этого поля")
+                return
+
+            if field == "title":
+                title = raw_value.strip()
+                if not title:
+                    await message.answer("❌ Название не может быть пустым")
+                    return
+                updated_task = await task_repo.update(session, task.id, title=title)
+                success_text = "✅ Название задачи обновлено"
+            elif field == "description":
+                value_normalized = raw_value.strip()
+                description = (
+                    None if value_normalized.lower() in TASK_EDIT_CLEAR_VALUES else value_normalized
+                )
+                updated_task = await task_repo.update(
+                    session, task.id, description=description
+                )
+                success_text = (
+                    "✅ Описание очищено"
+                    if description is None
+                    else "✅ Описание обновлено"
+                )
+            elif field == "priority":
+                priority = _normalize_priority_input(raw_value)
+                if not priority:
+                    await message.answer(
+                        "❌ Неверный приоритет. Доступные: low, medium, high, urgent"
+                    )
+                    return
+                updated_task = await task_repo.update(session, task.id, priority=priority)
+                success_text = f"✅ Приоритет обновлён: {priority}"
+            elif field == "deadline":
+                deadline, ok = _parse_deadline_input(raw_value)
+                if not ok:
+                    await message.answer("❌ Формат дедлайна: ДД.ММ или ДД.ММ.ГГГГ")
+                    return
+                updated_task = await task_repo.update(session, task.id, deadline=deadline)
+                success_text = (
+                    "✅ Дедлайн снят"
+                    if deadline is None
+                    else f"✅ Дедлайн обновлён: {deadline.strftime('%d.%m.%Y')}"
+                )
+            else:
+                await message.answer("❌ Поле не поддерживается в этом режиме")
+                return
+
+    await state.clear()
+    await message.answer(success_text)
+    await message.answer(
+        _format_task_detail(updated_task),
+        parse_mode="HTML",
+        reply_markup=task_actions_keyboard(
+            updated_task.short_id,
+            PermissionService.is_moderator(member),
+        ),
+    )
+
+
 # ── Callback handlers для inline кнопок ──
 
 
@@ -1410,10 +2001,6 @@ async def cb_task_cancel(callback: CallbackQuery, member: TeamMember, session_ma
 
 @router.callback_query(F.data.startswith("task_reassign:"))
 async def cb_task_reassign(callback: CallbackQuery, member: TeamMember, session_maker: async_sessionmaker) -> None:
-    if not PermissionService.is_moderator(member):
-        await callback.answer("Только модератор может переназначать задачи", show_alert=True)
-        return
-
     if not callback.message:
         await callback.answer("Сообщение больше недоступно", show_alert=True)
         return
@@ -1428,6 +2015,9 @@ async def cb_task_reassign(callback: CallbackQuery, member: TeamMember, session_
 
     if not task:
         await callback.answer(f"Задача #{short_id} не найдена", show_alert=True)
+        return
+    if not PermissionService.can_assign_task(member, task):
+        await callback.answer("Нет прав на переназначение этой задачи", show_alert=True)
         return
 
     buttons = []
@@ -1456,10 +2046,6 @@ async def cb_task_reassign(callback: CallbackQuery, member: TeamMember, session_
 
 @router.callback_query(F.data.startswith("reassign:"))
 async def cb_do_reassign(callback: CallbackQuery, member: TeamMember, session_maker: async_sessionmaker, bot: Bot) -> None:
-    if not PermissionService.is_moderator(member):
-        await callback.answer("Только модератор", show_alert=True)
-        return
-
     if not callback.message:
         await callback.answer("Сообщение больше недоступно", show_alert=True)
         return
@@ -1475,10 +2061,13 @@ async def cb_do_reassign(callback: CallbackQuery, member: TeamMember, session_ma
             if not task:
                 await callback.answer(f"Задача #{short_id} не найдена", show_alert=True)
                 return
+            if not PermissionService.can_assign_task(member, task):
+                await callback.answer("Нет прав на переназначение этой задачи", show_alert=True)
+                return
 
             try:
                 task = await task_service.assign_task(session, task, member, new_assignee_id)
-            except ValueError as e:
+            except (PermissionError, ValueError) as e:
                 await callback.answer(str(e), show_alert=True)
                 return
 
@@ -1495,7 +2084,7 @@ async def cb_do_reassign(callback: CallbackQuery, member: TeamMember, session_ma
         parse_mode="HTML",
         reply_markup=_task_detail_keyboard(
             task_id=task.short_id,
-            is_moderator=True,
+            is_moderator=PermissionService.is_moderator(member),
             context=context,
         ),
     )

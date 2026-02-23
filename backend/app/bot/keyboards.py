@@ -112,6 +112,9 @@ def task_actions_keyboard(task_id: int, is_moderator: bool) -> InlineKeyboardMar
             InlineKeyboardButton(text="👀 Ревью", callback_data=f"task_review:{task_id}"),
             InlineKeyboardButton(text="📝 Апдейт", callback_data=f"task_update:{task_id}"),
         ],
+        [
+            InlineKeyboardButton(text="✏️ Редактировать", callback_data=f"task_edit:{task_id}"),
+        ],
     ]
     if is_moderator:
         buttons.append([

@@ -2,6 +2,10 @@ from app.db.models import Task, TeamMember
 
 
 class PermissionService:
+    TASK_EDIT_BASE_FIELDS = {"status", "checklist", "title"}
+    TASK_EDIT_AUTHOR_EXTRA_FIELDS = {"description", "priority", "deadline", "assignee_id"}
+    TASK_EDIT_MODERATOR_FIELDS = TASK_EDIT_BASE_FIELDS | TASK_EDIT_AUTHOR_EXTRA_FIELDS
+
     @staticmethod
     def is_admin(member: TeamMember) -> bool:
         return member.role == "admin"
@@ -24,16 +28,31 @@ class PermissionService:
         return task is not None and task.created_by_id == member.id
 
     @staticmethod
-    def can_change_task_status(member: TeamMember, task: Task) -> bool:
+    def can_edit_task(member: TeamMember, task: Task) -> bool:
         if PermissionService.is_moderator(member):
             return True
         return task.assignee_id == member.id or task.created_by_id == member.id
 
     @staticmethod
-    def can_add_task_update(member: TeamMember, task: Task) -> bool:
+    def allowed_task_edit_fields(member: TeamMember, task: Task) -> set[str]:
         if PermissionService.is_moderator(member):
-            return True
-        return task.assignee_id == member.id or task.created_by_id == member.id
+            return set(PermissionService.TASK_EDIT_MODERATOR_FIELDS)
+
+        if not PermissionService.can_edit_task(member, task):
+            return set()
+
+        allowed_fields = set(PermissionService.TASK_EDIT_BASE_FIELDS)
+        if task.created_by_id == member.id:
+            allowed_fields |= PermissionService.TASK_EDIT_AUTHOR_EXTRA_FIELDS
+        return allowed_fields
+
+    @staticmethod
+    def can_change_task_status(member: TeamMember, task: Task) -> bool:
+        return "status" in PermissionService.allowed_task_edit_fields(member, task)
+
+    @staticmethod
+    def can_add_task_update(member: TeamMember, task: Task) -> bool:
+        return "status" in PermissionService.allowed_task_edit_fields(member, task)
 
     @staticmethod
     def can_delete_task(member: TeamMember) -> bool:
