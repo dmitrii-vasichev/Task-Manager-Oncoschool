@@ -180,26 +180,10 @@ class MeetingSchedulerService:
 
                 # Keep one upcoming slot visible for recurring schedules immediately
                 # after the current occurrence finishes (not only at reminder trigger time).
-                created_slots = 0
-                refreshed_schedules = await schedule_repo.get_all_active(session)
-                for schedule in refreshed_schedules:
-                    try:
-                        created = await self._ensure_next_occurrence_visible(
-                            session,
-                            schedule,
-                            now_utc,
-                        )
-                        if created:
-                            created_slots += 1
-                    except Exception as e:
-                        logger.error(
-                            "Error ensuring next visible occurrence for schedule %s (%s): %s",
-                            schedule.id,
-                            schedule.title,
-                            e,
-                            exc_info=True,
-                        )
-
+                created_slots = await self._ensure_upcoming_slots_for_all_schedules(
+                    session,
+                    now_utc,
+                )
                 if created_slots:
                     await session.commit()
                     logger.info(
@@ -208,6 +192,47 @@ class MeetingSchedulerService:
                     )
         except Exception as e:
             logger.error(f"Error in _check_schedules: {e}", exc_info=True)
+
+    async def ensure_upcoming_slots_now(self) -> int:
+        """Reconcile schedules and pre-create missing upcoming slots immediately."""
+        now_utc = datetime.now(ZoneInfo("UTC"))
+        async with self.session_maker() as session:
+            created_slots = await self._ensure_upcoming_slots_for_all_schedules(
+                session,
+                now_utc,
+            )
+            if created_slots:
+                await session.commit()
+            return created_slots
+
+    async def _ensure_upcoming_slots_for_all_schedules(
+        self,
+        session,
+        now_utc: datetime,
+    ) -> int:
+        schedule_repo = MeetingScheduleRepository()
+        schedules = await schedule_repo.get_all_active(session)
+        created_slots = 0
+
+        for schedule in schedules:
+            try:
+                created = await self._ensure_next_occurrence_visible(
+                    session,
+                    schedule,
+                    now_utc,
+                )
+                if created:
+                    created_slots += 1
+            except Exception as e:
+                logger.error(
+                    "Error ensuring next visible occurrence for schedule %s (%s): %s",
+                    schedule.id,
+                    schedule.title,
+                    e,
+                    exc_info=True,
+                )
+
+        return created_slots
 
     @staticmethod
     def _has_meeting_finished(

@@ -167,6 +167,12 @@ async def _start_background_schedulers() -> None:
     reminder_service.start()
     meeting_scheduler.start()
     broadcast_scheduler.start()
+    try:
+        created_slots = await meeting_scheduler.ensure_upcoming_slots_now()
+        if created_slots:
+            logger.info("Startup reconcile pre-created %s upcoming meeting slot(s)", created_slots)
+    except Exception:
+        logger.exception("Failed to reconcile upcoming meeting slots on startup")
 
 
 @app.on_event("shutdown")
