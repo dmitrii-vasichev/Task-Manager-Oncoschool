@@ -178,8 +178,10 @@ class MeetingSchedulerService:
                             exc_info=True,
                         )
 
-                # Keep one upcoming slot visible for recurring schedules immediately
-                # after the current occurrence finishes (not only at reminder trigger time).
+                # Keep visibility for upcoming slots:
+                # - recurring schedules always keep one future dated occurrence
+                # - on_demand schedules always keep a template card without date
+                # This also heals state if a trigger window was missed.
                 created_slots = await self._ensure_upcoming_slots_for_all_schedules(
                     session,
                     now_utc,
@@ -378,6 +380,23 @@ class MeetingSchedulerService:
         return result.scalar_one_or_none() is not None
 
     @staticmethod
+    async def _has_on_demand_template_meeting(
+        session,
+        schedule_id: uuid.UUID,
+    ) -> bool:
+        stmt = (
+            select(Meeting.id)
+            .where(
+                Meeting.schedule_id == schedule_id,
+                Meeting.status == "scheduled",
+                Meeting.meeting_date.is_(None),
+            )
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    @staticmethod
     async def _meeting_exists_for_occurrence(
         session,
         schedule_id: uuid.UUID,
@@ -394,14 +413,45 @@ class MeetingSchedulerService:
         result = await session.execute(stmt)
         return result.scalar_one_or_none() is not None
 
+    async def _reconcile_on_demand_visibility(
+        self,
+        session,
+        schedule: MeetingSchedule,
+        now_utc: datetime,
+    ) -> bool:
+        changed = False
+        if schedule.next_occurrence_at:
+            occurrence_utc = self._to_utc_aware(schedule.next_occurrence_at)
+            duration_minutes = schedule.duration_minutes or 60
+            if now_utc >= occurrence_utc + timedelta(minutes=duration_minutes):
+                schedule.next_occurrence_at = None
+                schedule.next_occurrence_skip = False
+                changed = True
+
+        has_template = await self._has_on_demand_template_meeting(
+            session,
+            schedule.id,
+        )
+        if not has_template:
+            await self._ensure_on_demand_template_meeting(session, schedule)
+            changed = True
+
+        return changed
+
     async def _ensure_next_occurrence_visible(
         self,
         session,
         schedule: MeetingSchedule,
         now_utc: datetime,
     ) -> bool:
-        if not schedule.is_active or schedule.recurrence == "on_demand":
+        if not schedule.is_active:
             return False
+        if schedule.recurrence == "on_demand":
+            return await self._reconcile_on_demand_visibility(
+                session,
+                schedule,
+                now_utc,
+            )
 
         now_utc_naive = now_utc.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
         has_upcoming = await self._has_scheduled_upcoming_occurrence(

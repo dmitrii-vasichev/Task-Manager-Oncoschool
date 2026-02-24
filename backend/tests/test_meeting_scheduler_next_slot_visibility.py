@@ -158,3 +158,84 @@ class MeetingSchedulerNextSlotVisibilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(added_objects, [])
         session.flush.assert_not_awaited()
         meeting_exists_mock.assert_not_awaited()
+
+    async def test_ensure_next_occurrence_visible_reconciles_stale_on_demand_slot(self) -> None:
+        scheduler = _build_scheduler()
+        now_utc = datetime(2026, 2, 24, 12, 0, tzinfo=timezone.utc)
+        schedule = SimpleNamespace(
+            id=uuid.uuid4(),
+            recurrence="on_demand",
+            duration_minutes=60,
+            next_occurrence_at=datetime(2026, 2, 24, 10, 30, tzinfo=timezone.utc),
+            next_occurrence_skip=True,
+            is_active=True,
+        )
+        session = SimpleNamespace()
+        has_template_mock = AsyncMock(return_value=False)
+        ensure_template_mock = AsyncMock()
+
+        with (
+            patch.object(
+                scheduler,
+                "_has_on_demand_template_meeting",
+                has_template_mock,
+            ),
+            patch.object(
+                scheduler,
+                "_ensure_on_demand_template_meeting",
+                ensure_template_mock,
+            ),
+        ):
+            changed = await scheduler._ensure_next_occurrence_visible(
+                session,
+                schedule,
+                now_utc,
+            )
+
+        self.assertTrue(changed)
+        self.assertIsNone(schedule.next_occurrence_at)
+        self.assertFalse(schedule.next_occurrence_skip)
+        has_template_mock.assert_awaited_once_with(session, schedule.id)
+        ensure_template_mock.assert_awaited_once_with(session, schedule)
+
+    async def test_ensure_next_occurrence_visible_keeps_active_on_demand_slot(self) -> None:
+        scheduler = _build_scheduler()
+        now_utc = datetime(2026, 2, 24, 12, 0, tzinfo=timezone.utc)
+        schedule = SimpleNamespace(
+            id=uuid.uuid4(),
+            recurrence="on_demand",
+            duration_minutes=60,
+            next_occurrence_at=datetime(2026, 2, 24, 12, 30, tzinfo=timezone.utc),
+            next_occurrence_skip=True,
+            is_active=True,
+        )
+        session = SimpleNamespace()
+        has_template_mock = AsyncMock(return_value=True)
+        ensure_template_mock = AsyncMock()
+
+        with (
+            patch.object(
+                scheduler,
+                "_has_on_demand_template_meeting",
+                has_template_mock,
+            ),
+            patch.object(
+                scheduler,
+                "_ensure_on_demand_template_meeting",
+                ensure_template_mock,
+            ),
+        ):
+            changed = await scheduler._ensure_next_occurrence_visible(
+                session,
+                schedule,
+                now_utc,
+            )
+
+        self.assertFalse(changed)
+        self.assertEqual(
+            schedule.next_occurrence_at,
+            datetime(2026, 2, 24, 12, 30, tzinfo=timezone.utc),
+        )
+        self.assertTrue(schedule.next_occurrence_skip)
+        has_template_mock.assert_awaited_once_with(session, schedule.id)
+        ensure_template_mock.assert_not_awaited()
