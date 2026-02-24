@@ -1,5 +1,7 @@
 import logging
 import re
+import hashlib
+import time
 import uuid
 from datetime import date, datetime, timedelta
 from html import escape
@@ -134,11 +136,16 @@ INLINE_REMINDER_PATTERN = re.compile(
     r"\s*(?:в|во)?\s*(?P<time>\d{1,2}:\d{2})",
     re.IGNORECASE,
 )
+MENTION_USERNAME_PATTERN = re.compile(r"(?<!\w)@([A-Za-z0-9_]{5,32})")
+GROUP_TASK_MENTION_DEDUP_SECONDS = 20
+GROUP_TASK_MENTION_CACHE_LIMIT = 2048
+_recent_group_task_mentions: dict[str, float] = {}
 
 
 class ParsedTextTaskPayload(TypedDict):
     title: str
     description: str | None
+    assignee_name: str | None
     priority: str
     deadline: date | None
     reminder_at: datetime | None
@@ -178,6 +185,92 @@ def _parse_short_id(raw_value: str) -> int | None:
         return int(raw_value.strip().lstrip("#"))
     except ValueError:
         return None
+
+
+def _normalize_telegram_username(raw_value: str | None) -> str | None:
+    if not raw_value:
+        return None
+    normalized = raw_value.strip().lstrip("@").lower()
+    return normalized or None
+
+
+def _extract_username_mentions(raw_text: str | None) -> list[str]:
+    if not raw_text:
+        return []
+    mentions = [m.group(1).lower() for m in MENTION_USERNAME_PATTERN.finditer(raw_text)]
+    return list(dict.fromkeys(mentions))
+
+
+def _extract_text_mention_user_ids(message: Message) -> list[int]:
+    user_ids: list[int] = []
+    for entity in message.entities or []:
+        if entity.type != "text_mention" or not entity.user:
+            continue
+        if entity.user.id not in user_ids:
+            user_ids.append(entity.user.id)
+    return user_ids
+
+
+def _message_mentions_bot(
+    message: Message,
+    *,
+    bot_username: str | None,
+    bot_user_id: int | None,
+) -> bool:
+    username_mentions = _extract_username_mentions(message.text)
+    if bot_username and bot_username in username_mentions:
+        return True
+
+    if bot_user_id is None:
+        return False
+
+    for user_id in _extract_text_mention_user_ids(message):
+        if user_id == bot_user_id:
+            return True
+    return False
+
+
+def _strip_bot_username_mentions(raw_text: str, bot_username: str | None) -> str:
+    cleaned = raw_text
+    if bot_username:
+        cleaned = re.sub(
+            rf"(?i)(?<!\w)@{re.escape(bot_username)}\b",
+            " ",
+            cleaned,
+        )
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip(" \t\n\r,.;:!-")
+
+
+def _is_group_task_chat_allowed(chat_id: int) -> bool:
+    if not settings.ALLOWED_CHAT_IDS:
+        return False
+    return chat_id in settings.ALLOWED_CHAT_IDS
+
+
+def _group_task_dedupe_key(chat_id: int, sender_id: int, task_text: str) -> str:
+    normalized = " ".join((task_text or "").lower().split())
+    digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()
+    return f"{chat_id}:{sender_id}:{digest}"
+
+
+def _is_recent_group_task_duplicate(chat_id: int, sender_id: int, task_text: str) -> bool:
+    key = _group_task_dedupe_key(chat_id, sender_id, task_text)
+    now = time.time()
+    last_seen = _recent_group_task_mentions.get(key)
+    _recent_group_task_mentions[key] = now
+
+    if len(_recent_group_task_mentions) > GROUP_TASK_MENTION_CACHE_LIMIT:
+        threshold = now - GROUP_TASK_MENTION_DEDUP_SECONDS
+        stale_keys = [
+            cache_key
+            for cache_key, seen_at in _recent_group_task_mentions.items()
+            if seen_at < threshold
+        ]
+        for stale_key in stale_keys:
+            _recent_group_task_mentions.pop(stale_key, None)
+
+    return bool(last_seen and (now - last_seen) < GROUP_TASK_MENTION_DEDUP_SECONDS)
 
 
 def _task_editable_fields(member: TeamMember, task: Task) -> list[str]:
@@ -363,6 +456,112 @@ def _normalize_reminder_comment(raw_value: str | None) -> str | None:
     return normalized or None
 
 
+def _normalize_assignee_name(raw_value: str | None) -> str | None:
+    if not raw_value:
+        return None
+    normalized = " ".join(raw_value.strip().split())
+    return normalized or None
+
+
+def _member_matches_name(member: TeamMember, normalized_name: str) -> bool:
+    full_name = " ".join((member.full_name or "").lower().split())
+    if normalized_name == full_name:
+        return True
+
+    first_name = full_name.split(" ", maxsplit=1)[0] if full_name else ""
+    if first_name and normalized_name == first_name:
+        return True
+
+    for variant in member.name_variants or []:
+        if normalized_name == " ".join((variant or "").lower().split()):
+            return True
+    return False
+
+
+def _find_members_by_name(name: str | None, members: list[TeamMember]) -> list[TeamMember]:
+    normalized_name = _normalize_assignee_name(name)
+    if not normalized_name:
+        return []
+    normalized_name = normalized_name.lower()
+    return [member for member in members if _member_matches_name(member, normalized_name)]
+
+
+def _resolve_group_task_assignee(
+    *,
+    creator: TeamMember,
+    team_members: list[TeamMember],
+    explicit_usernames: list[str],
+    explicit_text_mention_ids: list[int],
+    parsed_assignee_name: str | None,
+) -> tuple[uuid.UUID, str, str | None]:
+    members_by_id = {member.id: member for member in team_members}
+    members_by_telegram_id = {
+        member.telegram_id: member
+        for member in team_members
+        if member.telegram_id is not None
+    }
+    members_by_username = {
+        _normalize_telegram_username(member.telegram_username): member
+        for member in team_members
+        if _normalize_telegram_username(member.telegram_username)
+    }
+
+    explicit_candidates: list[TeamMember] = []
+    explicit_candidate_ids: set[uuid.UUID] = set()
+    for telegram_id in explicit_text_mention_ids:
+        candidate = members_by_telegram_id.get(telegram_id)
+        if candidate and candidate.id not in explicit_candidate_ids:
+            explicit_candidates.append(candidate)
+            explicit_candidate_ids.add(candidate.id)
+
+    for username in explicit_usernames:
+        candidate = members_by_username.get(username)
+        if candidate and candidate.id not in explicit_candidate_ids:
+            explicit_candidates.append(candidate)
+            explicit_candidate_ids.add(candidate.id)
+
+    if len(explicit_candidates) == 1:
+        assignee = explicit_candidates[0]
+        return assignee.id, assignee.full_name, None
+
+    if len(explicit_candidates) > 1:
+        return (
+            creator.id,
+            creator.full_name,
+            "Указано несколько исполнителей. Назначил задачу автору — уточните одного исполнителя.",
+        )
+
+    if explicit_text_mention_ids or explicit_usernames:
+        return (
+            creator.id,
+            creator.full_name,
+            "Упомянутый исполнитель не найден среди зарегистрированных участников. "
+            "Назначил задачу автору.",
+        )
+
+    if parsed_assignee_name:
+        matches = _find_members_by_name(parsed_assignee_name, team_members)
+        if len(matches) == 1:
+            assignee = matches[0]
+            return assignee.id, assignee.full_name, None
+        if len(matches) > 1:
+            return (
+                creator.id,
+                creator.full_name,
+                "Исполнитель по имени определён неоднозначно. Назначил задачу автору.",
+            )
+        return (
+            creator.id,
+            creator.full_name,
+            f"Исполнитель «{parsed_assignee_name}» не найден. Назначил задачу автору.",
+        )
+
+    creator_full_name = creator.full_name
+    if creator.id in members_by_id:
+        creator_full_name = members_by_id[creator.id].full_name
+    return creator.id, creator_full_name, None
+
+
 def _normalize_ai_priority(raw_value: str | None) -> str | None:
     if not raw_value:
         return None
@@ -460,6 +659,7 @@ async def _parse_task_creation_payload(
     payload: ParsedTextTaskPayload = {
         "title": (fallback.get("title") or "").strip(),
         "description": None,
+        "assignee_name": None,
         "priority": fallback.get("priority") or "medium",
         "deadline": fallback.get("deadline"),
         "reminder_at": inline_reminder_at,
@@ -485,6 +685,7 @@ async def _parse_task_creation_payload(
         payload["title"] = ai_title
 
     payload["description"] = _normalize_reminder_comment(parsed.description)
+    payload["assignee_name"] = _normalize_assignee_name(parsed.assignee_name)
 
     ai_priority = _normalize_ai_priority(parsed.priority)
     if ai_priority:
@@ -576,6 +777,7 @@ async def _create_task_for_member(
     session_maker: async_sessionmaker,
     bot: Bot,
     raw_text: str,
+    assignee_id: uuid.UUID | None = None,
 ) -> bool:
     parsed = await _parse_task_creation_payload(
         raw_text=raw_text,
@@ -592,6 +794,7 @@ async def _create_task_for_member(
                 session,
                 title=parsed["title"],
                 creator=member,
+                assignee_id=assignee_id,
                 description=parsed["description"],
                 priority=parsed["priority"],
                 deadline=parsed["deadline"],
@@ -1510,6 +1713,143 @@ async def fsm_new_text(
         raw_text=raw_text,
     ):
         await state.clear()
+
+
+# ── Group mentions: "@bot <text>" -> create task ──
+
+
+@router.message(F.chat.type.in_({"group", "supergroup"}), F.text, ~F.text.startswith("/"))
+async def handle_group_task_by_mention(
+    message: Message,
+    member: TeamMember,
+    session_maker: async_sessionmaker,
+    bot: Bot,
+) -> None:
+    if not message.text:
+        return
+    if not _is_group_task_chat_allowed(message.chat.id):
+        return
+
+    raw_text = message.text.strip()
+    if not raw_text or raw_text.startswith("/"):
+        return
+
+    bot_username = _normalize_telegram_username(settings.TELEGRAM_BOT_USERNAME)
+    bot_user_id = getattr(bot, "id", None)
+    if not _message_mentions_bot(
+        message,
+        bot_username=bot_username,
+        bot_user_id=bot_user_id,
+    ):
+        return
+
+    task_text = _strip_bot_username_mentions(raw_text, bot_username)
+    if not task_text:
+        await message.reply("Укажи текст задачи после упоминания бота.")
+        return
+
+    sender_id = message.from_user.id if message.from_user else 0
+    if sender_id and _is_recent_group_task_duplicate(message.chat.id, sender_id, task_text):
+        return
+
+    parsed = await _parse_task_creation_payload(
+        raw_text=task_text,
+        member=member,
+        session_maker=session_maker,
+    )
+    if not parsed["title"]:
+        await message.reply("❌ Текст задачи не может быть пустым")
+        return
+
+    explicit_usernames = [
+        username
+        for username in _extract_username_mentions(raw_text)
+        if username != bot_username
+    ]
+    explicit_text_mention_ids = [
+        user_id
+        for user_id in _extract_text_mention_user_ids(message)
+        if bot_user_id is None or user_id != bot_user_id
+    ]
+
+    can_assign_to_others = PermissionService.can_create_task_for_others(member)
+    assignee_id = member.id
+    assignee_name = member.full_name
+    assignee_note: str | None = None
+
+    if can_assign_to_others:
+        async with session_maker() as session:
+            async with session.begin():
+                team_members = await member_repo.get_all_active(session)
+                assignee_id, assignee_name, assignee_note = _resolve_group_task_assignee(
+                    creator=member,
+                    team_members=team_members,
+                    explicit_usernames=explicit_usernames,
+                    explicit_text_mention_ids=explicit_text_mention_ids,
+                    parsed_assignee_name=parsed["assignee_name"],
+                )
+
+                task = await task_service.create_task(
+                    session,
+                    title=parsed["title"],
+                    creator=member,
+                    assignee_id=assignee_id,
+                    description=parsed["description"],
+                    priority=parsed["priority"],
+                    deadline=parsed["deadline"],
+                    reminder_at=parsed["reminder_at"],
+                    reminder_comment=parsed["reminder_comment"],
+                    source="text",
+                )
+
+                notification_service = NotificationService(bot)
+                await notification_service.notify_task_created(session, task, member)
+    else:
+        if explicit_usernames or explicit_text_mention_ids or parsed["assignee_name"]:
+            assignee_note = (
+                "Назначение другим участникам недоступно для вашей роли. "
+                "Задачу назначил на автора."
+            )
+        async with session_maker() as session:
+            async with session.begin():
+                task = await task_service.create_task(
+                    session,
+                    title=parsed["title"],
+                    creator=member,
+                    assignee_id=member.id,
+                    description=parsed["description"],
+                    priority=parsed["priority"],
+                    deadline=parsed["deadline"],
+                    reminder_at=parsed["reminder_at"],
+                    reminder_comment=parsed["reminder_comment"],
+                    source="text",
+                )
+
+                notification_service = NotificationService(bot)
+                await notification_service.notify_task_created(session, task, member)
+
+    is_mod = PermissionService.is_moderator(member)
+    prio = PRIORITY_EMOJI.get(task.priority, "")
+    deadline_str = f"\n📅 Дедлайн: {task.deadline.strftime('%d.%m.%Y')}" if task.deadline else ""
+    reminder_str = (
+        f"\n⏰ Напоминание: {_format_task_reminder_datetime(task.reminder_at)}"
+        if task.reminder_at
+        else ""
+    )
+
+    response_lines = [
+        "✅ Задача создана:",
+        f"#{task.short_id} · {task.title}",
+        f"👤 Исполнитель: {assignee_name}",
+        f"{prio} {task.priority}{deadline_str}{reminder_str}",
+    ]
+    if assignee_note:
+        response_lines.append(f"ℹ️ {assignee_note}")
+
+    await message.reply(
+        "\n".join(response_lines),
+        reply_markup=task_actions_keyboard(task.short_id, is_mod),
+    )
 
 
 # ── /assign @username <текст> — Назначить задачу ──

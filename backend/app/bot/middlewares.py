@@ -326,7 +326,12 @@ class AuthMiddleware(BaseMiddleware):
 
                 if not member:
                     # Не авторегистрируем — участники добавляются через веб-интерфейс
-                    if hasattr(event, "answer"):
+                    if isinstance(update, Update) and update.callback_query:
+                        await update.callback_query.answer(
+                            "⛔ Вы не зарегистрированы в системе.",
+                            show_alert=True,
+                        )
+                    elif is_private_chat and hasattr(event, "answer"):
                         await event.answer(
                             "\u26d4 Вы не зарегистрированы в системе.\n"
                             "Обратитесь к администратору для добавления в команду."
@@ -339,7 +344,7 @@ class AuthMiddleware(BaseMiddleware):
                             "⛔ Ваш доступ к системе отключён. Обратитесь к администратору.",
                             show_alert=True,
                         )
-                    elif hasattr(event, "answer"):
+                    elif is_private_chat and hasattr(event, "answer"):
                         await event.answer(
                             "⛔ Ваш доступ к системе отключён. Обратитесь к администратору."
                         )
