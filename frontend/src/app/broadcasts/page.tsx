@@ -330,6 +330,7 @@ export default function BroadcastsPage() {
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const presetImageInputRef = useRef<HTMLInputElement | null>(null);
   const messageSelectionRef = useRef<LinkSelection | null>(null);
+  const hasInitializedTargetSelectionRef = useRef(false);
 
   const [targets, setTargets] = useState<TelegramNotificationTarget[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -349,6 +350,7 @@ export default function BroadcastsPage() {
   const [selectedTargetIds, setSelectedTargetIds] = useState<string[]>([]);
   const [participantGroupMode, setParticipantGroupMode] = useState<ParticipantGroupMode>("department");
   const [expandedParticipantGroups, setExpandedParticipantGroups] = useState<Record<string, boolean>>({});
+  const [participantsPanelExpanded, setParticipantsPanelExpanded] = useState(false);
   const [participantQuery, setParticipantQuery] = useState("");
   const [messageHtml, setMessageHtml] = useState("");
   const [imageMode, setImageMode] = useState<ImageMode>("none");
@@ -388,8 +390,14 @@ export default function BroadcastsPage() {
 
       setSelectedTargetIds((prev) => {
         const valid = prev.filter((id) => targetList.some((target) => target.id === id));
-        if (valid.length > 0) return valid;
-        return targetList[0] ? [targetList[0].id] : [];
+        if (!hasInitializedTargetSelectionRef.current) {
+          if (targetList.length === 0) {
+            return [];
+          }
+          hasInitializedTargetSelectionRef.current = true;
+          return targetList.map((target) => target.id);
+        }
+        return valid;
       });
 
       setSelectedPresetId((prev) => {
@@ -1215,144 +1223,166 @@ export default function BroadcastsPage() {
               </div>
 
               <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                  <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                    Участники для тегов (@username)
-                  </Label>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setParticipantsPanelExpanded((prev) => !prev)}
+                  className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-muted/15 px-3 py-2 text-left hover:bg-muted/30"
+                >
+                  <span className="flex items-center gap-2">
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Участники для тегов (@username)
+                    </span>
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    {participantsPanelExpanded ? "Свернуть" : "Развернуть"}
+                    {participantsPanelExpanded ? (
+                      <ChevronDown className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 shrink-0" />
+                    )}
+                  </span>
+                </button>
 
-                <Input
-                  value={participantQuery}
-                  onChange={(e) => setParticipantQuery(e.target.value)}
-                  placeholder="Поиск по имени, username, должности, роли или отделу"
-                  className="rounded-xl"
-                />
+                {participantsPanelExpanded ? (
+                  <>
+                    <Input
+                      value={participantQuery}
+                      onChange={(e) => setParticipantQuery(e.target.value)}
+                      placeholder="Поиск по имени, username, должности, роли или отделу"
+                      className="rounded-xl"
+                    />
 
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="inline-flex items-center rounded-lg border border-border/60 bg-muted/20 p-0.5">
-                    <button
-                      type="button"
-                      onClick={() => setParticipantGroupMode("department")}
-                      className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
-                        participantGroupMode === "department"
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      По отделам
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setParticipantGroupMode("role")}
-                      className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
-                        participantGroupMode === "role"
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground"
-                      }`}
-                    >
-                      По ролям
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs">
-                    <button
-                      type="button"
-                      onClick={expandAllParticipantGroups}
-                      className="rounded-md px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                      disabled={participantGroups.length === 0}
-                    >
-                      Раскрыть все
-                    </button>
-                    <button
-                      type="button"
-                      onClick={collapseAllParticipantGroups}
-                      className="rounded-md px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                      disabled={participantGroups.length === 0}
-                    >
-                      Свернуть все
-                    </button>
-                  </div>
-                </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="inline-flex items-center rounded-lg border border-border/60 bg-muted/20 p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => setParticipantGroupMode("department")}
+                          className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+                            participantGroupMode === "department"
+                              ? "bg-background text-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          По отделам
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setParticipantGroupMode("role")}
+                          className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+                            participantGroupMode === "role"
+                              ? "bg-background text-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          По ролям
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={expandAllParticipantGroups}
+                          className="rounded-md px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                          disabled={participantGroups.length === 0}
+                        >
+                          Раскрыть все
+                        </button>
+                        <button
+                          type="button"
+                          onClick={collapseAllParticipantGroups}
+                          className="rounded-md px-2 py-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                          disabled={participantGroups.length === 0}
+                        >
+                          Свернуть все
+                        </button>
+                      </div>
+                    </div>
 
-                <div className="max-h-52 overflow-y-auto rounded-xl border border-border/60 bg-muted/15 p-2 space-y-2">
-                  {loading ? (
-                    <p className="px-2 py-6 text-center text-sm text-muted-foreground">Загрузка участников...</p>
-                  ) : participantGroups.length === 0 ? (
-                    <p className="px-2 py-6 text-center text-sm text-muted-foreground">
-                      Участники с Telegram username не найдены.
-                    </p>
-                  ) : (
-                    participantGroups.map((group) => {
-                      const groupMemberIds = group.members.map((member) => member.id);
-                      const expanded = participantQuery.trim()
-                        ? true
-                        : !!expandedParticipantGroups[group.id];
+                    <div className="max-h-52 overflow-y-auto rounded-xl border border-border/60 bg-muted/15 p-2 space-y-2">
+                      {loading ? (
+                        <p className="px-2 py-6 text-center text-sm text-muted-foreground">Загрузка участников...</p>
+                      ) : participantGroups.length === 0 ? (
+                        <p className="px-2 py-6 text-center text-sm text-muted-foreground">
+                          Участники с Telegram username не найдены.
+                        </p>
+                      ) : (
+                        participantGroups.map((group) => {
+                          const groupMemberIds = group.members.map((member) => member.id);
+                          const expanded = participantQuery.trim()
+                            ? true
+                            : !!expandedParticipantGroups[group.id];
 
-                      return (
-                        <div key={group.id} className="rounded-lg border border-border/60 bg-background/80 overflow-hidden">
-                          <div className="flex items-center gap-1.5 px-2.5 py-2">
-                            <button
-                              type="button"
-                              onClick={() => toggleParticipantGroup(group.id)}
-                              className="min-w-0 flex flex-1 items-center gap-2 text-left"
-                            >
-                              {expanded ? (
-                                <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                              ) : (
-                                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                          return (
+                            <div key={group.id} className="rounded-lg border border-border/60 bg-background/80 overflow-hidden">
+                              <div className="flex items-center gap-1.5 px-2.5 py-2">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleParticipantGroup(group.id)}
+                                  className="min-w-0 flex flex-1 items-center gap-2 text-left"
+                                >
+                                  {expanded ? (
+                                    <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+                                  )}
+                                  <span
+                                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                                    style={{ backgroundColor: group.accentColor }}
+                                  />
+                                  <span className="truncate text-sm font-medium">{group.name}</span>
+                                  <span className="text-xs text-muted-foreground shrink-0">
+                                    {group.members.length}
+                                  </span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => insertParticipantGroupMentions(groupMemberIds)}
+                                  className="rounded-md px-2 py-1 text-xs hover:bg-muted transition-colors"
+                                >
+                                  Вставить всех
+                                </button>
+                              </div>
+
+                              {expanded && (
+                                <div className="border-t border-border/50 space-y-1.5 p-2">
+                                  {group.members.map((member) => {
+                                    const username = normalizeTelegramUsername(member.telegram_username);
+                                    if (!username) return null;
+
+                                    return (
+                                      <button
+                                        type="button"
+                                        key={member.id}
+                                        onClick={() => insertParticipantMention(member.id)}
+                                        className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-muted"
+                                      >
+                                        <div className="min-w-0">
+                                          <p className="truncate text-sm font-medium">{member.full_name}</p>
+                                          <p className="truncate text-xs text-muted-foreground">
+                                            @{username}
+                                            {member.position ? ` · ${member.position}` : ""}
+                                          </p>
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               )}
-                              <span
-                                className="h-2.5 w-2.5 rounded-full shrink-0"
-                                style={{ backgroundColor: group.accentColor }}
-                              />
-                              <span className="truncate text-sm font-medium">{group.name}</span>
-                              <span className="text-xs text-muted-foreground shrink-0">
-                                {group.members.length}
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => insertParticipantGroupMentions(groupMemberIds)}
-                              className="rounded-md px-2 py-1 text-xs hover:bg-muted transition-colors"
-                            >
-                              Вставить всех
-                            </button>
-                          </div>
-
-                          {expanded && (
-                            <div className="border-t border-border/50 space-y-1.5 p-2">
-                              {group.members.map((member) => {
-                                const username = normalizeTelegramUsername(member.telegram_username);
-                                if (!username) return null;
-
-                                return (
-                                  <button
-                                    type="button"
-                                    key={member.id}
-                                    onClick={() => insertParticipantMention(member.id)}
-                                    className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-muted"
-                                  >
-                                    <div className="min-w-0">
-                                      <p className="truncate text-sm font-medium">{member.full_name}</p>
-                                      <p className="truncate text-xs text-muted-foreground">
-                                        @{username}
-                                        {member.position ? ` · ${member.position}` : ""}
-                                      </p>
-                                    </div>
-                                  </button>
-                                );
-                              })}
                             </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
+                          );
+                        })
+                      )}
+                    </div>
 
-                <p className="text-xs text-muted-foreground">
-                  Нажмите на участника, чтобы вставить его @username в текущую позицию курсора.
-                </p>
+                    <p className="text-xs text-muted-foreground">
+                      Нажмите на участника, чтобы вставить его @username в текущую позицию курсора.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Блок свернут. Разверните его, когда нужно вставить @username в сообщение.
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -1651,146 +1681,148 @@ export default function BroadcastsPage() {
                   )}
                 </div>
 
-                <div className="rounded-xl border border-border/60 bg-background p-3 space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                      Библиотека картинок по умолчанию
-                    </p>
-                    <Badge variant="outline" className="rounded-md">
-                      {imagePresets.length}
-                    </Badge>
-                  </div>
+                {imageMode === "preset" && (
+                  <div className="rounded-xl border border-border/60 bg-background p-3 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                        Библиотека картинок по умолчанию
+                      </p>
+                      <Badge variant="outline" className="rounded-md">
+                        {imagePresets.length}
+                      </Badge>
+                    </div>
 
-                  <div className="grid gap-2 sm:grid-cols-[1fr_120px_auto]">
-                    <Input
-                      value={presetAlias}
-                      onChange={(e) => setPresetAlias(e.target.value)}
-                      placeholder="Алиас, например: Новость-баннер"
-                    />
-                    <Input
-                      type="number"
-                      value={presetSortOrder}
-                      onChange={(e) => setPresetSortOrder(e.target.value)}
-                      placeholder="Порядок"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="rounded-lg"
-                      onClick={() => presetImageInputRef.current?.click()}
-                    >
-                      <ImagePlus className="mr-2 h-4 w-4" />
-                      Файл
-                    </Button>
-                  </div>
+                    <div className="grid gap-2 sm:grid-cols-[1fr_120px_auto]">
+                      <Input
+                        value={presetAlias}
+                        onChange={(e) => setPresetAlias(e.target.value)}
+                        placeholder="Алиас, например: Новость-баннер"
+                      />
+                      <Input
+                        type="number"
+                        value={presetSortOrder}
+                        onChange={(e) => setPresetSortOrder(e.target.value)}
+                        placeholder="Порядок"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-lg"
+                        onClick={() => presetImageInputRef.current?.click()}
+                      >
+                        <ImagePlus className="mr-2 h-4 w-4" />
+                        Файл
+                      </Button>
+                    </div>
 
-                  <div className="flex flex-wrap items-center gap-2">
-                    {presetImageFile ? (
-                      <span className="text-xs text-muted-foreground">
-                        {presetImageFile.name} · {formatFileSize(presetImageFile.size)}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">
-                        Форматы: JPG, PNG, WEBP. Максимум: 10 МБ.
-                      </span>
-                    )}
-
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={handleCreatePreset}
-                      disabled={savingPreset}
-                    >
-                      {savingPreset ? (
-                        <>
-                          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                          Сохранение...
-                        </>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {presetImageFile ? (
+                        <span className="text-xs text-muted-foreground">
+                          {presetImageFile.name} · {formatFileSize(presetImageFile.size)}
+                        </span>
                       ) : (
-                        "Добавить в библиотеку"
+                        <span className="text-xs text-muted-foreground">
+                          Форматы: JPG, PNG, WEBP. Максимум: 10 МБ.
+                        </span>
                       )}
-                    </Button>
-                  </div>
 
-                  {imagePresets.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      Пока нет сохраненных картинок.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {imagePresets.map((preset) => {
-                        const isSelected = selectedPresetId === preset.id;
-                        const busy = updatingPresetId === preset.id || deletingPresetId === preset.id;
-                        return (
-                          <div
-                            key={preset.id}
-                            className={`flex flex-wrap items-center gap-2 rounded-lg border p-2 ${
-                              isSelected ? "border-primary/40 bg-primary/5" : "border-border/60"
-                            }`}
-                          >
-                            <div className="relative h-10 w-14 overflow-hidden rounded-md border border-border/60 bg-muted/20">
-                              <Image
-                                src={preset.preview_url}
-                                alt={preset.alias}
-                                fill
-                                unoptimized
-                                className="object-cover"
-                              />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-medium">{preset.alias}</p>
-                              <p className="text-xs text-muted-foreground">
-                                {preset.is_active ? "Активен" : "Отключен"} · порядок {preset.sort_order}
-                              </p>
-                            </div>
-                            {preset.is_active && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleCreatePreset}
+                        disabled={savingPreset}
+                      >
+                        {savingPreset ? (
+                          <>
+                            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                            Сохранение...
+                          </>
+                        ) : (
+                          "Добавить в библиотеку"
+                        )}
+                      </Button>
+                    </div>
+
+                    {imagePresets.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        Пока нет сохраненных картинок.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {imagePresets.map((preset) => {
+                          const isSelected = selectedPresetId === preset.id;
+                          const busy = updatingPresetId === preset.id || deletingPresetId === preset.id;
+                          return (
+                            <div
+                              key={preset.id}
+                              className={`flex flex-wrap items-center gap-2 rounded-lg border p-2 ${
+                                isSelected ? "border-primary/40 bg-primary/5" : "border-border/60"
+                              }`}
+                            >
+                              <div className="relative h-10 w-14 overflow-hidden rounded-md border border-border/60 bg-muted/20">
+                                <Image
+                                  src={preset.preview_url}
+                                  alt={preset.alias}
+                                  fill
+                                  unoptimized
+                                  className="object-cover"
+                                />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-sm font-medium">{preset.alias}</p>
+                                <p className="text-xs text-muted-foreground">
+                                  {preset.is_active ? "Активен" : "Отключен"} · порядок {preset.sort_order}
+                                </p>
+                              </div>
+                              {preset.is_active && (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-md"
+                                  onClick={() => selectPreset(preset.id)}
+                                  disabled={busy}
+                                >
+                                  Выбрать
+                                </Button>
+                              )}
                               <Button
                                 type="button"
                                 size="sm"
-                                variant="outline"
+                                variant={preset.is_active ? "secondary" : "outline"}
                                 className="rounded-md"
-                                onClick={() => selectPreset(preset.id)}
+                                onClick={() => handleTogglePresetActive(preset, !preset.is_active)}
                                 disabled={busy}
                               >
-                                Выбрать
+                                {updatingPresetId === preset.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : preset.is_active ? (
+                                  "Выключить"
+                                ) : (
+                                  "Включить"
+                                )}
                               </Button>
-                            )}
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant={preset.is_active ? "secondary" : "outline"}
-                              className="rounded-md"
-                              onClick={() => handleTogglePresetActive(preset, !preset.is_active)}
-                              disabled={busy}
-                            >
-                              {updatingPresetId === preset.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : preset.is_active ? (
-                                "Выключить"
-                              ) : (
-                                "Включить"
-                              )}
-                            </Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="ghost"
-                              className="rounded-md text-destructive hover:text-destructive"
-                              onClick={() => handleDeletePreset(preset)}
-                              disabled={busy}
-                            >
-                              {deletingPresetId === preset.id ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-3.5 w-3.5" />
-                              )}
-                            </Button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="ghost"
+                                className="rounded-md text-destructive hover:text-destructive"
+                                onClick={() => handleDeletePreset(preset)}
+                                disabled={busy}
+                              >
+                                {deletingPresetId === preset.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
