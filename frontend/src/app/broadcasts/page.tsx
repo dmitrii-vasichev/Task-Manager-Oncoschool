@@ -842,6 +842,41 @@ export default function BroadcastsPage() {
     tryAttachImage(file);
   };
 
+  const updateImagePresetWithRetry = useCallback(
+    async (
+      presetId: string,
+      data: {
+        alias?: string;
+        sortOrder?: number;
+        isActive?: boolean;
+        imageFile?: File | null;
+      }
+    ) => {
+      let attempt = 0;
+      let lastError: unknown = null;
+
+      while (attempt < 2) {
+        try {
+          return await api.updateTelegramBroadcastImagePreset(presetId, data);
+        } catch (error) {
+          lastError = error;
+          const isTransient =
+            error instanceof Error &&
+            (error.message.includes("Сервер недоступен") ||
+              error.message.includes("Failed to fetch"));
+          if (!isTransient || attempt === 1) {
+            throw error;
+          }
+          attempt += 1;
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        }
+      }
+
+      throw lastError instanceof Error ? lastError : new Error("Не удалось обновить пресет");
+    },
+    []
+  );
+
   const switchImageMode = (mode: ImageMode) => {
     setImageMode(mode);
     if (mode !== "upload") {
@@ -909,14 +944,20 @@ export default function BroadcastsPage() {
   ) => {
     setUpdatingPresetId(preset.id);
     try {
-      await api.updateTelegramBroadcastImagePreset(preset.id, { isActive: nextActive });
-      if (!nextActive && selectedPresetId === preset.id) {
+      const updatedPreset = await updateImagePresetWithRetry(preset.id, {
+        isActive: nextActive,
+      });
+
+      setImagePresets((prev) =>
+        prev.map((item) => (item.id === updatedPreset.id ? updatedPreset : item))
+      );
+
+      if (!updatedPreset.is_active && selectedPresetId === updatedPreset.id) {
         setSelectedPresetId(null);
         if (imageMode === "preset") {
           setImageMode("none");
         }
       }
-      await fetchData();
     } catch (e) {
       toastError(e instanceof Error ? e.message : "Не удалось обновить пресет");
     } finally {
