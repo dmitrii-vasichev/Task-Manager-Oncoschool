@@ -7,7 +7,8 @@ from zoneinfo import ZoneInfo
 
 from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from sqlalchemy import select
+from sqlalchemy import cast, func, select
+from sqlalchemy.dialects.postgresql import INTERVAL
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.db.models import (
@@ -46,6 +47,7 @@ REMINDER_PARTICIPANTS_PLACEHOLDERS = (
 )
 TRIGGER_EARLY_WINDOW_SECONDS = 0
 TRIGGER_LATE_GRACE_SECONDS = 300
+RECURRING_RECURRENCES = {"weekly", "biweekly", "monthly_last_workday"}
 RUSSIAN_WEEKDAYS = {
     1: "понедельник",
     2: "вторник",
@@ -175,6 +177,35 @@ class MeetingSchedulerService:
                             f"Error processing schedule {schedule.id} ({schedule.title}): {e}",
                             exc_info=True,
                         )
+
+                # Keep one upcoming slot visible for recurring schedules immediately
+                # after the current occurrence finishes (not only at reminder trigger time).
+                created_slots = 0
+                refreshed_schedules = await schedule_repo.get_all_active(session)
+                for schedule in refreshed_schedules:
+                    try:
+                        created = await self._ensure_next_occurrence_visible(
+                            session,
+                            schedule,
+                            now_utc,
+                        )
+                        if created:
+                            created_slots += 1
+                    except Exception as e:
+                        logger.error(
+                            "Error ensuring next visible occurrence for schedule %s (%s): %s",
+                            schedule.id,
+                            schedule.title,
+                            e,
+                            exc_info=True,
+                        )
+
+                if created_slots:
+                    await session.commit()
+                    logger.info(
+                        "Pre-created %s upcoming schedule occurrence(s)",
+                        created_slots,
+                    )
         except Exception as e:
             logger.error(f"Error in _check_schedules: {e}", exc_info=True)
 
@@ -207,6 +238,196 @@ class MeetingSchedulerService:
         duration = duration_minutes or 60
         end_time = meeting_date + timedelta(minutes=duration)
         return now_utc_naive >= end_time
+
+    @classmethod
+    def _matches_recurrence(
+        cls,
+        candidate_local: datetime,
+        day_of_week: int,
+        recurrence: str,
+    ) -> bool:
+        if candidate_local.isoweekday() != day_of_week:
+            return False
+        if recurrence == "biweekly":
+            week_number = candidate_local.isocalendar()[1]
+            return week_number % 2 == 0
+        if recurrence == "monthly_last_workday":
+            return cls._is_last_selected_weekday_of_month(
+                candidate_local,
+                day_of_week,
+            )
+        return recurrence == "weekly"
+
+    @classmethod
+    def _calc_next_occurrence_datetime(
+        cls,
+        schedule: MeetingSchedule,
+        now_utc: datetime,
+    ) -> datetime | None:
+        if schedule.recurrence == "on_demand":
+            if not schedule.next_occurrence_at:
+                return None
+            candidate = schedule.next_occurrence_at
+            if candidate.tzinfo is None:
+                candidate = candidate.replace(tzinfo=ZoneInfo("UTC"))
+            else:
+                candidate = candidate.astimezone(ZoneInfo("UTC"))
+            return candidate if candidate > now_utc else None
+
+        if schedule.recurrence == "one_time":
+            if not schedule.one_time_date:
+                return None
+            if (
+                schedule.last_triggered_date
+                and schedule.last_triggered_date >= schedule.one_time_date
+            ):
+                return None
+            candidate = datetime.combine(
+                schedule.one_time_date,
+                schedule.time_utc,
+                tzinfo=ZoneInfo("UTC"),
+            )
+            return candidate if candidate > now_utc else None
+
+        if schedule.recurrence not in RECURRING_RECURRENCES:
+            return None
+
+        tz = ZoneInfo(schedule.timezone or "Europe/Moscow")
+        effective_time = schedule.next_occurrence_time_override or schedule.time_utc
+        skip_first_match = bool(schedule.next_occurrence_skip)
+
+        for days_ahead in range(60):
+            candidate_date = now_utc.date() + timedelta(days=days_ahead)
+            candidate_dt = datetime.combine(
+                candidate_date,
+                effective_time,
+                tzinfo=ZoneInfo("UTC"),
+            )
+            candidate_local = candidate_dt.astimezone(tz)
+
+            if candidate_dt <= now_utc:
+                continue
+
+            if (
+                schedule.last_triggered_date
+                and candidate_date <= schedule.last_triggered_date
+            ):
+                continue
+
+            if not cls._matches_recurrence(
+                candidate_local,
+                schedule.day_of_week,
+                schedule.recurrence,
+            ):
+                continue
+
+            if skip_first_match:
+                skip_first_match = False
+                continue
+
+            return candidate_dt
+
+        return None
+
+    @staticmethod
+    async def _has_scheduled_upcoming_occurrence(
+        session,
+        schedule_id: uuid.UUID,
+        now_utc_naive: datetime,
+    ) -> bool:
+        end_time = Meeting.meeting_date + cast(
+            func.concat(Meeting.duration_minutes, " minutes"),
+            INTERVAL,
+        )
+        stmt = (
+            select(Meeting.id)
+            .where(
+                Meeting.schedule_id == schedule_id,
+                Meeting.status == "scheduled",
+                Meeting.meeting_date.is_not(None),
+                end_time > now_utc_naive,
+            )
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    @staticmethod
+    async def _meeting_exists_for_occurrence(
+        session,
+        schedule_id: uuid.UUID,
+        meeting_date_naive: datetime,
+    ) -> bool:
+        stmt = (
+            select(Meeting.id)
+            .where(
+                Meeting.schedule_id == schedule_id,
+                Meeting.meeting_date == meeting_date_naive,
+            )
+            .limit(1)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none() is not None
+
+    async def _ensure_next_occurrence_visible(
+        self,
+        session,
+        schedule: MeetingSchedule,
+        now_utc: datetime,
+    ) -> bool:
+        if not schedule.is_active or schedule.recurrence == "on_demand":
+            return False
+
+        now_utc_naive = now_utc.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+        has_upcoming = await self._has_scheduled_upcoming_occurrence(
+            session,
+            schedule.id,
+            now_utc_naive,
+        )
+        if has_upcoming:
+            return False
+
+        next_occurrence_dt = self._calc_next_occurrence_datetime(schedule, now_utc)
+        if not next_occurrence_dt:
+            return False
+
+        meeting_date_naive = next_occurrence_dt.astimezone(ZoneInfo("UTC")).replace(
+            tzinfo=None
+        )
+        already_exists = await self._meeting_exists_for_occurrence(
+            session,
+            schedule.id,
+            meeting_date_naive,
+        )
+        if already_exists:
+            return False
+
+        meeting = Meeting(
+            title=schedule.title,
+            meeting_date=meeting_date_naive,
+            schedule_id=schedule.id,
+            status="scheduled",
+            duration_minutes=schedule.duration_minutes,
+            created_by_id=schedule.created_by_id,
+        )
+        session.add(meeting)
+        await session.flush()
+
+        if schedule.participant_ids:
+            for participant_id in schedule.participant_ids:
+                session.add(
+                    MeetingParticipant(
+                        meeting_id=meeting.id,
+                        member_id=participant_id,
+                    )
+                )
+
+        logger.info(
+            "Pre-created upcoming meeting for schedule %s at %s",
+            schedule.id,
+            meeting_date_naive.isoformat(),
+        )
+        return True
 
     async def _sync_zoom_transcripts(self) -> None:
         """Try to auto-fetch Zoom transcripts for recently finished meetings."""

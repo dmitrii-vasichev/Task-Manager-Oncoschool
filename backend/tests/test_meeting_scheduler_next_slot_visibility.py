@@ -1,0 +1,160 @@
+import unittest
+import uuid
+from datetime import date, datetime, time, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
+
+from app.db.models import Meeting, MeetingParticipant
+from app.services.meeting_scheduler_service import MeetingSchedulerService
+
+
+def _build_scheduler() -> MeetingSchedulerService:
+    return MeetingSchedulerService(
+        bot=SimpleNamespace(send_message=AsyncMock()),
+        session_maker=SimpleNamespace(),
+        zoom_service=None,
+    )
+
+
+class MeetingSchedulerNextSlotVisibilityTests(unittest.IsolatedAsyncioTestCase):
+    def test_calc_next_occurrence_datetime_for_weekly_after_last_occurrence(self) -> None:
+        scheduler = _build_scheduler()
+        now_utc = datetime(2026, 2, 23, 16, 1, tzinfo=timezone.utc)
+        schedule = SimpleNamespace(
+            recurrence="weekly",
+            timezone="UTC",
+            day_of_week=1,  # Monday
+            time_utc=time(15, 0),
+            one_time_date=None,
+            next_occurrence_at=None,
+            next_occurrence_time_override=None,
+            next_occurrence_skip=False,
+            last_triggered_date=date(2026, 2, 23),
+        )
+
+        next_occurrence = scheduler._calc_next_occurrence_datetime(schedule, now_utc)
+
+        self.assertEqual(
+            next_occurrence,
+            datetime(2026, 3, 2, 15, 0, tzinfo=timezone.utc),
+        )
+
+    async def test_ensure_next_occurrence_visible_creates_next_slot(self) -> None:
+        scheduler = _build_scheduler()
+        now_utc = datetime(2026, 2, 23, 16, 1, tzinfo=timezone.utc)
+        participant_one = uuid.uuid4()
+        participant_two = uuid.uuid4()
+        schedule = SimpleNamespace(
+            id=uuid.uuid4(),
+            title="Планерка по контенту",
+            recurrence="weekly",
+            timezone="UTC",
+            day_of_week=1,  # Monday
+            time_utc=time(15, 0),
+            duration_minutes=60,
+            one_time_date=None,
+            next_occurrence_at=None,
+            next_occurrence_time_override=None,
+            next_occurrence_skip=False,
+            last_triggered_date=date(2026, 2, 23),
+            participant_ids=[participant_one, participant_two],
+            created_by_id=uuid.uuid4(),
+            is_active=True,
+        )
+
+        added_objects: list[object] = []
+
+        def add_object(obj: object) -> None:
+            added_objects.append(obj)
+
+        async def flush_once() -> None:
+            for obj in added_objects:
+                if isinstance(obj, Meeting) and obj.id is None:
+                    obj.id = uuid.uuid4()
+
+        session = SimpleNamespace(
+            add=add_object,
+            flush=AsyncMock(side_effect=flush_once),
+        )
+
+        with (
+            patch.object(
+                scheduler,
+                "_has_scheduled_upcoming_occurrence",
+                AsyncMock(return_value=False),
+            ),
+            patch.object(
+                scheduler,
+                "_meeting_exists_for_occurrence",
+                AsyncMock(return_value=False),
+            ),
+        ):
+            created = await scheduler._ensure_next_occurrence_visible(
+                session,
+                schedule,
+                now_utc,
+            )
+
+        self.assertTrue(created)
+        meetings = [obj for obj in added_objects if isinstance(obj, Meeting)]
+        participants = [
+            obj for obj in added_objects if isinstance(obj, MeetingParticipant)
+        ]
+
+        self.assertEqual(len(meetings), 1)
+        self.assertEqual(meetings[0].meeting_date, datetime(2026, 3, 2, 15, 0))
+        self.assertEqual(len(participants), 2)
+        self.assertTrue(all(obj.meeting_id == meetings[0].id for obj in participants))
+        self.assertEqual({obj.member_id for obj in participants}, {participant_one, participant_two})
+
+    async def test_ensure_next_occurrence_visible_skips_when_upcoming_exists(self) -> None:
+        scheduler = _build_scheduler()
+        now_utc = datetime(2026, 2, 23, 16, 1, tzinfo=timezone.utc)
+        schedule = SimpleNamespace(
+            id=uuid.uuid4(),
+            title="Планерка по контенту",
+            recurrence="weekly",
+            timezone="UTC",
+            day_of_week=1,
+            time_utc=time(15, 0),
+            duration_minutes=60,
+            one_time_date=None,
+            next_occurrence_at=None,
+            next_occurrence_time_override=None,
+            next_occurrence_skip=False,
+            last_triggered_date=date(2026, 2, 23),
+            participant_ids=[],
+            created_by_id=None,
+            is_active=True,
+        )
+
+        added_objects: list[object] = []
+        session = SimpleNamespace(
+            add=added_objects.append,
+            flush=AsyncMock(),
+        )
+        has_upcoming_mock = AsyncMock(return_value=True)
+        meeting_exists_mock = AsyncMock(return_value=False)
+
+        with (
+            patch.object(
+                scheduler,
+                "_has_scheduled_upcoming_occurrence",
+                has_upcoming_mock,
+            ),
+            patch.object(
+                scheduler,
+                "_meeting_exists_for_occurrence",
+                meeting_exists_mock,
+            ),
+        ):
+            created = await scheduler._ensure_next_occurrence_visible(
+                session,
+                schedule,
+                now_utc,
+            )
+
+        self.assertFalse(created)
+        self.assertEqual(added_objects, [])
+        session.flush.assert_not_awaited()
+        meeting_exists_mock.assert_not_awaited()
