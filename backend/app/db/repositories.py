@@ -24,6 +24,7 @@ from app.db.models import (
     TaskUpdate,
     TeamMember,
     TelegramBroadcast,
+    TelegramBroadcastImagePreset,
     TelegramNotificationTarget,
 )
 
@@ -561,6 +562,100 @@ class TelegramBroadcastRepository:
         )
         if exclude_broadcast_id is not None:
             stmt = stmt.where(TelegramBroadcast.id != exclude_broadcast_id)
+        result = await session.execute(stmt)
+        return int(result.scalar_one() or 0)
+
+
+class TelegramBroadcastImagePresetRepository:
+    async def get_all(
+        self,
+        session: AsyncSession,
+        *,
+        include_inactive: bool = True,
+    ) -> list[TelegramBroadcastImagePreset]:
+        stmt = select(TelegramBroadcastImagePreset)
+        if not include_inactive:
+            stmt = stmt.where(TelegramBroadcastImagePreset.is_active.is_(True))
+        stmt = stmt.order_by(
+            TelegramBroadcastImagePreset.sort_order.asc(),
+            TelegramBroadcastImagePreset.created_at.asc(),
+        )
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def get_by_id(
+        self,
+        session: AsyncSession,
+        preset_id: uuid.UUID,
+    ) -> TelegramBroadcastImagePreset | None:
+        return await session.get(TelegramBroadcastImagePreset, preset_id)
+
+    async def get_active_by_id(
+        self,
+        session: AsyncSession,
+        preset_id: uuid.UUID,
+    ) -> TelegramBroadcastImagePreset | None:
+        stmt = select(TelegramBroadcastImagePreset).where(
+            TelegramBroadcastImagePreset.id == preset_id,
+            TelegramBroadcastImagePreset.is_active.is_(True),
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_by_alias_ci(
+        self,
+        session: AsyncSession,
+        *,
+        alias: str,
+        exclude_preset_id: uuid.UUID | None = None,
+    ) -> TelegramBroadcastImagePreset | None:
+        stmt = select(TelegramBroadcastImagePreset).where(
+            func.lower(TelegramBroadcastImagePreset.alias) == alias.lower()
+        )
+        if exclude_preset_id is not None:
+            stmt = stmt.where(TelegramBroadcastImagePreset.id != exclude_preset_id)
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def create(self, session: AsyncSession, **kwargs) -> TelegramBroadcastImagePreset:
+        preset = TelegramBroadcastImagePreset(**kwargs)
+        session.add(preset)
+        await session.flush()
+        return preset
+
+    async def update(
+        self,
+        session: AsyncSession,
+        preset_id: uuid.UUID,
+        **kwargs,
+    ) -> TelegramBroadcastImagePreset | None:
+        preset = await self.get_by_id(session, preset_id)
+        if not preset:
+            return None
+        for key, value in kwargs.items():
+            setattr(preset, key, value)
+        await session.flush()
+        return preset
+
+    async def delete(self, session: AsyncSession, preset_id: uuid.UUID) -> bool:
+        stmt = delete(TelegramBroadcastImagePreset).where(
+            TelegramBroadcastImagePreset.id == preset_id
+        )
+        result = await session.execute(stmt)
+        return result.rowcount > 0
+
+    async def count_with_image_path(
+        self,
+        session: AsyncSession,
+        *,
+        image_path: str,
+        exclude_preset_id: uuid.UUID | None = None,
+    ) -> int:
+        stmt = select(func.count(TelegramBroadcastImagePreset.id)).where(
+            TelegramBroadcastImagePreset.image_path == image_path
+        )
+        if exclude_preset_id is not None:
+            stmt = stmt.where(TelegramBroadcastImagePreset.id != exclude_preset_id)
         result = await session.execute(stmt)
         return int(result.scalar_one() or 0)
 

@@ -334,6 +334,20 @@ class TelegramTargetResponse(BaseModel):
 # ── Telegram Broadcasts ──
 
 
+class TelegramBroadcastImagePresetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    alias: str
+    image_path: str
+    preview_url: str
+    is_active: bool
+    sort_order: int
+    created_by_id: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class TelegramBroadcastCreate(BaseModel):
     target_id: uuid.UUID
     message_html: str

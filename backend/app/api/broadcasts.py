@@ -15,14 +15,20 @@ from fastapi import (
     UploadFile,
     status,
 )
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import require_moderator
 from app.db.database import get_session
-from app.db.models import TeamMember, TelegramBroadcast
-from app.db.repositories import TelegramBroadcastRepository, TelegramTargetRepository
+from app.db.models import TeamMember, TelegramBroadcast, TelegramBroadcastImagePreset
+from app.db.repositories import (
+    TelegramBroadcastImagePresetRepository,
+    TelegramBroadcastRepository,
+    TelegramTargetRepository,
+)
 from app.db.schemas import (
     TelegramBroadcastCreate,
+    TelegramBroadcastImagePresetResponse,
     TelegramBroadcastResponse,
     TelegramBroadcastSendResponse,
     TelegramBroadcastSendTargetResult,
@@ -31,6 +37,7 @@ from app.db.schemas import (
 )
 from app.services.broadcast_media import (
     delete_broadcast_image,
+    get_broadcast_media_public_url,
     get_broadcast_photo,
     save_broadcast_image,
     validate_broadcast_image_payload,
@@ -42,10 +49,12 @@ logger = logging.getLogger(__name__)
 
 broadcast_repo = TelegramBroadcastRepository()
 target_repo = TelegramTargetRepository()
+preset_repo = TelegramBroadcastImagePresetRepository()
 
 MAX_TELEGRAM_MESSAGE_LEN = 4096
 MAX_TELEGRAM_CAPTION_LEN = 1024
 MAX_TARGETS_PER_BROADCAST = 50
+MAX_PRESET_ALIAS_LEN = 120
 
 
 def _to_utc_naive(dt: datetime) -> datetime:
@@ -125,6 +134,35 @@ def _parse_form_datetime(raw_value: str | None) -> datetime | None:
     return parsed
 
 
+def _parse_preset_id(raw_value: str | None) -> uuid.UUID | None:
+    if raw_value is None:
+        return None
+
+    value = raw_value.strip()
+    if not value:
+        return None
+
+    try:
+        return uuid.UUID(value)
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="Некорректный идентификатор пресета картинки",
+        )
+
+
+def _validate_preset_alias(raw_alias: str) -> str:
+    alias = (raw_alias or "").strip()
+    if not alias:
+        raise HTTPException(status_code=400, detail="Укажите алиас картинки")
+    if len(alias) > MAX_PRESET_ALIAS_LEN:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Алиас слишком длинный (максимум {MAX_PRESET_ALIAS_LEN} символов)",
+        )
+    return alias
+
+
 async def _read_image_upload(
     image: UploadFile | None,
 ) -> tuple[bytes | None, str | None]:
@@ -138,6 +176,29 @@ async def _read_image_upload(
         raise HTTPException(status_code=400, detail=str(e))
 
     return payload, content_type
+
+
+def _serialize_image_preset(
+    request: Request,
+    preset: TelegramBroadcastImagePreset,
+) -> TelegramBroadcastImagePresetResponse:
+    storage_service = getattr(request.app.state, "storage_service", None)
+    preview_url = get_broadcast_media_public_url(
+        media_path=preset.image_path,
+        storage_service=storage_service,
+        base_url=str(request.base_url),
+    )
+    return TelegramBroadcastImagePresetResponse(
+        id=preset.id,
+        alias=preset.alias,
+        image_path=preset.image_path,
+        preview_url=preview_url,
+        is_active=preset.is_active,
+        sort_order=preset.sort_order,
+        created_by_id=preset.created_by_id,
+        created_at=preset.created_at,
+        updated_at=preset.updated_at,
+    )
 
 
 async def _get_ordered_targets(
@@ -216,6 +277,52 @@ async def _send_to_chat(
         return False, str(e)[:1000]
 
 
+async def _delete_image_path_if_unused(
+    request: Request,
+    session: AsyncSession,
+    *,
+    image_path: str,
+    exclude_broadcast_id: uuid.UUID | None = None,
+    exclude_preset_id: uuid.UUID | None = None,
+) -> None:
+    still_scheduled = await broadcast_repo.count_scheduled_with_image_path(
+        session,
+        image_path=image_path,
+        exclude_broadcast_id=exclude_broadcast_id,
+    )
+    if still_scheduled > 0:
+        return
+
+    still_referenced_by_presets = await preset_repo.count_with_image_path(
+        session,
+        image_path=image_path,
+        exclude_preset_id=exclude_preset_id,
+    )
+    if still_referenced_by_presets > 0:
+        return
+
+    storage_service = getattr(request.app.state, "storage_service", None)
+    try:
+        await delete_broadcast_image(media_path=image_path, storage_service=storage_service)
+    except Exception:
+        logger.warning(
+            "Failed to delete broadcast image path=%s", image_path, exc_info=True
+        )
+
+
+async def _cleanup_image_path(
+    *,
+    media_path: str,
+    storage_service,
+) -> None:
+    try:
+        await delete_broadcast_image(media_path=media_path, storage_service=storage_service)
+    except Exception:
+        logger.warning(
+            "Failed to cleanup image path=%s", media_path, exc_info=True
+        )
+
+
 async def _clear_broadcast_image_if_unused(
     request: Request,
     session: AsyncSession,
@@ -228,21 +335,12 @@ async def _clear_broadcast_image_if_unused(
     broadcast.image_path = None
     await session.flush()
 
-    still_scheduled = await broadcast_repo.count_scheduled_with_image_path(
+    await _delete_image_path_if_unused(
+        request,
         session,
         image_path=image_path,
         exclude_broadcast_id=broadcast.id,
     )
-    if still_scheduled > 0:
-        return
-
-    storage_service = getattr(request.app.state, "storage_service", None)
-    try:
-        await delete_broadcast_image(media_path=image_path, storage_service=storage_service)
-    except Exception:
-        logger.warning(
-            "Failed to delete broadcast image path=%s", image_path, exc_info=True
-        )
 
 
 async def _send_broadcast_now(
@@ -273,6 +371,225 @@ async def get_broadcasts(
 ):
     """List scheduled/sent/failed broadcasts (moderator+)."""
     return await broadcast_repo.get_all(session, status=status_filter, limit=limit)
+
+
+@router.get("/image-presets", response_model=list[TelegramBroadcastImagePresetResponse])
+async def get_image_presets(
+    request: Request,
+    include_inactive: bool = Query(default=True),
+    _: TeamMember = Depends(require_moderator),
+    session: AsyncSession = Depends(get_session),
+):
+    presets = await preset_repo.get_all(session, include_inactive=include_inactive)
+    return [_serialize_image_preset(request, preset) for preset in presets]
+
+
+@router.post(
+    "/image-presets",
+    response_model=TelegramBroadcastImagePresetResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_image_preset(
+    request: Request,
+    alias: str = Form(...),
+    sort_order: int = Form(default=0),
+    is_active: bool = Form(default=True),
+    image: UploadFile = File(...),
+    member: TeamMember = Depends(require_moderator),
+    session: AsyncSession = Depends(get_session),
+):
+    normalized_alias = _validate_preset_alias(alias)
+
+    duplicate = await preset_repo.get_by_alias_ci(session, alias=normalized_alias)
+    if duplicate:
+        raise HTTPException(status_code=409, detail="Алиас уже используется")
+
+    image_payload, image_content_type = await _read_image_upload(image)
+    if image_payload is None or image_content_type is None:
+        raise HTTPException(status_code=400, detail="Выберите изображение")
+
+    storage_service = getattr(request.app.state, "storage_service", None)
+    saved_image_path: str | None = None
+
+    try:
+        saved_image_path = await save_broadcast_image(
+            payload=image_payload,
+            content_type=image_content_type,
+            storage_service=storage_service,
+        )
+        preset = await preset_repo.create(
+            session,
+            alias=normalized_alias,
+            image_path=saved_image_path,
+            is_active=is_active,
+            sort_order=sort_order,
+            created_by_id=member.id,
+        )
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        if saved_image_path:
+            await _cleanup_image_path(
+                media_path=saved_image_path,
+                storage_service=storage_service,
+            )
+        raise HTTPException(status_code=409, detail="Алиас уже используется")
+    except HTTPException:
+        await session.rollback()
+        if saved_image_path:
+            await _cleanup_image_path(
+                media_path=saved_image_path,
+                storage_service=storage_service,
+            )
+        raise
+    except Exception:
+        await session.rollback()
+        if saved_image_path:
+            try:
+                await delete_broadcast_image(
+                    media_path=saved_image_path,
+                    storage_service=storage_service,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to cleanup image path=%s after preset create failure",
+                    saved_image_path,
+                    exc_info=True,
+                )
+        logger.exception("Failed to create broadcast image preset")
+        raise HTTPException(status_code=500, detail="Не удалось создать пресет картинки")
+
+    return _serialize_image_preset(request, preset)
+
+
+@router.patch(
+    "/image-presets/{preset_id}",
+    response_model=TelegramBroadcastImagePresetResponse,
+)
+async def update_image_preset(
+    preset_id: uuid.UUID,
+    request: Request,
+    alias: str | None = Form(default=None),
+    sort_order: int | None = Form(default=None),
+    is_active: bool | None = Form(default=None),
+    image: UploadFile | None = File(default=None),
+    _: TeamMember = Depends(require_moderator),
+    session: AsyncSession = Depends(get_session),
+):
+    preset = await preset_repo.get_by_id(session, preset_id)
+    if not preset:
+        raise HTTPException(status_code=404, detail="Пресет картинки не найден")
+
+    update_data: dict = {}
+    if alias is not None:
+        normalized_alias = _validate_preset_alias(alias)
+        duplicate = await preset_repo.get_by_alias_ci(
+            session,
+            alias=normalized_alias,
+            exclude_preset_id=preset_id,
+        )
+        if duplicate:
+            raise HTTPException(status_code=409, detail="Алиас уже используется")
+        update_data["alias"] = normalized_alias
+    if sort_order is not None:
+        update_data["sort_order"] = sort_order
+    if is_active is not None:
+        update_data["is_active"] = is_active
+
+    storage_service = getattr(request.app.state, "storage_service", None)
+    old_image_path: str | None = None
+    new_image_path: str | None = None
+    if image is not None:
+        image_payload, image_content_type = await _read_image_upload(image)
+        if image_payload is None or image_content_type is None:
+            raise HTTPException(status_code=400, detail="Выберите изображение")
+        try:
+            new_image_path = await save_broadcast_image(
+                payload=image_payload,
+                content_type=image_content_type,
+                storage_service=storage_service,
+            )
+        except Exception:
+            logger.exception("Failed to save preset image")
+            raise HTTPException(status_code=500, detail="Не удалось сохранить картинку")
+        old_image_path = preset.image_path
+        update_data["image_path"] = new_image_path
+
+    if not update_data:
+        return _serialize_image_preset(request, preset)
+
+    try:
+        updated = await preset_repo.update(session, preset_id, **update_data)
+        if not updated:
+            raise HTTPException(status_code=404, detail="Пресет картинки не найден")
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        if new_image_path is not None:
+            await _cleanup_image_path(
+                media_path=new_image_path,
+                storage_service=storage_service,
+            )
+        raise HTTPException(status_code=409, detail="Алиас уже используется")
+    except HTTPException:
+        await session.rollback()
+        if new_image_path is not None:
+            await _cleanup_image_path(
+                media_path=new_image_path,
+                storage_service=storage_service,
+            )
+        raise
+    except Exception:
+        await session.rollback()
+        if new_image_path is not None:
+            try:
+                await delete_broadcast_image(
+                    media_path=new_image_path,
+                    storage_service=storage_service,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to cleanup image path=%s after preset update failure",
+                    new_image_path,
+                    exc_info=True,
+                )
+        logger.exception("Failed to update broadcast image preset")
+        raise HTTPException(status_code=500, detail="Не удалось обновить пресет картинки")
+
+    if old_image_path and new_image_path and old_image_path != new_image_path:
+        await _delete_image_path_if_unused(
+            request,
+            session,
+            image_path=old_image_path,
+            exclude_preset_id=preset_id,
+        )
+
+    return _serialize_image_preset(request, updated)
+
+
+@router.delete("/image-presets/{preset_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_image_preset(
+    preset_id: uuid.UUID,
+    request: Request,
+    _: TeamMember = Depends(require_moderator),
+    session: AsyncSession = Depends(get_session),
+):
+    preset = await preset_repo.get_by_id(session, preset_id)
+    if not preset:
+        raise HTTPException(status_code=404, detail="Пресет картинки не найден")
+
+    image_path = preset.image_path
+    deleted = await preset_repo.delete(session, preset_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Пресет картинки не найден")
+
+    await session.commit()
+    await _delete_image_path_if_unused(
+        request,
+        session,
+        image_path=image_path,
+        exclude_preset_id=preset_id,
+    )
 
 
 @router.post("", response_model=TelegramBroadcastResponse, status_code=status.HTTP_201_CREATED)
@@ -328,6 +645,7 @@ async def create_broadcast_batch(
     message_html: str = Form(...),
     scheduled_at: str | None = Form(default=None),
     send_now: bool = Form(default=False),
+    image_preset_id: str | None = Form(default=None),
     image: UploadFile | None = File(default=None),
     member: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
@@ -337,8 +655,24 @@ async def create_broadcast_batch(
     parsed_target_ids = _parse_target_ids(target_ids)
     ordered_targets = await _get_ordered_targets(session, parsed_target_ids)
 
+    parsed_preset_id = _parse_preset_id(image_preset_id)
     image_payload, image_content_type = await _read_image_upload(image)
-    if image_payload is not None and len(message) > MAX_TELEGRAM_CAPTION_LEN:
+    if parsed_preset_id is not None and image_payload is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Выберите либо загруженную картинку, либо пресет по умолчанию",
+        )
+
+    selected_preset: TelegramBroadcastImagePreset | None = None
+    if parsed_preset_id is not None:
+        selected_preset = await preset_repo.get_active_by_id(session, parsed_preset_id)
+        if not selected_preset:
+            raise HTTPException(status_code=404, detail="Пресет картинки не найден или выключен")
+
+    selected_preset_image_path = selected_preset.image_path if selected_preset else None
+    has_image_attachment = image_payload is not None or selected_preset_image_path is not None
+
+    if has_image_attachment and len(message) > MAX_TELEGRAM_CAPTION_LEN:
         raise HTTPException(
             status_code=400,
             detail=(
@@ -371,6 +705,9 @@ async def create_broadcast_batch(
             logger.exception("Failed to save broadcast image")
             raise HTTPException(status_code=500, detail="Не удалось сохранить картинку")
 
+    if image_path is None and selected_preset_image_path:
+        image_path = selected_preset_image_path
+
     bot = getattr(request.app.state, "bot", None)
     if send_now and not bot:
         raise HTTPException(status_code=503, detail="Telegram-бот недоступен")
@@ -384,7 +721,7 @@ async def create_broadcast_batch(
             thread_id=target.thread_id,
             target_label=target.label,
             message_html=message,
-            image_path=image_path if not send_now else None,
+            image_path=image_path if (not send_now or selected_preset_image_path) else None,
             scheduled_at=scheduled_at_utc,
             status="scheduled",
             created_by_id=member.id,
@@ -400,6 +737,7 @@ async def create_broadcast_batch(
                 message_html=broadcast.message_html,
                 image_payload=image_payload,
                 image_filename=image.filename if image and image.filename else "broadcast-image",
+                image_path=selected_preset_image_path,
                 storage_service=storage_service,
             )
             if sent:
@@ -419,6 +757,7 @@ async def send_instant_broadcast(
     request: Request,
     target_ids: str = Form(...),
     message_html: str = Form(...),
+    image_preset_id: str | None = Form(default=None),
     image: UploadFile | None = File(default=None),
     _: TeamMember = Depends(require_moderator),
     session: AsyncSession = Depends(get_session),
@@ -428,8 +767,23 @@ async def send_instant_broadcast(
     target_id_list = _parse_target_ids(target_ids)
     ordered_targets = await _get_ordered_targets(session, target_id_list)
 
+    parsed_preset_id = _parse_preset_id(image_preset_id)
     image_payload, _ = await _read_image_upload(image)
-    if image_payload is not None and len(message) > MAX_TELEGRAM_CAPTION_LEN:
+    if parsed_preset_id is not None and image_payload is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="Выберите либо загруженную картинку, либо пресет по умолчанию",
+        )
+
+    selected_preset: TelegramBroadcastImagePreset | None = None
+    if parsed_preset_id is not None:
+        selected_preset = await preset_repo.get_active_by_id(session, parsed_preset_id)
+        if not selected_preset:
+            raise HTTPException(status_code=404, detail="Пресет картинки не найден или выключен")
+
+    selected_preset_image_path = selected_preset.image_path if selected_preset else None
+    has_image_attachment = image_payload is not None or selected_preset_image_path is not None
+    if has_image_attachment and len(message) > MAX_TELEGRAM_CAPTION_LEN:
         raise HTTPException(
             status_code=400,
             detail=(
@@ -442,6 +796,7 @@ async def send_instant_broadcast(
     if not bot:
         raise HTTPException(status_code=503, detail="Telegram-бот недоступен")
 
+    storage_service = getattr(request.app.state, "storage_service", None)
     results: list[TelegramBroadcastSendTargetResult] = []
     for target in ordered_targets:
         sent, error = await _send_to_chat(
@@ -451,6 +806,8 @@ async def send_instant_broadcast(
             message_html=message,
             image_payload=image_payload,
             image_filename=image.filename if image and image.filename else "broadcast-image",
+            image_path=selected_preset_image_path,
+            storage_service=storage_service,
         )
 
         results.append(

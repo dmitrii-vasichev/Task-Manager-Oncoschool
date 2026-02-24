@@ -30,6 +30,7 @@ import type {
   MeetingScheduleCreateRequest,
   TelegramNotificationTarget,
   TelegramBroadcast,
+  TelegramBroadcastImagePreset,
   TelegramBroadcastCreateRequest,
   TelegramBroadcastSendResponse,
   TelegramBroadcastUpdateRequest,
@@ -471,6 +472,100 @@ class ApiClient {
     return this.request<TelegramBroadcast[]>(`/api/broadcasts${query}`);
   }
 
+  async getTelegramBroadcastImagePresets(params?: {
+    includeInactive?: boolean;
+  }): Promise<TelegramBroadcastImagePreset[]> {
+    const searchParams = new URLSearchParams();
+    if (typeof params?.includeInactive === "boolean") {
+      searchParams.set("include_inactive", params.includeInactive ? "true" : "false");
+    }
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return this.request<TelegramBroadcastImagePreset[]>(
+      `/api/broadcasts/image-presets${query}`
+    );
+  }
+
+  async createTelegramBroadcastImagePreset(data: {
+    alias: string;
+    imageFile: File;
+    sortOrder?: number;
+    isActive?: boolean;
+  }): Promise<TelegramBroadcastImagePreset> {
+    const formData = new FormData();
+    formData.append("alias", data.alias);
+    formData.append("image", data.imageFile);
+    if (typeof data.sortOrder === "number") {
+      formData.append("sort_order", String(data.sortOrder));
+    }
+    if (typeof data.isActive === "boolean") {
+      formData.append("is_active", data.isActive ? "true" : "false");
+    }
+
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await this.fetchWithApiFallback("/api/broadcasts/image-presets", {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async updateTelegramBroadcastImagePreset(
+    id: string,
+    data: {
+      alias?: string;
+      sortOrder?: number;
+      isActive?: boolean;
+      imageFile?: File | null;
+    }
+  ): Promise<TelegramBroadcastImagePreset> {
+    const formData = new FormData();
+    if (typeof data.alias === "string") {
+      formData.append("alias", data.alias);
+    }
+    if (typeof data.sortOrder === "number") {
+      formData.append("sort_order", String(data.sortOrder));
+    }
+    if (typeof data.isActive === "boolean") {
+      formData.append("is_active", data.isActive ? "true" : "false");
+    }
+    if (data.imageFile) {
+      formData.append("image", data.imageFile);
+    }
+
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await this.fetchWithApiFallback(`/api/broadcasts/image-presets/${id}`, {
+      method: "PATCH",
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async deleteTelegramBroadcastImagePreset(id: string): Promise<void> {
+    return this.request<void>(`/api/broadcasts/image-presets/${id}`, {
+      method: "DELETE",
+    });
+  }
+
   async createTelegramBroadcast(
     data: TelegramBroadcastCreateRequest
   ): Promise<TelegramBroadcast> {
@@ -508,6 +603,7 @@ class ApiClient {
     scheduledAt?: string;
     sendNow?: boolean;
     imageFile?: File | null;
+    imagePresetId?: string | null;
   }): Promise<TelegramBroadcast[]> {
     const formData = new FormData();
     formData.append("target_ids", JSON.stringify(data.targetIds));
@@ -518,6 +614,9 @@ class ApiClient {
     formData.append("send_now", data.sendNow ? "true" : "false");
     if (data.imageFile) {
       formData.append("image", data.imageFile);
+    }
+    if (data.imagePresetId) {
+      formData.append("image_preset_id", data.imagePresetId);
     }
 
     const token = this.getToken();
@@ -543,6 +642,7 @@ class ApiClient {
       targetIds: string[];
       messageHtml: string;
       imageFile?: File | null;
+      imagePresetId?: string | null;
     }
   ): Promise<TelegramBroadcastSendResponse> {
     const formData = new FormData();
@@ -550,6 +650,9 @@ class ApiClient {
     formData.append("message_html", data.messageHtml);
     if (data.imageFile) {
       formData.append("image", data.imageFile);
+    }
+    if (data.imagePresetId) {
+      formData.append("image_preset_id", data.imagePresetId);
     }
 
     const token = this.getToken();

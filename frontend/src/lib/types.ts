@@ -187,6 +187,18 @@ export interface TelegramBroadcast {
   created_at: string;
 }
 
+export interface TelegramBroadcastImagePreset {
+  id: string;
+  alias: string;
+  image_path: string;
+  preview_url: string;
+  is_active: boolean;
+  sort_order: number;
+  created_by_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface TelegramBroadcastSendResult {
   target_id: string;
   chat_id: number;

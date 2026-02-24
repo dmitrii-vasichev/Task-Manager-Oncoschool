@@ -508,6 +508,35 @@ class TelegramNotificationTarget(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class TelegramBroadcastImagePreset(Base):
+    __tablename__ = "telegram_broadcast_image_presets"
+    __table_args__ = (
+        Index(
+            "idx_telegram_broadcast_image_presets_active_sort",
+            "is_active",
+            "sort_order",
+            "created_at",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    alias: Mapped[str] = mapped_column(String(120), nullable=False)
+    image_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_members.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
+
+    created_by: Mapped["TeamMember | None"] = relationship(foreign_keys=[created_by_id])
+
+
 class TelegramBroadcast(Base):
     __tablename__ = "telegram_broadcasts"
     __table_args__ = (

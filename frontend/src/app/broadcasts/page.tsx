@@ -12,6 +12,7 @@ import {
 import Image from "next/image";
 import {
   Bold,
+  Check,
   ChevronDown,
   ChevronRight,
   Clock3,
@@ -25,6 +26,7 @@ import {
   Send,
   Smile,
   Strikethrough,
+  Trash2,
   Underline,
   Users,
   X,
@@ -69,6 +71,7 @@ import {
   type MemberRole,
   type TeamMember,
   type TelegramBroadcast,
+  type TelegramBroadcastImagePreset,
   type TelegramBroadcastStatus,
   type TelegramNotificationTarget,
 } from "@/lib/types";
@@ -76,6 +79,7 @@ import {
 type StatusFilter = "all" | TelegramBroadcastStatus;
 type LinkSelection = { start: number; end: number };
 type ParticipantGroupMode = "role" | "department";
+type ImageMode = "none" | "upload" | "preset";
 type PendingBroadcastAction =
   | { type: "send_now"; broadcast: TelegramBroadcast }
   | { type: "cancel"; broadcast: TelegramBroadcast };
@@ -324,14 +328,19 @@ export default function BroadcastsPage() {
   const { toastSuccess, toastError } = useToast();
   const messageRef = useRef<HTMLTextAreaElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const presetImageInputRef = useRef<HTMLInputElement | null>(null);
   const messageSelectionRef = useRef<LinkSelection | null>(null);
 
   const [targets, setTargets] = useState<TelegramNotificationTarget[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [broadcasts, setBroadcasts] = useState<TelegramBroadcast[]>([]);
+  const [imagePresets, setImagePresets] = useState<TelegramBroadcastImagePreset[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingAction, setSavingAction] = useState<"schedule" | "now" | null>(null);
+  const [savingPreset, setSavingPreset] = useState(false);
+  const [updatingPresetId, setUpdatingPresetId] = useState<string | null>(null);
+  const [deletingPresetId, setDeletingPresetId] = useState<string | null>(null);
   const [sendingBroadcastId, setSendingBroadcastId] = useState<string | null>(null);
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [pendingAction, setPendingAction] = useState<PendingBroadcastAction | null>(null);
@@ -342,8 +351,13 @@ export default function BroadcastsPage() {
   const [expandedParticipantGroups, setExpandedParticipantGroups] = useState<Record<string, boolean>>({});
   const [participantQuery, setParticipantQuery] = useState("");
   const [messageHtml, setMessageHtml] = useState("");
+  const [imageMode, setImageMode] = useState<ImageMode>("none");
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [uploadedImagePreviewUrl, setUploadedImagePreviewUrl] = useState<string | null>(null);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+  const [presetAlias, setPresetAlias] = useState("");
+  const [presetSortOrder, setPresetSortOrder] = useState("0");
+  const [presetImageFile, setPresetImageFile] = useState<File | null>(null);
   const [scheduledDate, setScheduledDate] = useState(defaultSchedule.date);
   const [scheduledTime, setScheduledTime] = useState(defaultSchedule.time);
   const scheduledTimezone = "Europe/Moscow";
@@ -355,7 +369,7 @@ export default function BroadcastsPage() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const [targetList, teamList, departmentList, broadcastList] = await Promise.all([
+      const [targetList, teamList, departmentList, broadcastList, presetList] = await Promise.all([
         api.getTelegramTargets(),
         api.getTeam(),
         api.getDepartments(),
@@ -363,17 +377,26 @@ export default function BroadcastsPage() {
           status: filter === "all" ? undefined : filter,
           limit: 100,
         }),
+        api.getTelegramBroadcastImagePresets({ includeInactive: true }),
       ]);
 
       setTargets(targetList);
       setMembers(teamList.filter((member) => member.is_active));
       setDepartments(departmentList);
       setBroadcasts(broadcastList);
+      setImagePresets(presetList);
 
       setSelectedTargetIds((prev) => {
         const valid = prev.filter((id) => targetList.some((target) => target.id === id));
         if (valid.length > 0) return valid;
         return targetList[0] ? [targetList[0].id] : [];
+      });
+
+      setSelectedPresetId((prev) => {
+        if (prev && presetList.some((preset) => preset.id === prev && preset.is_active)) {
+          return prev;
+        }
+        return null;
       });
     } catch (e) {
       toastError(e instanceof Error ? e.message : "Не удалось загрузить рассылки");
@@ -388,12 +411,12 @@ export default function BroadcastsPage() {
 
   useEffect(() => {
     if (!imageFile) {
-      setImagePreviewUrl(null);
+      setUploadedImagePreviewUrl(null);
       return;
     }
 
     const objectUrl = URL.createObjectURL(imageFile);
-    setImagePreviewUrl(objectUrl);
+    setUploadedImagePreviewUrl(objectUrl);
 
     return () => {
       URL.revokeObjectURL(objectUrl);
@@ -412,7 +435,29 @@ export default function BroadcastsPage() {
     return messageHtml.trim();
   }, [messageHtml]);
 
-  const messageLimit = imageFile ? MAX_TELEGRAM_CAPTION_LEN : MAX_TELEGRAM_MESSAGE_LEN;
+  const activeImagePresets = useMemo(
+    () => imagePresets.filter((preset) => preset.is_active),
+    [imagePresets]
+  );
+
+  const selectedPreset = useMemo(() => {
+    if (!selectedPresetId) return null;
+    return activeImagePresets.find((preset) => preset.id === selectedPresetId) || null;
+  }, [activeImagePresets, selectedPresetId]);
+
+  const hasImageAttachment = imageMode === "upload"
+    ? !!imageFile
+    : imageMode === "preset"
+      ? !!selectedPreset
+      : false;
+
+  const effectiveImagePreviewUrl = imageMode === "upload"
+    ? uploadedImagePreviewUrl
+    : imageMode === "preset"
+      ? selectedPreset?.preview_url || null
+      : null;
+
+  const messageLimit = hasImageAttachment ? MAX_TELEGRAM_CAPTION_LEN : MAX_TELEGRAM_MESSAGE_LEN;
   const messageTooLong = composedMessageHtml.length > messageLimit;
 
   const departmentById = useMemo(() => {
@@ -760,6 +805,8 @@ export default function BroadcastsPage() {
       return false;
     }
 
+    setImageMode("upload");
+    setSelectedPresetId(null);
     setImageFile(file);
     return true;
   };
@@ -787,6 +834,111 @@ export default function BroadcastsPage() {
     tryAttachImage(file);
   };
 
+  const switchImageMode = (mode: ImageMode) => {
+    setImageMode(mode);
+    if (mode !== "upload") {
+      setImageFile(null);
+    }
+    if (mode !== "preset") {
+      setSelectedPresetId(null);
+    }
+  };
+
+  const selectPreset = (presetId: string) => {
+    setImageMode("preset");
+    setImageFile(null);
+    setSelectedPresetId(presetId);
+  };
+
+  const handleCreatePreset = async () => {
+    const alias = presetAlias.trim();
+    if (!alias) {
+      toastError("Укажите алиас картинки");
+      return;
+    }
+
+    if (!presetImageFile) {
+      toastError("Выберите изображение для библиотеки");
+      return;
+    }
+
+    if (!presetImageFile.type.startsWith("image/")) {
+      toastError("Можно загрузить только изображение");
+      return;
+    }
+
+    if (presetImageFile.size > MAX_IMAGE_BYTES) {
+      toastError("Картинка слишком большая (максимум 10 МБ)");
+      return;
+    }
+
+    const parsedSortOrder = Number.parseInt(presetSortOrder.trim() || "0", 10);
+    const sortOrder = Number.isNaN(parsedSortOrder) ? 0 : parsedSortOrder;
+
+    setSavingPreset(true);
+    try {
+      await api.createTelegramBroadcastImagePreset({
+        alias,
+        imageFile: presetImageFile,
+        sortOrder,
+        isActive: true,
+      });
+      toastSuccess("Картинка добавлена в библиотеку");
+      setPresetAlias("");
+      setPresetSortOrder("0");
+      setPresetImageFile(null);
+      await fetchData();
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Не удалось добавить картинку");
+    } finally {
+      setSavingPreset(false);
+    }
+  };
+
+  const handleTogglePresetActive = async (
+    preset: TelegramBroadcastImagePreset,
+    nextActive: boolean
+  ) => {
+    setUpdatingPresetId(preset.id);
+    try {
+      await api.updateTelegramBroadcastImagePreset(preset.id, { isActive: nextActive });
+      if (!nextActive && selectedPresetId === preset.id) {
+        setSelectedPresetId(null);
+        if (imageMode === "preset") {
+          setImageMode("none");
+        }
+      }
+      await fetchData();
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Не удалось обновить пресет");
+    } finally {
+      setUpdatingPresetId(null);
+    }
+  };
+
+  const handleDeletePreset = async (preset: TelegramBroadcastImagePreset) => {
+    if (!window.confirm(`Удалить пресет "${preset.alias}"?`)) {
+      return;
+    }
+
+    setDeletingPresetId(preset.id);
+    try {
+      await api.deleteTelegramBroadcastImagePreset(preset.id);
+      if (selectedPresetId === preset.id) {
+        setSelectedPresetId(null);
+        if (imageMode === "preset") {
+          setImageMode("none");
+        }
+      }
+      toastSuccess("Пресет удален");
+      await fetchData();
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Не удалось удалить пресет");
+    } finally {
+      setDeletingPresetId(null);
+    }
+  };
+
   const handleCreate = async () => {
     if (selectedTargetIds.length === 0) {
       toastError("Выберите хотя бы одну группу");
@@ -798,9 +950,19 @@ export default function BroadcastsPage() {
       return;
     }
 
+    if (imageMode === "upload" && !imageFile) {
+      toastError("Выберите картинку или переключитесь на режим без картинки");
+      return;
+    }
+
+    if (imageMode === "preset" && !selectedPreset) {
+      toastError("Выберите картинку из библиотеки");
+      return;
+    }
+
     if (messageTooLong) {
       toastError(
-        imageFile
+        hasImageAttachment
           ? "С картинкой Telegram поддерживает до 1024 символов подписи"
           : `Сообщение слишком длинное (максимум ${MAX_TELEGRAM_MESSAGE_LEN} символов)`
       );
@@ -818,17 +980,21 @@ export default function BroadcastsPage() {
         targetIds: selectedTargetIds,
         messageHtml: composedMessageHtml,
         scheduledAt: zonedDateTimeToUtcIso(
-          scheduledDate,
-          scheduledTime,
-          scheduledTimezone
-        ),
+        scheduledDate,
+        scheduledTime,
+        scheduledTimezone
+      ),
         sendNow: false,
-        imageFile,
+        imageFile: imageMode === "upload" ? imageFile : null,
+        imagePresetId: imageMode === "preset" ? selectedPreset?.id : null,
       });
 
       toastSuccess(`Рассылка запланирована в ${created.length} групп(ы)`);
       setMessageHtml("");
-      setImageFile(null);
+      if (imageMode === "upload") {
+        setImageFile(null);
+        setImageMode("none");
+      }
       const next = getDefaultSchedule();
       setScheduledDate(next.date);
       setScheduledTime(next.time);
@@ -851,9 +1017,19 @@ export default function BroadcastsPage() {
       return;
     }
 
+    if (imageMode === "upload" && !imageFile) {
+      toastError("Выберите картинку или переключитесь на режим без картинки");
+      return;
+    }
+
+    if (imageMode === "preset" && !selectedPreset) {
+      toastError("Выберите картинку из библиотеки");
+      return;
+    }
+
     if (messageTooLong) {
       toastError(
-        imageFile
+        hasImageAttachment
           ? "С картинкой Telegram поддерживает до 1024 символов подписи"
           : `Сообщение слишком длинное (максимум ${MAX_TELEGRAM_MESSAGE_LEN} символов)`
       );
@@ -866,7 +1042,8 @@ export default function BroadcastsPage() {
         targetIds: selectedTargetIds,
         messageHtml: composedMessageHtml,
         sendNow: true,
-        imageFile,
+        imageFile: imageMode === "upload" ? imageFile : null,
+        imagePresetId: imageMode === "preset" ? selectedPreset?.id : null,
       });
 
       const sentCount = result.filter((item) => item.status === "sent").length;
@@ -875,7 +1052,10 @@ export default function BroadcastsPage() {
       if (sentCount > 0) {
         toastSuccess(`Рассылка отправлена в ${sentCount} групп(ы)`);
         setMessageHtml("");
-        setImageFile(null);
+        if (imageMode === "upload") {
+          setImageFile(null);
+          setImageMode("none");
+        }
       }
 
       if (failed.length > 0) {
@@ -1311,7 +1491,7 @@ export default function BroadcastsPage() {
                 </p>
                 {messageTooLong && (
                   <p className="text-xs text-destructive">
-                    {imageFile
+                    {hasImageAttachment
                       ? "С картинкой подпись ограничена 1024 символами."
                       : `Лимит Telegram: ${MAX_TELEGRAM_MESSAGE_LEN} символов.`}
                   </p>
@@ -1322,7 +1502,43 @@ export default function BroadcastsPage() {
                 <Label className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                   Картинка
                 </Label>
-                <div className="rounded-xl border border-border/60 bg-muted/20 p-3 space-y-3">
+                <div className="rounded-xl border border-border/60 bg-muted/20 p-3 space-y-4">
+                  <div className="inline-flex items-center rounded-lg border border-border/60 bg-background p-0.5">
+                    <button
+                      type="button"
+                      className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+                        imageMode === "none"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                      onClick={() => switchImageMode("none")}
+                    >
+                      Без картинки
+                    </button>
+                    <button
+                      type="button"
+                      className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+                        imageMode === "upload"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                      onClick={() => switchImageMode("upload")}
+                    >
+                      Загрузить
+                    </button>
+                    <button
+                      type="button"
+                      className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+                        imageMode === "preset"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                      onClick={() => switchImageMode("preset")}
+                    >
+                      Из библиотеки
+                    </button>
+                  </div>
+
                   <input
                     ref={imageInputRef}
                     type="file"
@@ -1330,39 +1546,249 @@ export default function BroadcastsPage() {
                     className="hidden"
                     onChange={handleSelectImage}
                   />
+                  <input
+                    ref={presetImageInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] || null;
+                      event.target.value = "";
+                      setPresetImageFile(file);
+                    }}
+                  />
 
-                  <div className="flex flex-wrap items-center gap-2">
+                  {imageMode === "none" && (
+                    <p className="text-xs text-muted-foreground">
+                      Сообщение будет отправлено без изображения.
+                    </p>
+                  )}
+
+                  {imageMode === "upload" && (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-lg"
+                          onClick={() => imageInputRef.current?.click()}
+                        >
+                          <ImagePlus className="mr-2 h-4 w-4" />
+                          {imageFile ? "Заменить картинку" : "Прикрепить картинку"}
+                        </Button>
+                        {imageFile && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            className="rounded-lg"
+                            onClick={() => {
+                              setImageFile(null);
+                              setImageMode("none");
+                            }}
+                          >
+                            <X className="mr-2 h-4 w-4" />
+                            Удалить
+                          </Button>
+                        )}
+                      </div>
+
+                      {imageFile ? (
+                        <div className="text-xs text-muted-foreground">
+                          {imageFile.name} · {formatFileSize(imageFile.size)}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Форматы: JPG, PNG, WEBP. Максимальный размер: 10 МБ. Можно выбрать
+                          файл или вставить из буфера (Ctrl+V/Cmd+V).
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {imageMode === "preset" && (
+                    <div className="space-y-2">
+                      {activeImagePresets.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          В библиотеке нет активных картинок. Добавьте новую ниже.
+                        </p>
+                      ) : (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {activeImagePresets.map((preset) => {
+                            const isSelected = selectedPresetId === preset.id;
+                            return (
+                              <button
+                                key={preset.id}
+                                type="button"
+                                onClick={() => selectPreset(preset.id)}
+                                className={`flex items-center gap-2 rounded-lg border p-2 text-left transition-colors ${
+                                  isSelected
+                                    ? "border-primary bg-primary/5"
+                                    : "border-border/60 hover:border-border"
+                                }`}
+                              >
+                                <div className="relative h-12 w-16 overflow-hidden rounded-md border border-border/60 bg-background">
+                                  <Image
+                                    src={preset.preview_url}
+                                    alt={preset.alias}
+                                    fill
+                                    unoptimized
+                                    className="object-cover"
+                                  />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-sm font-medium">{preset.alias}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Порядок: {preset.sort_order}
+                                  </p>
+                                </div>
+                                {isSelected && <Check className="h-4 w-4 text-primary" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-border/60 bg-background p-3 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                      Библиотека картинок по умолчанию
+                    </p>
+                    <Badge variant="outline" className="rounded-md">
+                      {imagePresets.length}
+                    </Badge>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-[1fr_120px_auto]">
+                    <Input
+                      value={presetAlias}
+                      onChange={(e) => setPresetAlias(e.target.value)}
+                      placeholder="Алиас, например: Новость-баннер"
+                    />
+                    <Input
+                      type="number"
+                      value={presetSortOrder}
+                      onChange={(e) => setPresetSortOrder(e.target.value)}
+                      placeholder="Порядок"
+                    />
                     <Button
                       type="button"
                       variant="outline"
                       className="rounded-lg"
-                      onClick={() => imageInputRef.current?.click()}
+                      onClick={() => presetImageInputRef.current?.click()}
                     >
                       <ImagePlus className="mr-2 h-4 w-4" />
-                      {imageFile ? "Заменить картинку" : "Прикрепить картинку"}
+                      Файл
                     </Button>
-                    {imageFile && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        className="rounded-lg"
-                        onClick={() => setImageFile(null)}
-                      >
-                        <X className="mr-2 h-4 w-4" />
-                        Удалить
-                      </Button>
-                    )}
                   </div>
 
-                  {imageFile ? (
-                    <div className="text-xs text-muted-foreground">
-                      {imageFile.name} · {formatFileSize(imageFile.size)}
-                    </div>
-                  ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {presetImageFile ? (
+                      <span className="text-xs text-muted-foreground">
+                        {presetImageFile.name} · {formatFileSize(presetImageFile.size)}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        Форматы: JPG, PNG, WEBP. Максимум: 10 МБ.
+                      </span>
+                    )}
+
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleCreatePreset}
+                      disabled={savingPreset}
+                    >
+                      {savingPreset ? (
+                        <>
+                          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                          Сохранение...
+                        </>
+                      ) : (
+                        "Добавить в библиотеку"
+                      )}
+                    </Button>
+                  </div>
+
+                  {imagePresets.length === 0 ? (
                     <p className="text-xs text-muted-foreground">
-                      Форматы: JPG, PNG, WEBP. Максимальный размер: 10 МБ. Можно выбрать
-                      файл или вставить из буфера (Ctrl+V/Cmd+V).
+                      Пока нет сохраненных картинок.
                     </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {imagePresets.map((preset) => {
+                        const isSelected = selectedPresetId === preset.id;
+                        const busy = updatingPresetId === preset.id || deletingPresetId === preset.id;
+                        return (
+                          <div
+                            key={preset.id}
+                            className={`flex flex-wrap items-center gap-2 rounded-lg border p-2 ${
+                              isSelected ? "border-primary/40 bg-primary/5" : "border-border/60"
+                            }`}
+                          >
+                            <div className="relative h-10 w-14 overflow-hidden rounded-md border border-border/60 bg-muted/20">
+                              <Image
+                                src={preset.preview_url}
+                                alt={preset.alias}
+                                fill
+                                unoptimized
+                                className="object-cover"
+                              />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-sm font-medium">{preset.alias}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {preset.is_active ? "Активен" : "Отключен"} · порядок {preset.sort_order}
+                              </p>
+                            </div>
+                            {preset.is_active && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="rounded-md"
+                                onClick={() => selectPreset(preset.id)}
+                                disabled={busy}
+                              >
+                                Выбрать
+                              </Button>
+                            )}
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={preset.is_active ? "secondary" : "outline"}
+                              className="rounded-md"
+                              onClick={() => handleTogglePresetActive(preset, !preset.is_active)}
+                              disabled={busy}
+                            >
+                              {updatingPresetId === preset.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : preset.is_active ? (
+                                "Выключить"
+                              ) : (
+                                "Включить"
+                              )}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="rounded-md text-destructive hover:text-destructive"
+                              onClick={() => handleDeletePreset(preset)}
+                              disabled={busy}
+                            >
+                              {deletingPresetId === preset.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3.5 w-3.5" />
+                              )}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               </div>
@@ -1433,7 +1859,7 @@ export default function BroadcastsPage() {
 
           <TelegramPreview
             messageHtml={composedMessageHtml}
-            imagePreviewUrl={imagePreviewUrl}
+            imagePreviewUrl={effectiveImagePreviewUrl}
           />
         </div>
 

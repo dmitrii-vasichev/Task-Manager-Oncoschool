@@ -73,6 +73,22 @@ def get_broadcast_photo(
     return FSInputFile(str(local_path))
 
 
+def get_broadcast_media_public_url(
+    *,
+    media_path: str,
+    storage_service: SupabaseStorageService | None,
+    base_url: str | None = None,
+) -> str:
+    safe_path = _sanitize_media_path(media_path)
+
+    if storage_service:
+        return storage_service.get_public_url(safe_path)
+
+    if base_url:
+        return f"{base_url.rstrip('/')}/static/{safe_path}"
+    return f"/static/{safe_path}"
+
+
 async def delete_broadcast_image(
     *,
     media_path: str,

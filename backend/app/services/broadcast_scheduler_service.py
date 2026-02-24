@@ -5,7 +5,10 @@ from aiogram import Bot
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.db.repositories import TelegramBroadcastRepository
+from app.db.repositories import (
+    TelegramBroadcastImagePresetRepository,
+    TelegramBroadcastRepository,
+)
 from app.services.broadcast_media import delete_broadcast_image, get_broadcast_photo
 
 logger = logging.getLogger(__name__)
@@ -20,6 +23,7 @@ class BroadcastSchedulerService:
         self.storage_service = storage_service
         self.scheduler = AsyncIOScheduler()
         self.broadcast_repo = TelegramBroadcastRepository()
+        self.preset_repo = TelegramBroadcastImagePresetRepository()
 
     def start(self) -> None:
         if self.scheduler.running:
@@ -55,6 +59,13 @@ class BroadcastSchedulerService:
             exclude_broadcast_id=broadcast.id,
         )
         if still_scheduled > 0:
+            return
+
+        still_referenced_by_presets = await self.preset_repo.count_with_image_path(
+            session,
+            image_path=image_path,
+        )
+        if still_referenced_by_presets > 0:
             return
 
         try:
