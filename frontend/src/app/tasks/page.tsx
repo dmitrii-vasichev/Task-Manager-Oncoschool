@@ -453,7 +453,7 @@ function KanbanColumn({
   onDrop: (e: React.DragEvent, status: TaskStatus) => void;
 }) {
   return (
-    <div className="flex flex-col">
+    <div className="flex h-full flex-col">
       <ColumnHeader status={status} count={tasks.length} />
       <div
         onDragOver={onDragOver}
@@ -461,8 +461,8 @@ function KanbanColumn({
         onDragLeave={(e) => onDragLeave(e, status)}
         onDrop={(e) => onDrop(e, status)}
         className={`
-          flex flex-col gap-2.5
-          rounded-xl p-2 min-h-[80px] transition-colors duration-150
+          flex min-h-[80px] flex-1 flex-col gap-2.5
+          rounded-xl p-2 transition-colors duration-150
           ${isDragOver && draggedTaskId ? "bg-primary/5 ring-2 ring-primary/20 ring-inset" : ""}
         `}
       >
