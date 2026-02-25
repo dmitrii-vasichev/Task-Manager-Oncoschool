@@ -17,6 +17,7 @@ from app.services.task_visibility_service import (
 router = APIRouter(prefix="/analytics", tags=["analytics"])
 
 TASK_CLOSED_STATUSES = ["done", "cancelled"]
+TASK_EXCLUDED_FROM_TOTAL_STATUSES = ["cancelled"]
 BOARD_STATUS_ORDER = [
     ("new", "Новые"),
     ("in_progress", "В работе"),
@@ -321,7 +322,14 @@ async def analytics_overview(
     status_result = await session.execute(status_stmt)
     status_counts = {row.status: int(row[1] or 0) for row in status_result.all()}
 
-    total_tasks = int(sum(status_counts.values()))
+    tasks_cancelled = int(status_counts.get("cancelled", 0))
+    total_tasks = int(
+        sum(
+            int(count or 0)
+            for status, count in status_counts.items()
+            if status not in TASK_EXCLUDED_FROM_TOTAL_STATUSES
+        )
+    )
 
     overdue_stmt = _apply_task_scope(
         select(func.count(Task.id)).where(
@@ -378,9 +386,14 @@ async def analytics_overview(
             members_stmt = members_stmt.where(TeamMember.id == member.id)
     total_members = int((await session.execute(members_stmt)).scalar_one() or 0)
 
-    tasks_done = status_counts.get("done", 0)
-    tasks_cancelled = status_counts.get("cancelled", 0)
-    active_tasks = max(0, total_tasks - tasks_done - tasks_cancelled)
+    tasks_done = int(status_counts.get("done", 0))
+    active_tasks = int(
+        sum(
+            int(count or 0)
+            for status, count in status_counts.items()
+            if status not in TASK_CLOSED_STATUSES
+        )
+    )
     completion_rate = round((tasks_done / total_tasks) * 100) if total_tasks > 0 else 0
 
     board_columns = [
@@ -450,6 +463,7 @@ async def analytics_overview(
 
     departments: list[DepartmentBreakdownItem] = []
     if selected_department_id is not None or visible_department_ids is None or visible_department_ids:
+        total_case = case((Task.status.notin_(TASK_EXCLUDED_FROM_TOTAL_STATUSES), Task.id))
         active_case = case((Task.status.notin_(TASK_CLOSED_STATUSES), Task.id))
         overdue_case = case((
             (Task.deadline < today) & Task.status.notin_(TASK_CLOSED_STATUSES),
@@ -467,7 +481,7 @@ async def analytics_overview(
                 Department.id.label("department_id"),
                 Department.name.label("department_name"),
                 Department.color.label("department_color"),
-                func.count(Task.id).label("total_tasks"),
+                func.count(total_case).label("total_tasks"),
                 func.count(active_case).label("active_tasks"),
                 func.count(overdue_case).label("overdue_tasks"),
                 func.count(done_week_case).label("done_week"),
