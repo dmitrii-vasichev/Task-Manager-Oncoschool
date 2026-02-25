@@ -6,6 +6,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Sidebar, SidebarContext } from "./Sidebar";
 import { Header } from "./Header";
 import { Skeleton } from "@/components/ui/skeleton";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { GraduationCap } from "lucide-react";
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -49,17 +50,19 @@ export function AppShell({ children }: { children: ReactNode }) {
     <SidebarContext.Provider
       value={{ collapsed, setCollapsed, mobileOpen, setMobileOpen }}
     >
-      <div className="flex h-screen overflow-hidden bg-background">
-        <Sidebar />
-        <div className="flex flex-1 flex-col overflow-hidden min-w-0">
-          <Header />
-          <main className="flex-1 overflow-auto">
-            <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 lg:px-8 animate-in fade-in duration-300">
-              {children}
-            </div>
-          </main>
+      <TooltipProvider delayDuration={120}>
+        <div className="flex h-screen overflow-hidden bg-background">
+          <Sidebar />
+          <div className="flex flex-1 flex-col overflow-hidden min-w-0">
+            <Header />
+            <main className="flex-1 overflow-auto">
+              <div className="mx-auto max-w-7xl px-4 py-6 md:px-6 lg:px-8 animate-in fade-in duration-300">
+                {children}
+              </div>
+            </main>
+          </div>
         </div>
-      </div>
+      </TooltipProvider>
     </SidebarContext.Provider>
   );
 }
