@@ -10,6 +10,12 @@ interface UpcomingBirthday {
   daysUntil: number;
 }
 
+function normalizeMemberName(name: string | null | undefined): string {
+  if (typeof name !== "string") return "Без имени";
+  const normalized = name.trim();
+  return normalized || "Без имени";
+}
+
 function getUpcomingBirthdays(
   members: TeamMember[],
   daysAhead: number = 30
@@ -31,9 +37,13 @@ function getUpcomingBirthdays(
   for (const member of members) {
     if (!member.birthday || !member.is_active) continue;
 
-    const [, monthStr, dayStr] = member.birthday.split("-");
-    const month = parseInt(monthStr, 10) - 1;
-    const day = parseInt(dayStr, 10);
+    const birthdayParts = member.birthday.split("-");
+    if (birthdayParts.length !== 3) continue;
+    const [, monthStr, dayStr] = birthdayParts;
+
+    const month = Number.parseInt(monthStr, 10) - 1;
+    const day = Number.parseInt(dayStr, 10);
+    if (Number.isNaN(month) || Number.isNaN(day)) continue;
 
     let nextBirthday = new Date(currentYear, month, day);
     if (nextBirthday < today) {
@@ -104,6 +114,7 @@ export function UpcomingBirthdays({ members, onMemberClick, className }: Upcomin
       <div className="flex overflow-x-auto gap-3 pb-1 -mb-1">
         {upcoming.map(({ member, date, daysUntil }) => {
           const isToday = daysUntil === 0;
+          const memberName = normalizeMemberName(member.full_name);
           return (
             <div
               key={member.id}
@@ -124,14 +135,14 @@ export function UpcomingBirthdays({ members, onMemberClick, className }: Upcomin
 
               <div className="flex justify-center mb-2">
                 <UserAvatar
-                  name={member.full_name}
+                  name={memberName}
                   avatarUrl={member.avatar_url}
                   size="lg"
                 />
               </div>
 
               <p className="font-heading font-medium text-sm truncate">
-                {member.full_name}
+                {memberName}
               </p>
 
               <p className="text-xs text-muted-foreground mt-0.5">

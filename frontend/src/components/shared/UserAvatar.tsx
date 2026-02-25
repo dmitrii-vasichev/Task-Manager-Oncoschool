@@ -1,9 +1,15 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getConfiguredApiUrl } from "@/lib/api-base-url";
 
+function normalizeName(name: string | null | undefined, fallback = "Без имени"): string {
+  if (typeof name !== "string") return fallback;
+  const normalized = name.trim();
+  return normalized || fallback;
+}
+
 function getInitials(name: string): string {
   return name
-    .split(" ")
+    .split(/\s+/)
     .map((w) => w[0])
     .filter(Boolean)
     .slice(0, 2)
@@ -36,7 +42,7 @@ export function UserAvatar({
   avatarUrl,
   size = "default",
 }: {
-  name: string;
+  name: string | null | undefined;
   avatarUrl?: string | null;
   size?: "sm" | "default" | "lg" | "xl";
 }) {
@@ -47,7 +53,8 @@ export function UserAvatar({
     xl: "h-20 w-20 text-2xl",
   }[size];
 
-  const bgColor = getAvatarColor(name);
+  const displayName = normalizeName(name);
+  const bgColor = getAvatarColor(displayName);
   const resolvedUrl = avatarUrl ? resolveAvatarUrl(avatarUrl) : null;
 
   return (
@@ -55,13 +62,13 @@ export function UserAvatar({
       className={`${sizeClass} hover:scale-110 hover:shadow-md cursor-default`}
     >
       {resolvedUrl && (
-        <AvatarImage src={resolvedUrl} alt={name} className="object-cover" />
+        <AvatarImage src={resolvedUrl} alt={displayName} className="object-cover" />
       )}
       <AvatarFallback
         className="text-white font-heading font-semibold"
         style={{ backgroundColor: bgColor }}
       >
-        {getInitials(name)}
+        {getInitials(displayName)}
       </AvatarFallback>
     </Avatar>
   );

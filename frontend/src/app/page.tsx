@@ -85,12 +85,23 @@ function isStale(task: Task): boolean {
   return new Date(task.updated_at) < threeDaysAgo;
 }
 
-function firstName(fullName: string): string {
-  return fullName.split(" ")[0] || fullName;
+function normalizePersonName(
+  fullName: string | null | undefined,
+  fallback = "Без имени"
+): string {
+  if (typeof fullName !== "string") return fallback;
+  const normalized = fullName.trim();
+  return normalized || fallback;
 }
 
-function firstAndLastName(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+function firstName(fullName: string | null | undefined): string {
+  const safeFullName = normalizePersonName(fullName, "Коллега");
+  return safeFullName.split(/\s+/)[0] || safeFullName;
+}
+
+function firstAndLastName(fullName: string | null | undefined): string {
+  const safeFullName = normalizePersonName(fullName);
+  const parts = safeFullName.split(/\s+/).filter(Boolean);
   if (parts.length <= 2) return parts.join(" ");
   return `${parts[0]} ${parts[1]}`;
 }
@@ -180,6 +191,8 @@ function TaskListItem({
   const titleClass = `text-sm font-heading font-semibold leading-tight line-clamp-2 ${
     overdue ? "text-destructive" : ""
   }`;
+  const assigneeName = normalizePersonName(task.assignee?.full_name);
+  const createdByName = normalizePersonName(task.created_by?.full_name);
 
   return (
     <TooltipProvider delayDuration={120}>
@@ -243,8 +256,12 @@ function TaskListItem({
             )}
             {variant === "unassigned" && task.created_by && (
               <span className="text-xs text-muted-foreground flex items-center gap-1">
-                <UserAvatar name={task.created_by.full_name} avatarUrl={task.created_by.avatar_url} size="sm" />
-                {task.created_by.full_name}
+                <UserAvatar
+                  name={createdByName}
+                  avatarUrl={task.created_by.avatar_url}
+                  size="sm"
+                />
+                {createdByName}
               </span>
             )}
             {variant === "stale" && (
@@ -257,12 +274,12 @@ function TaskListItem({
               task.assignee ? (
                 <span className="text-xs text-muted-foreground flex items-center gap-1 min-w-0">
                   <UserAvatar
-                    name={task.assignee.full_name}
+                    name={assigneeName}
                     avatarUrl={task.assignee.avatar_url}
                     size="sm"
                   />
                   <span className="truncate max-w-[150px]">
-                    {firstAndLastName(task.assignee.full_name)}
+                    {firstAndLastName(assigneeName)}
                   </span>
                 </span>
               ) : (
