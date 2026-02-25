@@ -1255,8 +1255,14 @@ export default function BroadcastsPage() {
                             onChange={() => toggleTarget(target.id)}
                             className="peer sr-only"
                           />
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-border/70 bg-background text-transparent transition-all group-hover:border-primary/35 group-hover:bg-primary/5 peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-primary/30 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-card">
-                            <Check className="h-3.5 w-3.5 scale-75 opacity-0 transition-all duration-200 peer-checked:scale-100 peer-checked:opacity-100" />
+                          <span
+                            className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-all peer-focus-visible:ring-2 peer-focus-visible:ring-primary/30 peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-card ${
+                              checked
+                                ? "border-primary bg-primary text-primary-foreground shadow-[0_0_0_3px_hsl(var(--primary)/0.16)]"
+                                : "border-border/70 bg-background text-transparent group-hover:border-primary/35 group-hover:bg-primary/5"
+                            }`}
+                          >
+                            {checked ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : null}
                           </span>
                           <span className="text-sm">{target.label || `Chat ${target.chat_id}`}</span>
                           {target.thread_id ? (
