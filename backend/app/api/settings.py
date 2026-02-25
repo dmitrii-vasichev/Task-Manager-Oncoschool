@@ -41,6 +41,7 @@ from app.db.schemas import (
 from app.services.ai_service import AIService
 from app.services.reminder_service import (
     ALLOWED_TASK_OVERDUE_INTERVAL_HOURS,
+    DEFAULT_TASK_OVERDUE_DAILY_TIME_MSK,
     DEFAULT_TASK_OVERDUE_INTERVAL_HOURS,
     TASK_OVERDUE_NOTIFICATIONS_KEY,
     ReminderService,
@@ -175,11 +176,13 @@ EVENT_TYPES = [
 class SubscriptionsResponse(BaseModel):
     subscriptions: dict[str, bool]
     task_overdue_interval_hours: int = DEFAULT_TASK_OVERDUE_INTERVAL_HOURS
+    task_overdue_daily_time_msk: str = DEFAULT_TASK_OVERDUE_DAILY_TIME_MSK
 
 
 class SubscriptionsUpdate(BaseModel):
     subscriptions: dict[str, bool]
     task_overdue_interval_hours: int | None = None
+    task_overdue_daily_time_msk: str | None = None
 
 
 @router.get("/notifications", response_model=SubscriptionsResponse)
@@ -193,12 +196,13 @@ async def get_notifications(
     # Fill in missing event types as False
     result = {et: subs_map.get(et, False) for et in EVENT_TYPES}
     interval_setting = await app_settings_repo.get(session, TASK_OVERDUE_NOTIFICATIONS_KEY)
-    interval_hours = ReminderService.interval_from_app_settings(
+    interval_hours, daily_time_msk = ReminderService.schedule_from_app_settings(
         interval_setting.value if interval_setting else None
     )
     return SubscriptionsResponse(
         subscriptions=result,
         task_overdue_interval_hours=interval_hours,
+        task_overdue_daily_time_msk=daily_time_msk,
     )
 
 
@@ -217,12 +221,14 @@ async def update_notifications(
             )
         await sub_repo.upsert(session, member.id, event_type, is_active)
 
-    interval_hours: int | None = None
+    interval_setting = await app_settings_repo.get(session, TASK_OVERDUE_NOTIFICATIONS_KEY)
+    interval_hours, daily_time_msk = ReminderService.schedule_from_app_settings(
+        interval_setting.value if interval_setting else None
+    )
+    schedule_changed = False
+
     if data.task_overdue_interval_hours is not None:
-        interval_hours = ReminderService.normalize_task_overdue_interval_hours(
-            data.task_overdue_interval_hours
-        )
-        if interval_hours != data.task_overdue_interval_hours:
+        if data.task_overdue_interval_hours not in ALLOWED_TASK_OVERDUE_INTERVAL_HOURS:
             allowed = ", ".join(
                 str(value) for value in sorted(ALLOWED_TASK_OVERDUE_INTERVAL_HOURS)
             )
@@ -230,25 +236,40 @@ async def update_notifications(
                 status_code=400,
                 detail=f"Периодичность просроченных задач должна быть одной из: {allowed} часов.",
             )
+        interval_hours = data.task_overdue_interval_hours
+        schedule_changed = True
 
+    if data.task_overdue_daily_time_msk is not None:
+        try:
+            hh, mm = _parse_hhmm(data.task_overdue_daily_time_msk)
+        except (TypeError, ValueError):
+            raise HTTPException(
+                status_code=400,
+                detail="Неверный формат времени для просроченных задач. Используйте HH:MM (00:00 — 23:59)",
+            )
+        daily_time_msk = f"{hh:02d}:{mm:02d}"
+        schedule_changed = True
+
+    if schedule_changed:
         await app_settings_repo.set(
             session,
             TASK_OVERDUE_NOTIFICATIONS_KEY,
-            {"interval_hours": interval_hours},
+            {
+                "interval_hours": interval_hours,
+                "daily_time_msk": daily_time_msk,
+            },
             updated_by_id=member.id,
         )
 
     await session.commit()
 
-    if interval_hours is not None:
+    if schedule_changed:
         reminder_service = _get_reminder_service(request)
         if reminder_service is not None:
-            reminder_service.set_task_overdue_interval_hours(interval_hours)
-    else:
-        interval_setting = await app_settings_repo.get(session, TASK_OVERDUE_NOTIFICATIONS_KEY)
-        interval_hours = ReminderService.interval_from_app_settings(
-            interval_setting.value if interval_setting else None
-        )
+            interval_hours, daily_time_msk = reminder_service.set_task_overdue_schedule(
+                interval_hours,
+                daily_time_msk,
+            )
 
     # Return updated state
     subs = await sub_repo.get_by_member(session, member.id)
@@ -257,6 +278,7 @@ async def update_notifications(
     return SubscriptionsResponse(
         subscriptions=result,
         task_overdue_interval_hours=interval_hours,
+        task_overdue_daily_time_msk=daily_time_msk,
     )
 
 

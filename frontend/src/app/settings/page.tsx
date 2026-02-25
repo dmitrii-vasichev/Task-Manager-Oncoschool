@@ -731,7 +731,6 @@ const EVENT_TYPES: Record<string, EventConfig> = {
 
 const TASK_OVERDUE_INTERVAL_OPTIONS = [
   { value: "1", label: "Каждый час" },
-  { value: "12", label: "Каждые 12 часов" },
   { value: "24", label: "Каждые 24 часа" },
 ] as const;
 
@@ -741,6 +740,7 @@ function NotificationsSection() {
     {}
   );
   const [taskOverdueIntervalHours, setTaskOverdueIntervalHours] = useState("1");
+  const [taskOverdueDailyTimeMsk, setTaskOverdueDailyTimeMsk] = useState("09:00");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -753,6 +753,7 @@ function NotificationsSection() {
         setTaskOverdueIntervalHours(
           String(data.task_overdue_interval_hours ?? 1)
         );
+        setTaskOverdueDailyTimeMsk(data.task_overdue_daily_time_msk ?? "09:00");
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -773,9 +774,11 @@ function NotificationsSection() {
       const result = await api.updateNotificationSubscriptions({
         subscriptions,
         task_overdue_interval_hours: intervalHours,
+        task_overdue_daily_time_msk: taskOverdueDailyTimeMsk,
       });
       setSubscriptions(result.subscriptions);
       setTaskOverdueIntervalHours(String(result.task_overdue_interval_hours ?? 1));
+      setTaskOverdueDailyTimeMsk(result.task_overdue_daily_time_msk ?? "09:00");
       toastSuccess("Подписки сохранены");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Ошибка сохранения";
@@ -806,6 +809,7 @@ function NotificationsSection() {
     ([, c]) => c.group === "meetings"
   );
   const overdueSubscriptionEnabled = subscriptions.task_overdue || false;
+  const isDailyInterval = taskOverdueIntervalHours === "24";
 
   return (
     <div className="animate-fade-in-up stagger-2 rounded-2xl border border-border/60 bg-card overflow-hidden">
@@ -866,7 +870,7 @@ function NotificationsSection() {
             <div className="min-w-0">
               <p className="text-sm font-medium">Периодичность напоминаний о просроченных задачах</p>
               <p className="text-2xs text-muted-foreground">
-                Отправка выполняется по МСК, в начале часа.
+                По МСК: каждый час в начале часа или раз в сутки в выбранное время.
               </p>
             </div>
             <Select
@@ -886,6 +890,19 @@ function NotificationsSection() {
               </SelectContent>
             </Select>
           </div>
+          {isDailyInterval && (
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-2xs text-muted-foreground">
+                Время ежедневной отправки (МСК)
+              </p>
+              <TimePicker
+                value={taskOverdueDailyTimeMsk}
+                onChange={setTaskOverdueDailyTimeMsk}
+                disabled={!overdueSubscriptionEnabled}
+                className="h-9 w-full rounded-lg sm:w-40"
+              />
+            </div>
+          )}
           {!overdueSubscriptionEnabled && (
             <p className="mt-2 text-2xs text-muted-foreground">
               Включите переключатель «Просроченная задача», чтобы применять периодичность.

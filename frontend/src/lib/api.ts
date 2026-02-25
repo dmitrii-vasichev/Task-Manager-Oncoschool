@@ -835,6 +835,7 @@ class ApiClient {
     data: {
       subscriptions: Record<string, boolean>;
       task_overdue_interval_hours?: number;
+      task_overdue_daily_time_msk?: string;
     }
   ): Promise<NotificationSubscriptionsSettings> {
     return this.request<NotificationSubscriptionsSettings>(
