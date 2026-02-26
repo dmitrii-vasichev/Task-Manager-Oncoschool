@@ -359,6 +359,7 @@ export interface ReminderSettings {
   days_of_week: number[];
   include_overdue: boolean;
   include_upcoming: boolean;
+  upcoming_days: number;
   include_in_progress: boolean;
   include_new: boolean;
   digest_sections_order: ReminderDigestSectionKey[];

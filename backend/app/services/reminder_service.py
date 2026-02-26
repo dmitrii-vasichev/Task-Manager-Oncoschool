@@ -94,6 +94,15 @@ def normalize_task_line_fields_order(value: object | None) -> list[str]:
     return ordered
 
 
+def normalize_upcoming_days(value: object | None) -> int:
+    """Normalize upcoming deadline window to supported range [0, 7]."""
+    try:
+        days = int(value) if value is not None else 3
+    except (TypeError, ValueError):
+        return 3
+    return max(0, min(days, 7))
+
+
 class ReminderService:
     """Daily digest reminders via APScheduler."""
 
@@ -469,6 +478,7 @@ class ReminderService:
         task_line_fields_order = normalize_task_line_fields_order(
             getattr(rs, "task_line_fields_order", None)
         )
+        upcoming_days = normalize_upcoming_days(getattr(rs, "upcoming_days", 3))
         task_line_field_flags = {
             "number": bool(getattr(rs, "task_line_show_number", True)),
             "title": bool(getattr(rs, "task_line_show_title", True)),
@@ -476,12 +486,27 @@ class ReminderService:
             "priority": bool(getattr(rs, "task_line_show_priority", True)),
         }
 
+        # Prioritized partition (for de-duplication across sections):
+        # 1) overdue, 2) upcoming, 3) remaining in_progress/new.
+        overdue = [t for t in active_tasks if t.deadline and t.deadline < today]
+        upcoming_end = today + timedelta(days=upcoming_days)
+        upcoming = [
+            t
+            for t in active_tasks
+            if t.deadline and today <= t.deadline <= upcoming_end
+        ]
+        prioritized_keys = {
+            self._task_unique_key(t)
+            for t in [*overdue, *upcoming]
+        }
+        remaining_active_tasks = [
+            t
+            for t in active_tasks
+            if self._task_unique_key(t) not in prioritized_keys
+        ]
+
         # Overdue tasks
         if rs.include_overdue:
-            overdue = [
-                t for t in active_tasks
-                if t.deadline and t.deadline < today
-            ]
             if overdue:
                 lines = ["\n🔴 Просроченные ({}):" .format(len(overdue))]
                 for t in overdue:
@@ -495,15 +520,13 @@ class ReminderService:
                     )
                 section_blocks["overdue"] = "\n".join(lines)
 
-        # Upcoming tasks (next 3 days)
+        # Upcoming tasks by configurable deadline window.
         if rs.include_upcoming:
-            upcoming_end = today + timedelta(days=3)
-            upcoming = [
-                t for t in active_tasks
-                if t.deadline and today <= t.deadline <= upcoming_end
-            ]
             if upcoming:
-                lines = ["\n📅 Ближайшие (3 дня):"]
+                if upcoming_days == 0:
+                    lines = ["\n📅 Дедлайн истекает сегодня ({}):".format(len(upcoming))]
+                else:
+                    lines = ["\n📅 Ближайшие по дедлайну ({} дн.):".format(upcoming_days)]
                 for t in upcoming:
                     lines.append(
                         self._format_digest_task_line(
@@ -517,7 +540,9 @@ class ReminderService:
 
         # In progress
         if rs.include_in_progress:
-            in_progress = [t for t in active_tasks if t.status == "in_progress"]
+            in_progress = [
+                t for t in remaining_active_tasks if t.status == "in_progress"
+            ]
             if in_progress:
                 lines = ["\n🔄 В работе ({}):" .format(len(in_progress))]
                 for t in in_progress:
@@ -533,7 +558,7 @@ class ReminderService:
 
         # New tasks
         if rs.include_new:
-            new_tasks = [t for t in active_tasks if t.status == "new"]
+            new_tasks = [t for t in remaining_active_tasks if t.status == "new"]
             if new_tasks:
                 lines = ["\n🆕 Новые ({}):" .format(len(new_tasks))]
                 for t in new_tasks:
@@ -570,6 +595,16 @@ class ReminderService:
 
         text = "\n".join(sections)
         await self._send_safe(member.telegram_id, text, digest_markup)
+
+    @staticmethod
+    def _task_unique_key(task: Task) -> str:
+        task_id = getattr(task, "id", None)
+        if task_id is not None:
+            return f"id:{task_id}"
+        short_id = getattr(task, "short_id", None)
+        if short_id is not None:
+            return f"short_id:{short_id}"
+        return f"title:{getattr(task, 'title', '')}"
 
     @staticmethod
     def _format_digest_task_line(

@@ -452,6 +452,7 @@ class ReminderSettingsCreate(BaseModel):
     days_of_week: list[int] = [1, 2, 3, 4, 5]
     include_overdue: bool = True
     include_upcoming: bool = True
+    upcoming_days: int = Field(default=3, ge=0, le=7)
     include_in_progress: bool = True
     include_new: bool = True
     digest_sections_order: list[ReminderDigestSectionKeyType] = Field(
@@ -473,6 +474,7 @@ class ReminderSettingsUpdate(BaseModel):
     days_of_week: list[int] | None = None
     include_overdue: bool | None = None
     include_upcoming: bool | None = None
+    upcoming_days: int | None = Field(default=None, ge=0, le=7)
     include_in_progress: bool | None = None
     include_new: bool | None = None
     digest_sections_order: list[ReminderDigestSectionKeyType] | None = None
@@ -494,6 +496,7 @@ class ReminderSettingsResponse(BaseModel):
     days_of_week: list[int]
     include_overdue: bool
     include_upcoming: bool
+    upcoming_days: int
     include_in_progress: bool
     include_new: bool
     digest_sections_order: list[ReminderDigestSectionKeyType]

@@ -28,7 +28,10 @@ from app.db.repositories import (
     TeamMemberRepository,
 )
 from app.services.ai_service import AIService
-from app.services.reminder_service import normalize_digest_sections_order
+from app.services.reminder_service import (
+    normalize_digest_sections_order,
+    normalize_upcoming_days,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -496,9 +499,14 @@ async def cmd_myreminder(
         "in_progress": rs.include_in_progress,
         "new": rs.include_new,
     }
+    upcoming_days = normalize_upcoming_days(getattr(rs, "upcoming_days", 3))
     include_labels = {
         "overdue": "просроченные",
-        "upcoming": "ближайшие (3 дня)",
+        "upcoming": (
+            "дедлайн истекает сегодня"
+            if upcoming_days == 0
+            else f"ближайшие ({upcoming_days} дн.)"
+        ),
         "in_progress": "в работе",
         "new": "новые",
     }

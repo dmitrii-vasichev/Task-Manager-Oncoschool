@@ -1067,6 +1067,14 @@ function normalizeDigestSectionsOrder(
   return normalized;
 }
 
+function normalizeUpcomingDays(value: number): number {
+  if (!Number.isFinite(value)) return 3;
+  const whole = Math.trunc(value);
+  return Math.max(0, Math.min(whole, 7));
+}
+
+const UPCOMING_DAYS_OPTIONS = Array.from({ length: 8 }, (_, idx) => idx);
+
 const DEFAULT_TASK_LINE_FIELDS_ORDER: ReminderTaskLineFieldKey[] = [
   "number",
   "title",
@@ -1497,6 +1505,9 @@ function ReminderEditDialog({
   const [includeUpcoming, setIncludeUpcoming] = useState(
     reminder?.include_upcoming ?? true
   );
+  const [upcomingDays, setUpcomingDays] = useState(
+    normalizeUpcomingDays(reminder?.upcoming_days ?? 3)
+  );
   const [includeInProgress, setIncludeInProgress] = useState(
     reminder?.include_in_progress ?? true
   );
@@ -1756,6 +1767,7 @@ function ReminderEditDialog({
       days_of_week: days,
       include_overdue: includeOverdue,
       include_upcoming: includeUpcoming,
+      upcoming_days: upcomingDays,
       include_in_progress: includeInProgress,
       include_new: includeNew,
       digest_sections_order: digestSectionsOrder,
@@ -1771,6 +1783,7 @@ function ReminderEditDialog({
       days,
       includeOverdue,
       includeUpcoming,
+      upcomingDays,
       includeInProgress,
       includeNew,
       digestSectionsOrder,
@@ -1793,6 +1806,7 @@ function ReminderEditDialog({
     if (applyDigestSettings) {
       payload.include_overdue = includeOverdue;
       payload.include_upcoming = includeUpcoming;
+      payload.upcoming_days = upcomingDays;
       payload.include_in_progress = includeInProgress;
       payload.include_new = includeNew;
       payload.digest_sections_order = digestSectionsOrder;
@@ -1814,6 +1828,7 @@ function ReminderEditDialog({
     days,
     includeOverdue,
     includeUpcoming,
+    upcomingDays,
     includeInProgress,
     includeNew,
     digestSectionsOrder,
@@ -2018,6 +2033,12 @@ function ReminderEditDialog({
                 const sectionMeta = DIGEST_SECTION_META[sectionKey];
                 const Icon = sectionMeta.icon;
                 const isChecked = digestSectionEnabledMap[sectionKey];
+                const isUpcomingSection = sectionKey === "upcoming";
+                const sectionLabel = isUpcomingSection
+                  ? upcomingDays === 0
+                    ? "Дедлайн истекает сегодня"
+                    : `Ближайшие по дедлайну (${upcomingDays} дн.)`
+                  : sectionMeta.label;
                 const isFirst = index === 0;
                 const isLast = index === digestSectionsOrder.length - 1;
                 const isDragTarget =
@@ -2068,9 +2089,34 @@ function ReminderEditDialog({
                     <div className="flex items-center gap-2">
                       <GripVertical className="h-3.5 w-3.5 text-muted-foreground/70 cursor-grab active:cursor-grabbing" />
                       <Icon className={`h-3.5 w-3.5 ${sectionMeta.iconClassName}`} />
-                      <span className="text-sm">{sectionMeta.label}</span>
+                      <span className="text-sm">{sectionLabel}</span>
                     </div>
                     <div className="flex items-center gap-1">
+                      {isUpcomingSection ? (
+                        <Select
+                          value={String(upcomingDays)}
+                          onValueChange={(value) =>
+                            setUpcomingDays(normalizeUpcomingDays(Number(value)))
+                          }
+                          disabled={!isChecked || saving || applyingSettings}
+                        >
+                          <SelectTrigger className="h-7 w-[122px] rounded-lg text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {UPCOMING_DAYS_OPTIONS.map((daysOption) => (
+                              <SelectItem
+                                key={daysOption}
+                                value={String(daysOption)}
+                              >
+                                {daysOption === 0
+                                  ? "Сегодня"
+                                  : `${daysOption} дн.`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : null}
                       <Button
                         type="button"
                         variant="ghost"
@@ -2353,7 +2399,7 @@ function ReminderEditDialog({
                       className="h-4 w-4 accent-primary"
                       disabled={applyingSettings || saving}
                     />
-                    <span className="text-sm">Что включить в дайджест + порядок блоков</span>
+                    <span className="text-sm">Что включить в дайджест + порядок блоков + дни дедлайна</span>
                   </label>
                   <label className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/40 cursor-pointer">
                     <input

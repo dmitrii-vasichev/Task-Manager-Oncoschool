@@ -47,6 +47,7 @@ from app.services.reminder_service import (
     ReminderService,
     normalize_digest_sections_order,
     normalize_task_line_fields_order,
+    normalize_upcoming_days,
 )
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -314,6 +315,10 @@ async def update_reminder_settings(
     if "task_line_fields_order" in update_data:
         update_data["task_line_fields_order"] = normalize_task_line_fields_order(
             update_data.get("task_line_fields_order")
+        )
+    if "upcoming_days" in update_data:
+        update_data["upcoming_days"] = normalize_upcoming_days(
+            update_data.get("upcoming_days")
         )
     update_data["configured_by_id"] = member.id
     # Portal reminder time is interpreted in Moscow timezone.

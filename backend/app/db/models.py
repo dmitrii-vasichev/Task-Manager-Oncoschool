@@ -469,6 +469,7 @@ class ReminderSettings(Base):
     )
     include_overdue: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     include_upcoming: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    upcoming_days: Mapped[int] = mapped_column(Integer, default=3, server_default="3")
     include_in_progress: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
     )
