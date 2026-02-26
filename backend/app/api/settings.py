@@ -45,6 +45,7 @@ from app.services.reminder_service import (
     DEFAULT_TASK_OVERDUE_INTERVAL_HOURS,
     TASK_OVERDUE_NOTIFICATIONS_KEY,
     ReminderService,
+    normalize_digest_sections_order,
 )
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -305,6 +306,10 @@ async def update_reminder_settings(
 ):
     """Update reminder settings for a member. Moderator only."""
     update_data = data.model_dump(exclude_unset=True)
+    if "digest_sections_order" in update_data:
+        update_data["digest_sections_order"] = normalize_digest_sections_order(
+            update_data.get("digest_sections_order")
+        )
     update_data["configured_by_id"] = member.id
     # Portal reminder time is interpreted in Moscow timezone.
     update_data["timezone"] = REMINDER_TIMEZONE

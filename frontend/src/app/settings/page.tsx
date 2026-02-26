@@ -24,6 +24,9 @@ import {
   Pencil,
   Trash2,
   MessageCircle,
+  GripVertical,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { ModeratorGuard } from "@/components/shared/ModeratorGuard";
 import { Button } from "@/components/ui/button";
@@ -55,6 +58,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { PermissionService } from "@/lib/permissions";
 import type {
   AISettingsResponse,
+  ReminderDigestSectionKey,
   ReminderSettings,
   TeamMember,
   TelegramNotificationTarget,
@@ -991,6 +995,71 @@ const DAY_LABELS: Record<number, string> = {
   7: "Вс",
 };
 
+const DEFAULT_DIGEST_SECTIONS_ORDER: ReminderDigestSectionKey[] = [
+  "overdue",
+  "upcoming",
+  "in_progress",
+  "new",
+];
+
+const DIGEST_SECTION_META: Record<
+  ReminderDigestSectionKey,
+  {
+    label: string;
+    icon: typeof AlertTriangle;
+    iconClassName: string;
+  }
+> = {
+  overdue: {
+    label: "Просроченные задачи",
+    icon: AlertTriangle,
+    iconClassName: "text-destructive",
+  },
+  upcoming: {
+    label: "Ближайшие по дедлайну (3 дня)",
+    icon: Clock,
+    iconClassName: "text-muted-foreground",
+  },
+  in_progress: {
+    label: "Задачи в работе",
+    icon: Loader2,
+    iconClassName: "text-primary",
+  },
+  new: {
+    label: "Новые задачи",
+    icon: CalendarPlus,
+    iconClassName: "text-muted-foreground",
+  },
+};
+
+function normalizeDigestSectionsOrder(
+  value: ReminderDigestSectionKey[] | string[] | null | undefined
+): ReminderDigestSectionKey[] {
+  if (!Array.isArray(value)) {
+    return [...DEFAULT_DIGEST_SECTIONS_ORDER];
+  }
+
+  const allowed = new Set<ReminderDigestSectionKey>(DEFAULT_DIGEST_SECTIONS_ORDER);
+  const normalized: ReminderDigestSectionKey[] = [];
+
+  for (const rawKey of value) {
+    if (typeof rawKey !== "string") continue;
+    if (!allowed.has(rawKey as ReminderDigestSectionKey)) continue;
+    const key = rawKey as ReminderDigestSectionKey;
+    if (!normalized.includes(key)) {
+      normalized.push(key);
+    }
+  }
+
+  for (const key of DEFAULT_DIGEST_SECTIONS_ORDER) {
+    if (!normalized.includes(key)) {
+      normalized.push(key);
+    }
+  }
+
+  return normalized;
+}
+
 const MOSCOW_TIMEZONE = "Europe/Moscow";
 
 function getTimezoneOffsetMinutes(timeZone: string, date: Date): number {
@@ -1358,11 +1427,22 @@ function ReminderEditDialog({
   const [includeNew, setIncludeNew] = useState(
     reminder?.include_new ?? true
   );
+  const [digestSectionsOrder, setDigestSectionsOrder] = useState<
+    ReminderDigestSectionKey[]
+  >(() => normalizeDigestSectionsOrder(reminder?.digest_sections_order));
+  const [draggingSection, setDraggingSection] = useState<ReminderDigestSectionKey | null>(null);
+  const [dragOverSection, setDragOverSection] = useState<ReminderDigestSectionKey | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const localTimeInfo = useMemo(() => getLocalTimeFromMoscow(time), [time]);
   const hasAnyDigestSectionEnabled =
     includeOverdue || includeUpcoming || includeInProgress || includeNew;
+  const digestSectionEnabledMap: Record<ReminderDigestSectionKey, boolean> = {
+    overdue: includeOverdue,
+    upcoming: includeUpcoming,
+    in_progress: includeInProgress,
+    new: includeNew,
+  };
 
   const toggleDay = (day: number) => {
     setDays((prev) =>
@@ -1386,6 +1466,60 @@ function ReminderEditDialog({
     setIsEnabled(value);
   };
 
+  const setDigestSectionEnabled = (
+    section: ReminderDigestSectionKey,
+    value: boolean
+  ) => {
+    if (section === "overdue") {
+      setIncludeOverdue(value);
+      return;
+    }
+    if (section === "upcoming") {
+      setIncludeUpcoming(value);
+      return;
+    }
+    if (section === "in_progress") {
+      setIncludeInProgress(value);
+      return;
+    }
+    setIncludeNew(value);
+  };
+
+  const moveDigestSection = useCallback(
+    (section: ReminderDigestSectionKey, direction: -1 | 1) => {
+      setDigestSectionsOrder((prev) => {
+        const currentIndex = prev.indexOf(section);
+        if (currentIndex < 0) return prev;
+        const nextIndex = currentIndex + direction;
+        if (nextIndex < 0 || nextIndex >= prev.length) return prev;
+        const reordered = [...prev];
+        reordered.splice(currentIndex, 1);
+        reordered.splice(nextIndex, 0, section);
+        return reordered;
+      });
+    },
+    []
+  );
+
+  const moveDigestSectionBefore = useCallback(
+    (
+      draggedSection: ReminderDigestSectionKey,
+      targetSection: ReminderDigestSectionKey
+    ) => {
+      if (draggedSection === targetSection) return;
+      setDigestSectionsOrder((prev) => {
+        const fromIndex = prev.indexOf(draggedSection);
+        const toIndex = prev.indexOf(targetSection);
+        if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return prev;
+        const reordered = [...prev];
+        reordered.splice(fromIndex, 1);
+        reordered.splice(toIndex, 0, draggedSection);
+        return reordered;
+      });
+    },
+    []
+  );
+
   const handleReminderEnabledToggle = (value: boolean) => {
     if (value && !hasAnyDigestSectionEnabled) {
       setAllDigestSections(true);
@@ -1406,6 +1540,7 @@ function ReminderEditDialog({
         include_upcoming: includeUpcoming,
         include_in_progress: includeInProgress,
         include_new: includeNew,
+        digest_sections_order: digestSectionsOrder,
       });
       onSaved();
       onClose();
@@ -1525,46 +1660,96 @@ function ReminderEditDialog({
               </div>
             </div>
             <div className="space-y-1">
-              <div className="flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-muted/40">
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-3.5 w-3.5 text-destructive" />
-                  <span className="text-sm">Просроченные задачи</span>
-                </div>
-                <Switch
-                  checked={includeOverdue}
-                  onCheckedChange={setIncludeOverdue}
-                />
-              </div>
-              <div className="flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-muted/40">
-                <div className="flex items-center gap-2">
-                  <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-sm">Ближайшие по дедлайну (3 дня)</span>
-                </div>
-                <Switch
-                  checked={includeUpcoming}
-                  onCheckedChange={setIncludeUpcoming}
-                />
-              </div>
-              <div className="flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-muted/40">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="h-3.5 w-3.5 text-primary" />
-                  <span className="text-sm">Задачи в работе</span>
-                </div>
-                <Switch
-                  checked={includeInProgress}
-                  onCheckedChange={setIncludeInProgress}
-                />
-              </div>
-              <div className="flex items-center justify-between rounded-xl px-3 py-2.5 hover:bg-muted/40">
-                <div className="flex items-center gap-2">
-                  <CalendarPlus className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-sm">Новые задачи</span>
-                </div>
-                <Switch
-                  checked={includeNew}
-                  onCheckedChange={setIncludeNew}
-                />
-              </div>
+              {digestSectionsOrder.map((sectionKey, index) => {
+                const sectionMeta = DIGEST_SECTION_META[sectionKey];
+                const Icon = sectionMeta.icon;
+                const isChecked = digestSectionEnabledMap[sectionKey];
+                const isFirst = index === 0;
+                const isLast = index === digestSectionsOrder.length - 1;
+                const isDragTarget =
+                  dragOverSection === sectionKey && draggingSection !== sectionKey;
+
+                return (
+                  <div
+                    key={sectionKey}
+                    draggable
+                    onDragStart={(event) => {
+                      setDraggingSection(sectionKey);
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", sectionKey);
+                    }}
+                    onDragOver={(event) => {
+                      if (!draggingSection || draggingSection === sectionKey) return;
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                      setDragOverSection(sectionKey);
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      const draggedRaw = event.dataTransfer.getData("text/plain");
+                      if (
+                        !DEFAULT_DIGEST_SECTIONS_ORDER.includes(
+                          draggedRaw as ReminderDigestSectionKey
+                        )
+                      ) {
+                        setDraggingSection(null);
+                        setDragOverSection(null);
+                        return;
+                      }
+                      const draggedSection = draggedRaw as ReminderDigestSectionKey;
+                      moveDigestSectionBefore(draggedSection, sectionKey);
+                      setDraggingSection(null);
+                      setDragOverSection(null);
+                    }}
+                    onDragEnd={() => {
+                      setDraggingSection(null);
+                      setDragOverSection(null);
+                    }}
+                    className={`flex items-center justify-between rounded-xl px-3 py-2.5 transition-colors ${
+                      isDragTarget
+                        ? "bg-primary/10"
+                        : "hover:bg-muted/40"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <GripVertical className="h-3.5 w-3.5 text-muted-foreground/70 cursor-grab active:cursor-grabbing" />
+                      <Icon className={`h-3.5 w-3.5 ${sectionMeta.iconClassName}`} />
+                      <span className="text-sm">{sectionMeta.label}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-lg text-muted-foreground"
+                        disabled={isFirst || saving}
+                        onClick={() => moveDigestSection(sectionKey, -1)}
+                      >
+                        <ArrowUp className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 rounded-lg text-muted-foreground"
+                        disabled={isLast || saving}
+                        onClick={() => moveDigestSection(sectionKey, 1)}
+                      >
+                        <ArrowDown className="h-3.5 w-3.5" />
+                      </Button>
+                      <Switch
+                        checked={isChecked}
+                        onCheckedChange={(value) =>
+                          setDigestSectionEnabled(sectionKey, value)
+                        }
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              <p className="px-3 pt-1 text-2xs text-muted-foreground">
+                Перетаскивайте блоки или используйте стрелки, чтобы задать порядок в сообщении.
+              </p>
             </div>
           </div>
 

@@ -338,6 +338,12 @@ export interface NotificationSubscriptionsSettings {
   task_overdue_daily_time_msk: string;
 }
 
+export type ReminderDigestSectionKey =
+  | "overdue"
+  | "upcoming"
+  | "in_progress"
+  | "new";
+
 export interface ReminderSettings {
   id: string;
   member_id: string;
@@ -349,6 +355,7 @@ export interface ReminderSettings {
   include_upcoming: boolean;
   include_in_progress: boolean;
   include_new: boolean;
+  digest_sections_order: ReminderDigestSectionKey[];
   configured_by_id: string | null;
   created_at: string;
   updated_at: string;

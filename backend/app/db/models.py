@@ -473,6 +473,11 @@ class ReminderSettings(Base):
         Boolean, default=True, server_default="true"
     )
     include_new: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    digest_sections_order: Mapped[list[str]] = mapped_column(
+        ARRAY(String),
+        default=lambda: ["overdue", "upcoming", "in_progress", "new"],
+        server_default='{"overdue","upcoming","in_progress","new"}',
+    )
     configured_by_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("team_members.id"), nullable=True
     )

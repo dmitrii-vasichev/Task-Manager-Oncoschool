@@ -28,6 +28,7 @@ from app.db.repositories import (
     TeamMemberRepository,
 )
 from app.services.ai_service import AIService
+from app.services.reminder_service import normalize_digest_sections_order
 
 logger = logging.getLogger(__name__)
 
@@ -489,15 +490,24 @@ async def cmd_myreminder(
 
     days = rs.days_of_week or [1, 2, 3, 4, 5]
     days_str = ", ".join(DAYS_RU.get(d, str(d)) for d in sorted(days))
+    include_flags = {
+        "overdue": rs.include_overdue,
+        "upcoming": rs.include_upcoming,
+        "in_progress": rs.include_in_progress,
+        "new": rs.include_new,
+    }
+    include_labels = {
+        "overdue": "просроченные",
+        "upcoming": "ближайшие (3 дня)",
+        "in_progress": "в работе",
+        "new": "новые",
+    }
     includes = []
-    if rs.include_overdue:
-        includes.append("просроченные")
-    if rs.include_upcoming:
-        includes.append("ближайшие (3 дня)")
-    if rs.include_in_progress:
-        includes.append("в работе")
-    if rs.include_new:
-        includes.append("новые")
+    for section_key in normalize_digest_sections_order(
+        getattr(rs, "digest_sections_order", None)
+    ):
+        if include_flags.get(section_key):
+            includes.append(include_labels[section_key])
     includes_str = ", ".join(includes) if includes else "—"
 
     await message.answer(

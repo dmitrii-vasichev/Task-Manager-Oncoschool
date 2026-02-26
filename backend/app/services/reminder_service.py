@@ -42,6 +42,31 @@ TASK_OVERDUE_NOTIFICATIONS_KEY = "task_overdue_notifications"
 DEFAULT_TASK_OVERDUE_INTERVAL_HOURS = 1
 DEFAULT_TASK_OVERDUE_DAILY_TIME_MSK = "09:00"
 ALLOWED_TASK_OVERDUE_INTERVAL_HOURS = {1, 24}
+DIGEST_SECTION_ORDER_DEFAULT = ("overdue", "upcoming", "in_progress", "new")
+ALLOWED_DIGEST_SECTION_KEYS = set(DIGEST_SECTION_ORDER_DEFAULT)
+
+
+def normalize_digest_sections_order(value: object | None) -> list[str]:
+    """Normalize digest section order to known keys with deterministic fallback."""
+    if not isinstance(value, (list, tuple)):
+        return list(DIGEST_SECTION_ORDER_DEFAULT)
+
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for raw_key in value:
+        if not isinstance(raw_key, str):
+            continue
+        key = raw_key.strip()
+        if key not in ALLOWED_DIGEST_SECTION_KEYS or key in seen:
+            continue
+        ordered.append(key)
+        seen.add(key)
+
+    for key in DIGEST_SECTION_ORDER_DEFAULT:
+        if key not in seen:
+            ordered.append(key)
+
+    return ordered
 
 
 class ReminderService:
@@ -415,6 +440,7 @@ class ReminderService:
 
         sections = []
         sections.append(f"📊 Ежедневный дайджест — {today.strftime('%d.%m.%Y')}")
+        section_blocks: dict[str, str] = {}
 
         # Overdue tasks
         if rs.include_overdue:
@@ -427,7 +453,7 @@ class ReminderService:
                 for t in overdue:
                     dl = t.deadline.strftime("%d.%m") if t.deadline else ""
                     lines.append(f"  #{t.short_id} · {t.title} · 📅 был {dl} · ⚡ {t.priority}")
-                sections.append("\n".join(lines))
+                section_blocks["overdue"] = "\n".join(lines)
 
         # Upcoming tasks (next 3 days)
         if rs.include_upcoming:
@@ -441,7 +467,7 @@ class ReminderService:
                 for t in upcoming:
                     dl = t.deadline.strftime("%d.%m") if t.deadline else ""
                     lines.append(f"  #{t.short_id} · {t.title} · 📅 {dl} · ⚡ {t.priority}")
-                sections.append("\n".join(lines))
+                section_blocks["upcoming"] = "\n".join(lines)
 
         # In progress
         if rs.include_in_progress:
@@ -450,7 +476,7 @@ class ReminderService:
                 lines = ["\n🔄 В работе ({}):" .format(len(in_progress))]
                 for t in in_progress:
                     lines.append(f"  #{t.short_id} · {t.title} · ⚡ {t.priority}")
-                sections.append("\n".join(lines))
+                section_blocks["in_progress"] = "\n".join(lines)
 
         # New tasks
         if rs.include_new:
@@ -459,7 +485,15 @@ class ReminderService:
                 lines = ["\n🆕 Новые ({}):" .format(len(new_tasks))]
                 for t in new_tasks:
                     lines.append(f"  #{t.short_id} · {t.title} · ⚡ {t.priority}")
-                sections.append("\n".join(lines))
+                section_blocks["new"] = "\n".join(lines)
+
+        section_order = normalize_digest_sections_order(
+            getattr(rs, "digest_sections_order", None)
+        )
+        for section_key in section_order:
+            block = section_blocks.get(section_key)
+            if block:
+                sections.append(block)
 
         # Completed yesterday
         yesterday = today - timedelta(days=1)

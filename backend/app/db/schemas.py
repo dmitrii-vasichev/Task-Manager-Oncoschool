@@ -13,6 +13,7 @@ MemberDeactivationStrategyType = Literal["unassign", "reassign"]
 UpdateTypeType = Literal["progress", "status_change", "comment", "blocker", "completion"]
 TelegramBroadcastStatusType = Literal["scheduled", "sent", "failed", "cancelled"]
 MeetingReminderZoomMissingBehaviorType = Literal["hide", "fallback"]
+ReminderDigestSectionKeyType = Literal["overdue", "upcoming", "in_progress", "new"]
 
 
 # ── TeamMember ──
@@ -452,6 +453,9 @@ class ReminderSettingsCreate(BaseModel):
     include_upcoming: bool = True
     include_in_progress: bool = True
     include_new: bool = True
+    digest_sections_order: list[ReminderDigestSectionKeyType] = Field(
+        default_factory=lambda: ["overdue", "upcoming", "in_progress", "new"]
+    )
 
 
 class ReminderSettingsUpdate(BaseModel):
@@ -463,6 +467,7 @@ class ReminderSettingsUpdate(BaseModel):
     include_upcoming: bool | None = None
     include_in_progress: bool | None = None
     include_new: bool | None = None
+    digest_sections_order: list[ReminderDigestSectionKeyType] | None = None
 
 
 class ReminderSettingsResponse(BaseModel):
@@ -478,6 +483,7 @@ class ReminderSettingsResponse(BaseModel):
     include_upcoming: bool
     include_in_progress: bool
     include_new: bool
+    digest_sections_order: list[ReminderDigestSectionKeyType]
     configured_by_id: uuid.UUID | None
     created_at: datetime
     updated_at: datetime
