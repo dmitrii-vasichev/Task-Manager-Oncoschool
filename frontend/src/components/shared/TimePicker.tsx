@@ -5,6 +5,7 @@ import { Clock } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import {
@@ -32,10 +33,26 @@ const HOURS = Array.from({ length: 24 }, (_, i) =>
   String(i).padStart(2, "0")
 );
 
+const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
 function getMinutes(step: number) {
   return Array.from({ length: Math.ceil(60 / step) }, (_, i) =>
     String(i * step).padStart(2, "0")
   );
+}
+
+function parseTimeValue(value: string): { hours: string; minutes: string } | null {
+  const match = TIME_RE.exec(value.trim());
+  if (!match) return null;
+  return { hours: match[1], minutes: match[2] };
+}
+
+function sanitizeTimePart(raw: string): string {
+  return raw.replace(/\D/g, "").slice(0, 2);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 export function TimePicker({
@@ -47,12 +64,12 @@ export function TimePicker({
   className,
 }: TimePickerProps) {
   const [open, setOpen] = React.useState(false);
+  const [manualHours, setManualHours] = React.useState("");
+  const [manualMinutes, setManualMinutes] = React.useState("");
 
   const minutes = React.useMemo(() => getMinutes(minuteStep), [minuteStep]);
 
-  const parsed = value
-    ? { hours: value.split(":")[0], minutes: value.split(":")[1] }
-    : null;
+  const parsed = React.useMemo(() => parseTimeValue(value), [value]);
 
   const selectedHourRef = React.useRef<HTMLButtonElement>(null);
   const selectedMinuteRef = React.useRef<HTMLButtonElement>(null);
@@ -66,14 +83,57 @@ export function TimePicker({
     }
   }, [open]);
 
+  React.useEffect(() => {
+    if (!open) return;
+    setManualHours(parsed?.hours ?? "");
+    setManualMinutes(parsed?.minutes ?? "");
+  }, [open, parsed?.hours, parsed?.minutes]);
+
+  function commitManualTime(
+    hoursRaw: string = manualHours,
+    minutesRaw: string = manualMinutes
+  ) {
+    const nextHourSource = hoursRaw === "" ? (parsed?.hours ?? "00") : hoursRaw;
+    const nextMinuteSource = minutesRaw === "" ? (parsed?.minutes ?? "00") : minutesRaw;
+
+    const nextHourNumber = Number(nextHourSource);
+    const nextMinuteNumber = Number(nextMinuteSource);
+    if (!Number.isFinite(nextHourNumber) || !Number.isFinite(nextMinuteNumber)) {
+      return;
+    }
+
+    const normalizedHour = String(clamp(nextHourNumber, 0, 23)).padStart(2, "0");
+    const normalizedMinute = String(clamp(nextMinuteNumber, 0, 59)).padStart(2, "0");
+    const nextValue = `${normalizedHour}:${normalizedMinute}`;
+
+    setManualHours(normalizedHour);
+    setManualMinutes(normalizedMinute);
+    if (nextValue !== value) {
+      onChange(nextValue);
+    }
+  }
+
   function handleHourClick(hour: string) {
     const min = parsed?.minutes || "00";
-    onChange(`${hour}:${min}`);
+    const nextValue = `${hour}:${min}`;
+    onChange(nextValue);
+    setManualHours(hour);
+    setManualMinutes(min);
   }
 
   function handleMinuteClick(minute: string) {
     const hr = parsed?.hours || "00";
-    onChange(`${hr}:${minute}`);
+    const nextValue = `${hr}:${minute}`;
+    onChange(nextValue);
+    setManualHours(hr);
+    setManualMinutes(minute);
+  }
+
+  function handleManualKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitManualTime();
+    }
   }
 
   return (
@@ -92,7 +152,35 @@ export function TimePicker({
           {value || placeholder}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
+      <PopoverContent className="w-[228px] p-0" align="start">
+        <div className="border-b border-border/60 p-2">
+          <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+            Вручную
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Input
+              value={manualHours}
+              onChange={(e) => setManualHours(sanitizeTimePart(e.target.value))}
+              onBlur={() => commitManualTime(manualHours, manualMinutes)}
+              onKeyDown={handleManualKeyDown}
+              inputMode="numeric"
+              placeholder="ЧЧ"
+              className="h-8 w-14 rounded-lg px-2 text-center text-sm"
+              aria-label="Часы"
+            />
+            <span className="text-sm font-medium text-muted-foreground">:</span>
+            <Input
+              value={manualMinutes}
+              onChange={(e) => setManualMinutes(sanitizeTimePart(e.target.value))}
+              onBlur={() => commitManualTime(manualHours, manualMinutes)}
+              onKeyDown={handleManualKeyDown}
+              inputMode="numeric"
+              placeholder="ММ"
+              className="h-8 w-14 rounded-lg px-2 text-center text-sm"
+              aria-label="Минуты"
+            />
+          </div>
+        </div>
         <div className="flex">
           {/* Hours column */}
           <div className="flex flex-col">
