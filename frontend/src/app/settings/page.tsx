@@ -27,6 +27,8 @@ import {
   GripVertical,
   ArrowUp,
   ArrowDown,
+  ChevronDown,
+  ChevronUp,
   Hash,
   Type,
   CalendarDays,
@@ -1519,6 +1521,7 @@ function ReminderEditDialog({
   >(() => normalizeTaskLineFieldsOrder(reminder?.task_line_fields_order));
   const [draggingTaskLineField, setDraggingTaskLineField] = useState<ReminderTaskLineFieldKey | null>(null);
   const [dragOverTaskLineField, setDragOverTaskLineField] = useState<ReminderTaskLineFieldKey | null>(null);
+  const [isTaskLineFormatExpanded, setIsTaskLineFormatExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const localTimeInfo = useMemo(() => getLocalTimeFromMoscow(time), [time]);
@@ -1757,7 +1760,7 @@ function ReminderEditDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="w-[calc(100vw-1rem)] sm:w-full sm:max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3 font-heading">
             <UserAvatar name={member.full_name} avatarUrl={member.avatar_url} size="default" />
@@ -1962,131 +1965,158 @@ function ReminderEditDialog({
 
           {/* Task line format */}
           <div className="space-y-3">
-            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center justify-between gap-2">
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Формат строки задачи
               </Label>
-              <div className="flex w-full flex-col items-stretch gap-1.5 sm:w-auto sm:shrink-0 sm:flex-row sm:flex-nowrap sm:items-center sm:justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 rounded-lg px-3 text-xs"
-                  disabled={saving}
-                  onClick={() => setAllTaskLineFields(true)}
-                >
-                  Включить всё
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 rounded-lg px-3 text-xs"
-                  disabled={saving}
-                  onClick={() => setAllTaskLineFields(false)}
-                >
-                  Выключить всё
-                </Button>
-              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 rounded-lg px-3 text-xs"
+                onClick={() =>
+                  setIsTaskLineFormatExpanded((prev) => !prev)
+                }
+              >
+                {isTaskLineFormatExpanded ? "Скрыть" : "Настроить"}
+                {isTaskLineFormatExpanded ? (
+                  <ChevronUp className="h-3.5 w-3.5 ml-1.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5 ml-1.5" />
+                )}
+              </Button>
             </div>
-            <div className="space-y-1">
-              {taskLineFieldsOrder.map((fieldKey, index) => {
-                const fieldMeta = TASK_LINE_FIELD_META[fieldKey];
-                const Icon = fieldMeta.icon;
-                const isChecked = taskLineFieldEnabledMap[fieldKey];
-                const isFirst = index === 0;
-                const isLast = index === taskLineFieldsOrder.length - 1;
-                const isDragTarget =
-                  dragOverTaskLineField === fieldKey &&
-                  draggingTaskLineField !== fieldKey;
+            {isTaskLineFormatExpanded ? (
+              <div className="space-y-1">
+                <div className="flex w-full flex-col items-stretch gap-1.5 px-3 sm:w-auto sm:shrink-0 sm:flex-row sm:flex-nowrap sm:items-center sm:justify-end sm:px-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 rounded-lg px-3 text-xs"
+                    disabled={saving}
+                    onClick={() => setAllTaskLineFields(true)}
+                  >
+                    Включить всё
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 rounded-lg px-3 text-xs"
+                    disabled={saving}
+                    onClick={() => setAllTaskLineFields(false)}
+                  >
+                    Выключить всё
+                  </Button>
+                </div>
+                {taskLineFieldsOrder.map((fieldKey, index) => {
+                  const fieldMeta = TASK_LINE_FIELD_META[fieldKey];
+                  const Icon = fieldMeta.icon;
+                  const isChecked = taskLineFieldEnabledMap[fieldKey];
+                  const isFirst = index === 0;
+                  const isLast = index === taskLineFieldsOrder.length - 1;
+                  const isDragTarget =
+                    dragOverTaskLineField === fieldKey &&
+                    draggingTaskLineField !== fieldKey;
 
-                return (
-                  <div
-                    key={fieldKey}
-                    draggable
-                    onDragStart={(event) => {
-                      setDraggingTaskLineField(fieldKey);
-                      event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData("text/plain", fieldKey);
-                    }}
-                    onDragOver={(event) => {
-                      if (!draggingTaskLineField || draggingTaskLineField === fieldKey) return;
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "move";
-                      setDragOverTaskLineField(fieldKey);
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      const draggedRaw = event.dataTransfer.getData("text/plain");
-                      if (
-                        !DEFAULT_TASK_LINE_FIELDS_ORDER.includes(
-                          draggedRaw as ReminderTaskLineFieldKey
-                        )
-                      ) {
+                  return (
+                    <div
+                      key={fieldKey}
+                      draggable
+                      onDragStart={(event) => {
+                        setDraggingTaskLineField(fieldKey);
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", fieldKey);
+                      }}
+                      onDragOver={(event) => {
+                        if (!draggingTaskLineField || draggingTaskLineField === fieldKey) return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                        setDragOverTaskLineField(fieldKey);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const draggedRaw = event.dataTransfer.getData("text/plain");
+                        if (
+                          !DEFAULT_TASK_LINE_FIELDS_ORDER.includes(
+                            draggedRaw as ReminderTaskLineFieldKey
+                          )
+                        ) {
+                          setDraggingTaskLineField(null);
+                          setDragOverTaskLineField(null);
+                          return;
+                        }
+                        const draggedField = draggedRaw as ReminderTaskLineFieldKey;
+                        moveTaskLineFieldBefore(draggedField, fieldKey);
                         setDraggingTaskLineField(null);
                         setDragOverTaskLineField(null);
-                        return;
-                      }
-                      const draggedField = draggedRaw as ReminderTaskLineFieldKey;
-                      moveTaskLineFieldBefore(draggedField, fieldKey);
-                      setDraggingTaskLineField(null);
-                      setDragOverTaskLineField(null);
-                    }}
-                    onDragEnd={() => {
-                      setDraggingTaskLineField(null);
-                      setDragOverTaskLineField(null);
-                    }}
-                    className={`flex items-center justify-between rounded-xl px-3 py-2.5 transition-colors ${
-                      isDragTarget
-                        ? "bg-primary/10"
-                        : "hover:bg-muted/40"
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <GripVertical className="h-3.5 w-3.5 text-muted-foreground/70 cursor-grab active:cursor-grabbing" />
-                      <Icon className={`h-3.5 w-3.5 ${fieldMeta.iconClassName}`} />
-                      <span className="text-sm">{fieldMeta.label}</span>
+                      }}
+                      onDragEnd={() => {
+                        setDraggingTaskLineField(null);
+                        setDragOverTaskLineField(null);
+                      }}
+                      className={`flex items-center justify-between rounded-xl px-3 py-2.5 transition-colors ${
+                        isDragTarget
+                          ? "bg-primary/10"
+                          : "hover:bg-muted/40"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <GripVertical className="h-3.5 w-3.5 text-muted-foreground/70 cursor-grab active:cursor-grabbing" />
+                        <Icon className={`h-3.5 w-3.5 ${fieldMeta.iconClassName}`} />
+                        <span className="text-sm">{fieldMeta.label}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-lg text-muted-foreground"
+                          disabled={isFirst || saving}
+                          onClick={() => moveTaskLineField(fieldKey, -1)}
+                        >
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-lg text-muted-foreground"
+                          disabled={isLast || saving}
+                          onClick={() => moveTaskLineField(fieldKey, 1)}
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </Button>
+                        <Switch
+                          checked={isChecked}
+                          onCheckedChange={(value) =>
+                            setTaskLineFieldEnabled(fieldKey, value)
+                          }
+                        />
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 rounded-lg text-muted-foreground"
-                        disabled={isFirst || saving}
-                        onClick={() => moveTaskLineField(fieldKey, -1)}
-                      >
-                        <ArrowUp className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 rounded-lg text-muted-foreground"
-                        disabled={isLast || saving}
-                        onClick={() => moveTaskLineField(fieldKey, 1)}
-                      >
-                        <ArrowDown className="h-3.5 w-3.5" />
-                      </Button>
-                      <Switch
-                        checked={isChecked}
-                        onCheckedChange={(value) =>
-                          setTaskLineFieldEnabled(fieldKey, value)
-                        }
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="px-3 pt-1 space-y-1.5">
+                  );
+                })}
+                <div className="px-3 pt-1 space-y-1.5">
+                  <p className="text-2xs text-muted-foreground">
+                    Управляйте составом строки задачи и порядком блоков в каждом разделе дайджеста.
+                  </p>
+                  <p className="text-2xs text-muted-foreground">
+                    Пример: <span className="font-mono">{taskLinePreview}</span>
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border/40 bg-muted/30 px-3 py-2.5">
                 <p className="text-2xs text-muted-foreground">
-                  Управляйте составом строки задачи и порядком блоков в каждом разделе дайджеста.
+                  Секция свернута. Нажмите «Настроить», чтобы изменить состав строки задачи.
                 </p>
-                <p className="text-2xs text-muted-foreground">
-                  Пример: <span className="font-mono">{taskLinePreview}</span>
+                <p className="mt-1 text-2xs text-muted-foreground">
+                  Текущий формат: <span className="font-mono">{taskLinePreview}</span>
                 </p>
               </div>
-            </div>
+            )}
           </div>
 
           {error && (
