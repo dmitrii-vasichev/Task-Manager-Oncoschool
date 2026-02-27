@@ -2080,18 +2080,18 @@ function ReminderEditDialog({
                       setDraggingSection(null);
                       setDragOverSection(null);
                     }}
-                    className={`flex items-center justify-between rounded-xl px-3 py-2.5 transition-colors ${
+                    className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 transition-colors ${
                       isDragTarget
                         ? "bg-primary/10"
                         : "hover:bg-muted/40"
                     }`}
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2 pr-1">
                       <GripVertical className="h-3.5 w-3.5 text-muted-foreground/70 cursor-grab active:cursor-grabbing" />
                       <Icon className={`h-3.5 w-3.5 ${sectionMeta.iconClassName}`} />
-                      <span className="text-sm">{sectionLabel}</span>
+                      <span className="text-sm leading-snug">{sectionLabel}</span>
                     </div>
-                    <div className="flex items-center gap-1">
+                    <div className="ml-2 flex shrink-0 items-center gap-1.5">
                       {isUpcomingSection ? (
                         <Select
                           value={String(upcomingDays)}
@@ -2100,7 +2100,7 @@ function ReminderEditDialog({
                           }
                           disabled={!isChecked || saving || applyingSettings}
                         >
-                          <SelectTrigger className="h-7 w-[122px] rounded-lg text-xs">
+                          <SelectTrigger className="h-7 w-[112px] rounded-lg text-xs">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -2117,27 +2117,30 @@ function ReminderEditDialog({
                           </SelectContent>
                         </Select>
                       ) : null}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 rounded-lg text-muted-foreground"
-                        disabled={isFirst || saving || applyingSettings}
-                        onClick={() => moveDigestSection(sectionKey, -1)}
-                      >
-                        <ArrowUp className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 rounded-lg text-muted-foreground"
-                        disabled={isLast || saving || applyingSettings}
-                        onClick={() => moveDigestSection(sectionKey, 1)}
-                      >
-                        <ArrowDown className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex items-center gap-0.5">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-lg text-muted-foreground"
+                          disabled={isFirst || saving || applyingSettings}
+                          onClick={() => moveDigestSection(sectionKey, -1)}
+                        >
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-lg text-muted-foreground"
+                          disabled={isLast || saving || applyingSettings}
+                          onClick={() => moveDigestSection(sectionKey, 1)}
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                       <Switch
+                        className="ml-1 h-[18px] w-[34px] [&>span]:h-[14px] [&>span]:w-[14px] [&>span[data-state=checked]]:translate-x-[14px]"
                         checked={isChecked}
                         onCheckedChange={(value) =>
                           setDigestSectionEnabled(sectionKey, value)
