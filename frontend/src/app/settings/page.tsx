@@ -2080,18 +2080,18 @@ function ReminderEditDialog({
                       setDraggingSection(null);
                       setDragOverSection(null);
                     }}
-                    className={`flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 transition-colors ${
+                    className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 transition-colors ${
                       isDragTarget
                         ? "bg-primary/10"
                         : "hover:bg-muted/40"
                     }`}
                   >
-                    <div className="flex min-w-0 items-center gap-2 pr-1">
-                      <GripVertical className="h-3.5 w-3.5 text-muted-foreground/70 cursor-grab active:cursor-grabbing" />
-                      <Icon className={`h-3.5 w-3.5 ${sectionMeta.iconClassName}`} />
-                      <span className="text-sm leading-snug">{sectionLabel}</span>
+                    <div className="flex min-w-0 flex-1 items-center gap-2 pr-1">
+                      <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground/70 cursor-grab active:cursor-grabbing" />
+                      <Icon className={`h-4 w-4 shrink-0 ${sectionMeta.iconClassName}`} />
+                      <span className="min-w-0 text-sm leading-snug">{sectionLabel}</span>
                     </div>
-                    <div className="ml-2 flex shrink-0 items-center gap-1.5">
+                    <div className="ml-1 flex shrink-0 items-center gap-1">
                       {isUpcomingSection ? (
                         <Select
                           value={String(upcomingDays)}
@@ -2100,7 +2100,7 @@ function ReminderEditDialog({
                           }
                           disabled={!isChecked || saving || applyingSettings}
                         >
-                          <SelectTrigger className="h-7 w-[112px] rounded-lg text-xs">
+                          <SelectTrigger className="h-7 w-[106px] rounded-lg text-xs">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -2122,7 +2122,7 @@ function ReminderEditDialog({
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 rounded-lg text-muted-foreground"
+                          className="h-6 w-6 rounded-lg text-muted-foreground"
                           disabled={isFirst || saving || applyingSettings}
                           onClick={() => moveDigestSection(sectionKey, -1)}
                         >
@@ -2132,7 +2132,7 @@ function ReminderEditDialog({
                           type="button"
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 rounded-lg text-muted-foreground"
+                          className="h-6 w-6 rounded-lg text-muted-foreground"
                           disabled={isLast || saving || applyingSettings}
                           onClick={() => moveDigestSection(sectionKey, 1)}
                         >
@@ -2140,7 +2140,7 @@ function ReminderEditDialog({
                         </Button>
                       </div>
                       <Switch
-                        className="ml-1 h-[18px] w-[34px] [&>span]:h-[14px] [&>span]:w-[14px] [&>span[data-state=checked]]:translate-x-[14px]"
+                        className="ml-1.5 h-[18px] w-[34px] [&>span]:h-[14px] [&>span]:w-[14px] [&>span[data-state=checked]]:translate-x-[14px]"
                         checked={isChecked}
                         onCheckedChange={(value) =>
                           setDigestSectionEnabled(sectionKey, value)
