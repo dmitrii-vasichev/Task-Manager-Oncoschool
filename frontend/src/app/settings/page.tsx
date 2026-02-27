@@ -1536,6 +1536,7 @@ function ReminderEditDialog({
   >(() => normalizeTaskLineFieldsOrder(reminder?.task_line_fields_order));
   const [draggingTaskLineField, setDraggingTaskLineField] = useState<ReminderTaskLineFieldKey | null>(null);
   const [dragOverTaskLineField, setDragOverTaskLineField] = useState<ReminderTaskLineFieldKey | null>(null);
+  const [isDigestSectionsExpanded, setIsDigestSectionsExpanded] = useState(false);
   const [isTaskLineFormatExpanded, setIsTaskLineFormatExpanded] = useState(false);
   const [isApplySettingsExpanded, setIsApplySettingsExpanded] = useState(false);
   const [selectedApplyMemberIds, setSelectedApplyMemberIds] = useState<string[]>([]);
@@ -2001,159 +2002,190 @@ function ReminderEditDialog({
 
           {/* Content toggles */}
           <div className="space-y-3">
-            <div className="flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center justify-between gap-2">
               <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 Что включить в дайджест
               </Label>
-              <div className="flex w-full flex-col items-stretch gap-1.5 sm:w-auto sm:shrink-0 sm:flex-row sm:flex-nowrap sm:items-center sm:justify-end">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 rounded-lg px-3 text-xs"
-                  disabled={saving || applyingSettings}
-                  onClick={() => setAllDigestSections(true)}
-                >
-                  Включить всё
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 rounded-lg px-3 text-xs"
-                  disabled={saving || applyingSettings}
-                  onClick={() => setAllDigestSections(false)}
-                >
-                  Выключить всё
-                </Button>
-              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 rounded-lg px-3 text-xs"
+                onClick={() =>
+                  setIsDigestSectionsExpanded((prev) => !prev)
+                }
+              >
+                {isDigestSectionsExpanded ? "Скрыть" : "Настроить"}
+                {isDigestSectionsExpanded ? (
+                  <ChevronUp className="h-3.5 w-3.5 ml-1.5" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5 ml-1.5" />
+                )}
+              </Button>
             </div>
-            <div className="space-y-1">
-              {digestSectionsOrder.map((sectionKey, index) => {
-                const sectionMeta = DIGEST_SECTION_META[sectionKey];
-                const Icon = sectionMeta.icon;
-                const isChecked = digestSectionEnabledMap[sectionKey];
-                const isUpcomingSection = sectionKey === "upcoming";
-                const sectionLabel = isUpcomingSection
-                  ? upcomingDays === 0
-                    ? "Дедлайн истекает сегодня"
-                    : `Ближайшие по дедлайну (${upcomingDays} дн.)`
-                  : sectionMeta.label;
-                const isFirst = index === 0;
-                const isLast = index === digestSectionsOrder.length - 1;
-                const isDragTarget =
-                  dragOverSection === sectionKey && draggingSection !== sectionKey;
+            {isDigestSectionsExpanded ? (
+              <div className="space-y-1">
+                <div className="flex w-full flex-col items-stretch gap-1.5 px-3 sm:w-auto sm:shrink-0 sm:flex-row sm:flex-nowrap sm:items-center sm:justify-end sm:px-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 rounded-lg px-3 text-xs"
+                    disabled={saving || applyingSettings}
+                    onClick={() => setAllDigestSections(true)}
+                  >
+                    Включить всё
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 rounded-lg px-3 text-xs"
+                    disabled={saving || applyingSettings}
+                    onClick={() => setAllDigestSections(false)}
+                  >
+                    Выключить всё
+                  </Button>
+                </div>
+                {digestSectionsOrder.map((sectionKey, index) => {
+                  const sectionMeta = DIGEST_SECTION_META[sectionKey];
+                  const Icon = sectionMeta.icon;
+                  const isChecked = digestSectionEnabledMap[sectionKey];
+                  const isUpcomingSection = sectionKey === "upcoming";
+                  const sectionLabel = isUpcomingSection
+                    ? upcomingDays === 0
+                      ? "Дедлайн истекает сегодня"
+                      : `Ближайшие по дедлайну (${upcomingDays} дн.)`
+                    : sectionMeta.label;
+                  const isFirst = index === 0;
+                  const isLast = index === digestSectionsOrder.length - 1;
+                  const isDragTarget =
+                    dragOverSection === sectionKey && draggingSection !== sectionKey;
 
-                return (
-                  <div
-                    key={sectionKey}
-                    draggable
-                    onDragStart={(event) => {
-                      setDraggingSection(sectionKey);
-                      event.dataTransfer.effectAllowed = "move";
-                      event.dataTransfer.setData("text/plain", sectionKey);
-                    }}
-                    onDragOver={(event) => {
-                      if (!draggingSection || draggingSection === sectionKey) return;
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "move";
-                      setDragOverSection(sectionKey);
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      const draggedRaw = event.dataTransfer.getData("text/plain");
-                      if (
-                        !DEFAULT_DIGEST_SECTIONS_ORDER.includes(
-                          draggedRaw as ReminderDigestSectionKey
-                        )
-                      ) {
+                  return (
+                    <div
+                      key={sectionKey}
+                      draggable
+                      onDragStart={(event) => {
+                        setDraggingSection(sectionKey);
+                        event.dataTransfer.effectAllowed = "move";
+                        event.dataTransfer.setData("text/plain", sectionKey);
+                      }}
+                      onDragOver={(event) => {
+                        if (!draggingSection || draggingSection === sectionKey) return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                        setDragOverSection(sectionKey);
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const draggedRaw = event.dataTransfer.getData("text/plain");
+                        if (
+                          !DEFAULT_DIGEST_SECTIONS_ORDER.includes(
+                            draggedRaw as ReminderDigestSectionKey
+                          )
+                        ) {
+                          setDraggingSection(null);
+                          setDragOverSection(null);
+                          return;
+                        }
+                        const draggedSection = draggedRaw as ReminderDigestSectionKey;
+                        moveDigestSectionBefore(draggedSection, sectionKey);
                         setDraggingSection(null);
                         setDragOverSection(null);
-                        return;
-                      }
-                      const draggedSection = draggedRaw as ReminderDigestSectionKey;
-                      moveDigestSectionBefore(draggedSection, sectionKey);
-                      setDraggingSection(null);
-                      setDragOverSection(null);
-                    }}
-                    onDragEnd={() => {
-                      setDraggingSection(null);
-                      setDragOverSection(null);
-                    }}
-                    className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 transition-colors ${
-                      isDragTarget
-                        ? "bg-primary/10"
-                        : "hover:bg-muted/40"
-                    }`}
-                  >
-                    <div className="flex min-w-0 flex-1 items-center gap-2 pr-1">
-                      <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground/70 cursor-grab active:cursor-grabbing" />
-                      <Icon className={`h-4 w-4 shrink-0 ${sectionMeta.iconClassName}`} />
-                      <span className="min-w-0 text-sm leading-snug">{sectionLabel}</span>
-                    </div>
-                    <div className="ml-1 flex shrink-0 items-center gap-1">
-                      {isUpcomingSection ? (
-                        <Select
-                          value={String(upcomingDays)}
-                          onValueChange={(value) =>
-                            setUpcomingDays(normalizeUpcomingDays(Number(value)))
-                          }
-                          disabled={!isChecked || saving || applyingSettings}
-                        >
-                          <SelectTrigger className="h-7 w-[106px] rounded-lg text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {UPCOMING_DAYS_OPTIONS.map((daysOption) => (
-                              <SelectItem
-                                key={daysOption}
-                                value={String(daysOption)}
-                              >
-                                {daysOption === 0
-                                  ? "Сегодня"
-                                  : `${daysOption} дн.`}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : null}
-                      <div className="flex items-center gap-0.5">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 rounded-lg text-muted-foreground"
-                          disabled={isFirst || saving || applyingSettings}
-                          onClick={() => moveDigestSection(sectionKey, -1)}
-                        >
-                          <ArrowUp className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6 rounded-lg text-muted-foreground"
-                          disabled={isLast || saving || applyingSettings}
-                          onClick={() => moveDigestSection(sectionKey, 1)}
-                        >
-                          <ArrowDown className="h-3.5 w-3.5" />
-                        </Button>
+                      }}
+                      onDragEnd={() => {
+                        setDraggingSection(null);
+                        setDragOverSection(null);
+                      }}
+                      className={`flex items-center justify-between gap-2 rounded-xl px-3 py-2.5 transition-colors ${
+                        isDragTarget
+                          ? "bg-primary/10"
+                          : "hover:bg-muted/40"
+                      }`}
+                    >
+                      <div className="flex min-w-0 flex-1 items-center gap-2 pr-1">
+                        <GripVertical className="h-4 w-4 shrink-0 text-muted-foreground/70 cursor-grab active:cursor-grabbing" />
+                        <Icon className={`h-4 w-4 shrink-0 ${sectionMeta.iconClassName}`} />
+                        <span className="min-w-0 text-sm leading-snug">{sectionLabel}</span>
                       </div>
-                      <Switch
-                        className="ml-1.5 h-[18px] w-[34px] [&>span]:h-[14px] [&>span]:w-[14px] [&>span[data-state=checked]]:translate-x-[14px]"
-                        checked={isChecked}
-                        onCheckedChange={(value) =>
-                          setDigestSectionEnabled(sectionKey, value)
-                        }
-                      />
+                      <div className="ml-1 flex shrink-0 items-center gap-1">
+                        {isUpcomingSection ? (
+                          <Select
+                            value={String(upcomingDays)}
+                            onValueChange={(value) =>
+                              setUpcomingDays(normalizeUpcomingDays(Number(value)))
+                            }
+                            disabled={!isChecked || saving || applyingSettings}
+                          >
+                            <SelectTrigger className="h-7 w-[106px] rounded-lg text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {UPCOMING_DAYS_OPTIONS.map((daysOption) => (
+                                <SelectItem
+                                  key={daysOption}
+                                  value={String(daysOption)}
+                                >
+                                  {daysOption === 0
+                                    ? "Сегодня"
+                                    : `${daysOption} дн.`}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : null}
+                        <div className="flex items-center gap-0.5">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 rounded-lg text-muted-foreground"
+                            disabled={isFirst || saving || applyingSettings}
+                            onClick={() => moveDigestSection(sectionKey, -1)}
+                          >
+                            <ArrowUp className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 rounded-lg text-muted-foreground"
+                            disabled={isLast || saving || applyingSettings}
+                            onClick={() => moveDigestSection(sectionKey, 1)}
+                          >
+                            <ArrowDown className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                        <Switch
+                          className="ml-1.5 h-[18px] w-[34px] [&>span]:h-[14px] [&>span]:w-[14px] [&>span[data-state=checked]]:translate-x-[14px]"
+                          checked={isChecked}
+                          onCheckedChange={(value) =>
+                            setDigestSectionEnabled(sectionKey, value)
+                          }
+                        />
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-              <p className="px-3 pt-1 text-2xs text-muted-foreground">
-                Перетаскивайте блоки или используйте стрелки, чтобы задать порядок в сообщении.
-              </p>
-            </div>
+                  );
+                })}
+                <p className="px-3 pt-1 text-2xs text-muted-foreground">
+                  Перетаскивайте блоки или используйте стрелки, чтобы задать порядок в сообщении.
+                </p>
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border/40 bg-muted/30 px-3 py-2.5">
+                <p className="text-2xs text-muted-foreground">
+                  Секция свернута. Нажмите «Настроить», чтобы изменить состав дайджеста.
+                </p>
+                <p className="mt-1 text-2xs text-muted-foreground">
+                  Включено блоков:{" "}
+                  <span className="font-mono">
+                    {Object.values(digestSectionEnabledMap).filter(Boolean).length} из{" "}
+                    {digestSectionsOrder.length}
+                  </span>
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Divider */}
