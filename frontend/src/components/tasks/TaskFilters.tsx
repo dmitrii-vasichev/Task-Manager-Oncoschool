@@ -220,7 +220,7 @@ export function TaskFilters({
               onFiltersChange({ ...filters, priority: v === "all" ? "" : v })
             }
           >
-            <SelectTrigger className="h-10 w-full shrink-0 bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md sm:w-[140px] lg:w-[138px]">
+            <SelectTrigger className="h-10 w-full shrink-0 bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md sm:w-[156px] lg:w-[156px]">
               <SelectValue placeholder="Приоритет" />
             </SelectTrigger>
             <SelectContent>
@@ -247,7 +247,7 @@ export function TaskFilters({
               onFiltersChange({ ...filters, source: v === "all" ? "" : v })
             }
           >
-            <SelectTrigger className="h-10 w-full shrink-0 bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md sm:w-[140px] lg:w-[138px]">
+            <SelectTrigger className="h-10 w-full shrink-0 bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md sm:w-[156px] lg:w-[156px]">
               <SelectValue placeholder="Источник" />
             </SelectTrigger>
             <SelectContent>
