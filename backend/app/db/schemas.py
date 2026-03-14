@@ -35,6 +35,7 @@ class TeamMemberCreate(BaseModel):
 
 
 class TeamMemberUpdate(BaseModel):
+    telegram_id: int | None = None
     telegram_username: str | None = None
     full_name: str | None = None
     name_variants: list[str] | None = None
