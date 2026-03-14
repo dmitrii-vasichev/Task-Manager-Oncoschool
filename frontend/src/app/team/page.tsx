@@ -1,268 +1,281 @@
 "use client";
 
-import { useState } from "react";
-import { Pencil, Loader2, X, Plus } from "lucide-react";
-import { ModeratorGuard } from "@/components/shared/ModeratorGuard";
-import { Card, CardContent } from "@/components/ui/card";
+import { useState, useEffect, useCallback } from "react";
+import { Users, Building2, Search, Settings2, UserPlus } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { RoleBadge } from "@/components/shared/RoleBadge";
-import { UserAvatar } from "@/components/shared/UserAvatar";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { TeamTree } from "./components/TeamTree";
+import { MemberDetailModal } from "./components/MemberDetailModal";
+import { MemberEditModal } from "./components/MemberEditModal";
+import { MemberCreateModal } from "./components/MemberCreateModal";
+import { DepartmentManager } from "./components/DepartmentManager";
+import { MemberCard } from "./components/MemberCard";
+import { UpcomingBirthdays } from "./components/UpcomingBirthdays";
+import { useTeamTree } from "@/hooks/useTeamTree";
+import { useDepartments } from "@/hooks/useDepartments";
 import { useTeam } from "@/hooks/useTeam";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { PermissionService } from "@/lib/permissions";
 import { api } from "@/lib/api";
-import type { TeamMember, MemberRole } from "@/lib/types";
+import type { TeamMember, MemberStats } from "@/lib/types";
 
 export default function TeamPage() {
-  return (
-    <ModeratorGuard>
-      <TeamContent />
-    </ModeratorGuard>
-  );
-}
-
-function TeamContent() {
-  const { members, loading, refetch } = useTeam();
+  const { user } = useCurrentUser();
+  const includeTestForAdmin = user ? PermissionService.isAdmin(user) : false;
+  const { tree, loading: treeLoading, refetch: refetchTree } = useTeamTree({
+    includeInactive: true,
+    includeTest: includeTestForAdmin,
+  });
+  const { departments, refetch: refetchDepts } = useDepartments();
+  const { members, refetch: refetchMembers } = useTeam({
+    includeInactive: true,
+    includeTest: includeTestForAdmin,
+  });
+  const [memberStats, setMemberStats] = useState<Record<string, MemberStats>>({});
+  const [search, setSearch] = useState("");
+  const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
   const [editMember, setEditMember] = useState<TeamMember | null>(null);
-  const [editFullName, setEditFullName] = useState("");
-  const [editRole, setEditRole] = useState<MemberRole>("member");
-  const [editNameVariants, setEditNameVariants] = useState<string[]>([]);
-  const [editActive, setEditActive] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [newVariant, setNewVariant] = useState("");
+  const [showDeptManager, setShowDeptManager] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
-  const openEdit = (member: TeamMember) => {
-    setEditMember(member);
-    setEditFullName(member.full_name);
-    setEditRole(member.role);
-    setEditNameVariants([...member.name_variants]);
-    setEditActive(member.is_active);
-    setError(null);
-    setNewVariant("");
-  };
+  const canEdit = user ? PermissionService.isModerator(user) : false;
+  const canAdd = user ? PermissionService.canAddMember(user) : false;
 
-  const handleSave = async () => {
-    if (!editMember) return;
-    setSaving(true);
-    setError(null);
+  const fetchStats = useCallback(async () => {
     try {
-      await api.updateTeamMember(editMember.id, {
-        full_name: editFullName,
-        role: editRole,
-        name_variants: editNameVariants,
-        is_active: editActive,
+      const data = await api.getMembersAnalytics();
+      const map: Record<string, MemberStats> = {};
+      data.members.forEach((m) => {
+        map[m.id] = m;
       });
-      setEditMember(null);
-      refetch();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка сохранения");
-    } finally {
-      setSaving(false);
+      setMemberStats(map);
+    } catch {
+      // stats are optional
     }
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  const handleRefresh = () => {
+    refetchTree();
+    refetchDepts();
+    refetchMembers();
+    fetchStats();
   };
 
-  const addVariant = () => {
-    const trimmed = newVariant.trim();
-    if (trimmed && !editNameVariants.includes(trimmed)) {
-      setEditNameVariants((prev) => [...prev, trimmed]);
-      setNewVariant("");
-    }
-  };
+  // Flat search across all members
+  const allMembers = tree
+    ? [...tree.departments.flatMap((d) => d.members), ...tree.unassigned]
+    : members;
 
-  const removeVariant = (index: number) => {
-    setEditNameVariants((prev) => prev.filter((_, i) => i !== index));
-  };
+  const filteredMembers = search.trim()
+    ? allMembers.filter((m) => {
+        const q = search.toLowerCase();
+        return (
+          m.full_name.toLowerCase().includes(q) ||
+          m.telegram_username?.toLowerCase().includes(q) ||
+          m.position?.toLowerCase().includes(q) ||
+          m.name_variants.some((v) => v.toLowerCase().includes(q))
+        );
+      })
+    : [];
 
-  if (loading) {
+  const isSearching = search.trim().length > 0;
+  const regularMembers = allMembers.filter((m) => !m.is_test);
+  const testMembers = allMembers.filter((m) => m.is_test);
+  const totalMembers = regularMembers.length;
+  const activeMembers = regularMembers.filter((m) => m.is_active).length;
+  const inactiveMembers = totalMembers - activeMembers;
+  const activeOnlyMembers = regularMembers.filter((m) => m.is_active);
+  const totalDepts = departments.length;
+
+  if (treeLoading) {
     return (
-      <div className="space-y-4">
-        {[...Array(3)].map((_, i) => (
-          <Skeleton key={i} className="h-16" />
-        ))}
+      <div className="space-y-6 animate-in fade-in duration-300">
+        <div className="flex items-center gap-4">
+          <Skeleton className="h-10 w-48 rounded-xl" />
+          <Skeleton className="h-10 w-72 rounded-xl" />
+        </div>
+        <div className="space-y-3">
+          {[...Array(3)].map((_, i) => (
+            <Skeleton key={i} className="h-48 rounded-2xl" />
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-muted-foreground">
-        {members.length} участников
-      </p>
-
-      <Card>
-        <CardContent className="p-0">
-          <div className="divide-y">
-            {members.map((member) => (
-              <div
-                key={member.id}
-                className="flex items-center gap-4 p-4"
-              >
-                <UserAvatar name={member.full_name} size="lg" />
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium">
-                    {member.full_name}
-                    {!member.is_active && (
-                      <span className="text-xs text-muted-foreground ml-2">
-                        (неактивен)
-                      </span>
-                    )}
-                  </p>
-                  {member.telegram_username && (
-                    <p className="text-sm text-muted-foreground">
-                      @{member.telegram_username}
-                    </p>
-                  )}
-                  {member.name_variants.length > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      Варианты: {member.name_variants.join(", ")}
-                    </p>
-                  )}
-                </div>
-                <RoleBadge role={member.role} />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => openEdit(member)}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              </div>
-            ))}
+    <div className="space-y-6 animate-in fade-in duration-300">
+      {/* Header */}
+      <div className="animate-fade-in-up stagger-1 space-y-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Users className="h-4 w-4 text-primary" />
+            </div>
+            <span>
+              <span className="font-heading font-bold text-foreground text-lg">
+                {totalMembers}
+              </span>{" "}
+              участников
+            </span>
           </div>
-        </CardContent>
-      </Card>
+          <div className="h-4 w-px bg-border/60" />
+          <span className="text-xs text-muted-foreground">
+            Активных: {activeMembers}
+          </span>
+          {inactiveMembers > 0 && (
+            <>
+              <div className="h-4 w-px bg-border/60" />
+              <span className="text-xs text-muted-foreground">
+                Неактивных: {inactiveMembers}
+              </span>
+            </>
+          )}
+          {includeTestForAdmin && testMembers.length > 0 && (
+            <>
+              <div className="h-4 w-px bg-border/60" />
+              <span className="text-xs text-muted-foreground">
+                Тестовых: {testMembers.length}
+              </span>
+            </>
+          )}
+          <div className="h-4 w-px bg-border/60" />
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <Building2 className="h-3 w-3" />
+            Отделов: {totalDepts}
+          </span>
+        </div>
 
-      <Dialog
-        open={!!editMember}
-        onOpenChange={(open) => !open && setEditMember(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Редактировать участника</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div>
-              <Label>Полное имя</Label>
-              <Input
-                value={editFullName}
-                onChange={(e) => setEditFullName(e.target.value)}
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <Label>Роль</Label>
-              <Select
-                value={editRole}
-                onValueChange={(v) => setEditRole(v as MemberRole)}
+        {(canAdd || canEdit) && (
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            {canAdd && (
+              <Button
+                size="sm"
+                className="w-full rounded-xl gap-1.5 sm:w-auto"
+                onClick={() => setShowCreateModal(true)}
               >
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="moderator">Модератор</SelectItem>
-                  <SelectItem value="member">Участник</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label>Варианты имени (для AI-матчинга)</Label>
-              <div className="flex flex-wrap gap-1 mt-2">
-                {editNameVariants.map((v, i) => (
-                  <Badge
-                    key={i}
-                    variant="secondary"
-                    className="cursor-pointer"
-                    onClick={() => removeVariant(i)}
-                  >
-                    {v}
-                    <X className="h-3 w-3 ml-1" />
-                  </Badge>
-                ))}
-              </div>
-              <div className="flex gap-2 mt-2">
-                <Input
-                  value={newVariant}
-                  onChange={(e) => setNewVariant(e.target.value)}
-                  placeholder="Добавить вариант..."
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      addVariant();
-                    }
-                  }}
-                />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={addVariant}
-                  disabled={!newVariant.trim()}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-
-            <div>
-              <Label>Статус</Label>
-              <Select
-                value={editActive ? "active" : "inactive"}
-                onValueChange={(v) => setEditActive(v === "active")}
-              >
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Активен</SelectItem>
-                  <SelectItem value="inactive">Неактивен</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
+                <UserPlus className="h-3.5 w-3.5" />
+                Добавить
+              </Button>
             )}
 
-            <div className="flex gap-2 justify-end">
+            {canEdit && (
               <Button
                 variant="outline"
-                onClick={() => setEditMember(null)}
-                disabled={saving}
+                size="sm"
+                className="w-full rounded-xl gap-1.5 sm:w-auto"
+                onClick={() => setShowDeptManager(true)}
               >
-                Отмена
+                <Settings2 className="h-3.5 w-3.5" />
+                Управление отделами
               </Button>
-              <Button onClick={handleSave} disabled={saving}>
-                {saving ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Сохранение...
-                  </>
-                ) : (
-                  "Сохранить"
-                )}
-              </Button>
-            </div>
+            )}
           </div>
-        </DialogContent>
-      </Dialog>
+        )}
+      </div>
+
+      {/* Upcoming Birthdays */}
+      <UpcomingBirthdays
+        members={activeOnlyMembers}
+        onMemberClick={setSelectedMember}
+      />
+
+      {/* Search */}
+      <div className="relative max-w-sm animate-fade-in-up stagger-3">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Поиск по имени, должности, username..."
+          className="pl-9 h-10 rounded-xl bg-card border-border/60"
+        />
+      </div>
+
+      {/* Content: search results or tree */}
+      {isSearching ? (
+        filteredMembers.length === 0 ? (
+          <EmptyState
+            variant="team"
+            title="Никто не найден"
+            description="Попробуйте изменить поисковый запрос"
+          />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 animate-fade-in-up stagger-3">
+            {filteredMembers.map((member) => (
+              <MemberCard
+                key={member.id}
+                member={member}
+                onClick={() => setSelectedMember(member)}
+                onEdit={canEdit ? () => setEditMember(member) : undefined}
+              />
+            ))}
+          </div>
+        )
+      ) : tree ? (
+        <div className="animate-fade-in-up stagger-3">
+          <TeamTree
+            tree={tree}
+            onMemberClick={setSelectedMember}
+            onMemberEdit={canEdit ? setEditMember : undefined}
+            canEdit={canEdit}
+          />
+        </div>
+      ) : (
+        <EmptyState
+          variant="team"
+          title="В команде пока нет участников"
+          description="Добавьте участников через кнопку выше"
+        />
+      )}
+
+      {/* Detail modal */}
+      <MemberDetailModal
+        member={selectedMember}
+        stats={selectedMember ? memberStats[selectedMember.id] : undefined}
+        departments={departments}
+        onClose={() => setSelectedMember(null)}
+      />
+
+      {/* Edit modal */}
+      {user && (
+        <MemberEditModal
+          member={editMember}
+          members={allMembers}
+          departments={departments}
+          currentUser={user}
+          onSave={handleRefresh}
+          onClose={() => setEditMember(null)}
+        />
+      )}
+
+      {/* Create member modal */}
+      {user && (
+        <MemberCreateModal
+          open={showCreateModal}
+          departments={departments}
+          currentUser={user}
+          onCreated={handleRefresh}
+          onClose={() => setShowCreateModal(false)}
+        />
+      )}
+
+      {/* Department manager */}
+      <DepartmentManager
+        open={showDeptManager}
+        departments={departments}
+        members={activeOnlyMembers}
+        onUpdate={() => {
+          refetchDepts();
+          refetchTree();
+        }}
+        onClose={() => setShowDeptManager(false)}
+      />
     </div>
   );
 }

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlalchemy.orm import selectinload
 from sqlalchemy import select
 
-from app.bot.filters import IsModeratorFilter
+from app.bot.filters import IsAdminFilter, IsModeratorFilter
 from app.bot.keyboards import (
     EVENT_TYPES,
     ai_model_keyboard,
@@ -28,6 +28,10 @@ from app.db.repositories import (
     TeamMemberRepository,
 )
 from app.services.ai_service import AIService
+from app.services.reminder_service import (
+    normalize_digest_sections_order,
+    normalize_upcoming_days,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +141,10 @@ async def cb_reminders_page(
     member: TeamMember,
     session_maker: async_sessionmaker,
 ) -> None:
+    from app.services.permission_service import PermissionService
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
+        return
     page = int(callback.data.split(":")[1])
     member_repo = TeamMemberRepository()
 
@@ -162,6 +170,10 @@ async def cb_reminder_member(
     member: TeamMember,
     session_maker: async_sessionmaker,
 ) -> None:
+    from app.services.permission_service import PermissionService
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
+        return
     target_id = callback.data.split(":", 1)[1]
     reminder_repo = ReminderSettingsRepository()
     member_repo = TeamMemberRepository()
@@ -198,6 +210,10 @@ async def cb_reminder_toggle(
     member: TeamMember,
     session_maker: async_sessionmaker,
 ) -> None:
+    from app.services.permission_service import PermissionService
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
+        return
     target_id = callback.data.split(":", 1)[1]
     reminder_repo = ReminderSettingsRepository()
 
@@ -243,6 +259,10 @@ async def cb_reminder_time(
     member: TeamMember,
     state: FSMContext,
 ) -> None:
+    from app.services.permission_service import PermissionService
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
+        return
     target_id = callback.data.split(":", 1)[1]
     await state.set_state(ReminderFSM.waiting_time)
     await state.update_data(rem_target_id=target_id)
@@ -293,6 +313,10 @@ async def cb_reminder_days(
     member: TeamMember,
     state: FSMContext,
 ) -> None:
+    from app.services.permission_service import PermissionService
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
+        return
     target_id = callback.data.split(":", 1)[1]
     await state.set_state(ReminderFSM.waiting_days)
     await state.update_data(rem_target_id=target_id)
@@ -346,6 +370,10 @@ async def cb_reminder_back_list(
     member: TeamMember,
     session_maker: async_sessionmaker,
 ) -> None:
+    from app.services.permission_service import PermissionService
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
+        return
     async with session_maker() as session:
         stmt = (
             select(TeamMember)
@@ -372,6 +400,10 @@ async def cb_reminder_bulk_enable(
     member: TeamMember,
     session_maker: async_sessionmaker,
 ) -> None:
+    from app.services.permission_service import PermissionService
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
+        return
     member_repo = TeamMemberRepository()
     reminder_repo = ReminderSettingsRepository()
 
@@ -405,6 +437,10 @@ async def cb_reminder_bulk_disable(
     member: TeamMember,
     session_maker: async_sessionmaker,
 ) -> None:
+    from app.services.permission_service import PermissionService
+    if not PermissionService.can_configure_reminders(member):
+        await callback.answer("Только для модераторов", show_alert=True)
+        return
     member_repo = TeamMemberRepository()
     reminder_repo = ReminderSettingsRepository()
 
@@ -457,13 +493,29 @@ async def cmd_myreminder(
 
     days = rs.days_of_week or [1, 2, 3, 4, 5]
     days_str = ", ".join(DAYS_RU.get(d, str(d)) for d in sorted(days))
+    include_flags = {
+        "overdue": rs.include_overdue,
+        "upcoming": rs.include_upcoming,
+        "in_progress": rs.include_in_progress,
+        "new": rs.include_new,
+    }
+    upcoming_days = normalize_upcoming_days(getattr(rs, "upcoming_days", 3))
+    include_labels = {
+        "overdue": "просроченные",
+        "upcoming": (
+            "дедлайн истекает сегодня"
+            if upcoming_days == 0
+            else f"ближайшие ({upcoming_days} дн.)"
+        ),
+        "in_progress": "в работе",
+        "new": "новые",
+    }
     includes = []
-    if rs.include_overdue:
-        includes.append("просроченные")
-    if rs.include_upcoming:
-        includes.append("ближайшие (3 дня)")
-    if rs.include_in_progress:
-        includes.append("в работе")
+    for section_key in normalize_digest_sections_order(
+        getattr(rs, "digest_sections_order", None)
+    ):
+        if include_flags.get(section_key):
+            includes.append(include_labels[section_key])
     includes_str = ", ".join(includes) if includes else "—"
 
     await message.answer(
@@ -477,11 +529,11 @@ async def cmd_myreminder(
 
 
 # ══════════════════════════════════════════
-#  /aimodel — moderator changes AI provider
+#  /aimodel — admin changes AI provider
 # ══════════════════════════════════════════
 
 
-@router.message(Command("aimodel"), IsModeratorFilter())
+@router.message(Command("aimodel"), IsAdminFilter())
 async def cmd_aimodel(
     message: Message,
     member: TeamMember,
@@ -520,7 +572,7 @@ async def cb_ai_provider(
     from app.services.permission_service import PermissionService
 
     if not PermissionService.can_change_ai_settings(member):
-        await callback.answer("Только модератор может менять AI-модель", show_alert=True)
+        await callback.answer("Только администратор может менять AI-модель", show_alert=True)
         return
 
     provider = callback.data.split(":", 1)[1]
@@ -562,7 +614,7 @@ async def cb_ai_model(
     from app.services.permission_service import PermissionService
 
     if not PermissionService.can_change_ai_settings(member):
-        await callback.answer("Только модератор может менять AI-модель", show_alert=True)
+        await callback.answer("Только администратор может менять AI-модель", show_alert=True)
         return
 
     parts = callback.data.split(":", 2)

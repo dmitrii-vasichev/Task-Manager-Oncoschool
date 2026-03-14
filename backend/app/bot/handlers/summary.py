@@ -12,6 +12,7 @@ from app.db.repositories import TeamMemberRepository
 from app.bot.filters import IsModeratorFilter
 from app.services.ai_service import AIService
 from app.services.meeting_service import MeetingService
+from app.services.in_app_notification_service import InAppNotificationService
 from app.services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
@@ -109,11 +110,20 @@ async def fsm_receive_summary_text(
     session_maker: async_sessionmaker,
     state: FSMContext,
 ) -> None:
+    MAX_SUMMARY_LENGTH = 50_000
+
     raw_text = message.text
     if not raw_text or len(raw_text.strip()) < 50:
         await message.answer(
             "❌ Текст слишком короткий. Отправь полный Zoom AI Summary.\n"
             "Для отмены: /cancel"
+        )
+        return
+
+    if len(raw_text) > MAX_SUMMARY_LENGTH:
+        await message.answer(
+            f"❌ Текст слишком длинный (макс. {MAX_SUMMARY_LENGTH // 1000}K символов).\n"
+            "Сократи текст и попробуй снова. Для отмены: /cancel"
         )
         return
 
@@ -229,16 +239,22 @@ async def cb_summary_confirm(
                 await notification_service.notify_meeting_created(
                     session, meeting, member, len(tasks)
                 )
+                in_app_service = InAppNotificationService()
+                await in_app_service.notify_meeting_created(
+                    session, meeting, member, len(tasks)
+                )
 
                 # Notify assignees about new tasks
                 for task in tasks:
                     await notification_service.notify_task_created(session, task, member)
 
     except Exception as e:
-        logger.error(f"Failed to create meeting from summary: {e}")
-        await progress_msg.delete()
-        await callback.message.answer(f"❌ Ошибка при создании: {e}")
+        logger.error(f"Failed to create meeting from summary: {e}", exc_info=True)
         await state.clear()
+        await progress_msg.delete()
+        await callback.message.answer(
+            "❌ Ошибка при создании встречи. Попробуйте ещё раз или обратитесь к администратору."
+        )
         return
 
     await state.clear()

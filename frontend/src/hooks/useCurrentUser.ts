@@ -6,15 +6,19 @@ import {
   useState,
   useEffect,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import { api } from "@/lib/api";
-import type { TeamMember } from "@/lib/types";
+import type { TeamMember, TelegramAuthData } from "@/lib/types";
 
 interface AuthContextValue {
   user: TeamMember | null;
   loading: boolean;
-  login: (telegramId: number) => Promise<void>;
+  loginWithTelegram: (data: TelegramAuthData) => Promise<void>;
+  loginWithTelegramWebApp: (initData: string) => Promise<void>;
+  loginWithTelegramId: (telegramId: number) => Promise<void>;
+  loginWithWebLogin: (token: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -57,11 +61,42 @@ export function useAuthProvider(): AuthContextValue {
     refreshUser();
   }, [refreshUser]);
 
-  const login = useCallback(async (telegramId: number) => {
-    const resp = await api.login({ telegram_id: telegramId });
+  // Re-fetch user data when tab regains focus (picks up avatar changes etc.)
+  const lastRefreshRef = useRef(0);
+  useEffect(() => {
+    function onFocus() {
+      // Throttle: at most once per 30 seconds
+      if (Date.now() - lastRefreshRef.current < 30_000) return;
+      if (!api.getToken()) return;
+      lastRefreshRef.current = Date.now();
+      refreshUser();
+    }
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [refreshUser]);
+
+  const loginWithTelegram = useCallback(async (data: TelegramAuthData) => {
+    await api.loginWithTelegram(data);
     const me = await api.getMe();
     setUser(me);
-    return void resp;
+  }, []);
+
+  const loginWithTelegramWebApp = useCallback(async (initData: string) => {
+    await api.loginWithTelegramWebApp(initData);
+    const me = await api.getMe();
+    setUser(me);
+  }, []);
+
+  const loginWithTelegramId = useCallback(async (telegramId: number) => {
+    await api.devLogin(telegramId);
+    const me = await api.getMe();
+    setUser(me);
+  }, []);
+
+  const loginWithWebLogin = useCallback(async (token: string) => {
+    api.setToken(token);
+    const me = await api.getMe();
+    setUser(me);
   }, []);
 
   const logout = useCallback(() => {
@@ -69,7 +104,16 @@ export function useAuthProvider(): AuthContextValue {
     setUser(null);
   }, []);
 
-  return { user, loading, login, logout, refreshUser };
+  return {
+    user,
+    loading,
+    loginWithTelegram,
+    loginWithTelegramWebApp,
+    loginWithTelegramId,
+    loginWithWebLogin,
+    logout,
+    refreshUser,
+  };
 }
 
 export function createAuthProvider(children: ReactNode, value: AuthContextValue) {

@@ -1,5 +1,7 @@
+import { getApiBaseCandidates, getConfiguredApiUrl } from "./api-base-url";
+
 import type {
-  LoginRequest,
+  TelegramAuthData,
   LoginResponse,
   Task,
   TaskCreateRequest,
@@ -9,21 +11,89 @@ import type {
   PaginatedResponse,
   Meeting,
   TeamMember,
+  Department,
+  TeamTreeResponse,
   OverviewAnalytics,
+  DashboardTasksAnalytics,
   MemberStats,
   MeetingAnalytics,
   ReminderSettings,
+  MeetingReminderTextsSettings,
+  MeetingWeeklyDigestSettings,
+  MeetingWeeklyDigestSendResponse,
   AppSettingsValue,
   AISettingsResponse,
   ParseSummaryResponse,
   CreateMeetingRequest,
   MeetingWithTasksResponse,
+  MeetingSchedule,
+  MeetingScheduleCreateRequest,
+  TelegramNotificationTarget,
+  TelegramBroadcast,
+  TelegramBroadcastImagePreset,
+  TelegramBroadcastCreateRequest,
+  TelegramBroadcastSendResponse,
+  TelegramBroadcastUpdateRequest,
+  ZoomStatusResponse,
+  TeamMemberUpdateRequest,
+  MemberDeactivationPreviewResponse,
+  InAppNotificationListResponse,
+  NotificationSubscriptionsSettings,
 } from "./types";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 class ApiClient {
   private token: string | null = null;
+  private activeApiBaseUrl: string | null = null;
+  private readonly retryableMethods = new Set([
+    "GET",
+    "HEAD",
+    "OPTIONS",
+    "PUT",
+  ]);
+  private readonly maxNetworkRetries: Record<string, number> = {
+    GET: 1,
+    HEAD: 1,
+    OPTIONS: 1,
+    PUT: 2,
+  };
+
+  private getApiBases(): string[] {
+    return getApiBaseCandidates(this.activeApiBaseUrl);
+  }
+
+  private async fetchWithApiFallback(path: string, options: RequestInit): Promise<Response> {
+    const apiBases = this.getApiBases();
+    let lastError: unknown = null;
+
+    for (const apiBase of apiBases) {
+      try {
+        const response = await fetch(`${apiBase}${path}`, options);
+        this.activeApiBaseUrl = apiBase;
+        return response;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    const configuredBase = getConfiguredApiUrl();
+    const reason =
+      lastError instanceof Error && lastError.message
+        ? ` Причина: ${lastError.message}.`
+        : "";
+    throw new Error(
+      `Сервер недоступен. Убедитесь, что бэкенд запущен на ${configuredBase}.` +
+        (apiBases.length > 1 ? ` Попытки: ${apiBases.join(", ")}.` : "") +
+        reason
+    );
+  }
+
+  private isTransientNetworkError(error: unknown): boolean {
+    if (!(error instanceof Error)) return false;
+    return (
+      error.message.includes("Сервер недоступен") ||
+      error.message.includes("Failed to fetch")
+    );
+  }
 
   setToken(token: string | null) {
     this.token = token;
@@ -47,6 +117,7 @@ class ApiClient {
     options: RequestInit = {}
   ): Promise<T> {
     const token = this.getToken();
+    const method = (options.method || "GET").toUpperCase();
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...((options.headers as Record<string, string>) || {}),
@@ -55,22 +126,53 @@ class ApiClient {
       headers["Authorization"] = `Bearer ${token}`;
     }
 
-    const res = await fetch(`${API_URL}${path}`, {
-      ...options,
-      headers,
-    });
+    let res: Response;
+    let retryAttempt = 0;
+    const maxRetries = this.maxNetworkRetries[method] ?? 0;
+    while (true) {
+      try {
+        res = await this.fetchWithApiFallback(path, {
+          ...options,
+          method,
+          headers,
+        });
+        break;
+      } catch (error) {
+        if (
+          !this.retryableMethods.has(method) ||
+          retryAttempt >= maxRetries ||
+          !this.isTransientNetworkError(error)
+        ) {
+          throw error;
+        }
+        const delayMs = 1000 * (retryAttempt + 1);
+        retryAttempt += 1;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
 
     if (res.status === 401) {
-      this.setToken(null);
-      if (typeof window !== "undefined") {
-        window.location.href = "/login";
+      const body = await res.json().catch(() => ({}));
+      // Only clear token and redirect if we had a token (not during login)
+      if (this.getToken()) {
+        this.setToken(null);
+        if (typeof window !== "undefined") {
+          window.location.href = "/login";
+        }
       }
-      throw new Error("Unauthorized");
+      throw new Error(body.detail || "Unauthorized");
     }
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      throw new Error(body.detail || `HTTP ${res.status}`);
+      const detail = body.detail;
+      throw new Error(
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map((e: { msg?: string }) => e.msg || JSON.stringify(e)).join("; ")
+            : `HTTP ${res.status}`
+      );
     }
 
     if (res.status === 204) return undefined as T;
@@ -79,8 +181,8 @@ class ApiClient {
 
   // ==================== Auth ====================
 
-  async login(data: LoginRequest): Promise<LoginResponse> {
-    const resp = await this.request<LoginResponse>("/api/auth/login", {
+  async loginWithTelegram(data: TelegramAuthData): Promise<LoginResponse> {
+    const resp = await this.request<LoginResponse>("/api/auth/telegram", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -88,8 +190,46 @@ class ApiClient {
     return resp;
   }
 
+  async loginWithTelegramWebApp(initData: string): Promise<LoginResponse> {
+    const resp = await this.request<LoginResponse>("/api/auth/telegram-webapp", {
+      method: "POST",
+      body: JSON.stringify({ init_data: initData }),
+    });
+    this.setToken(resp.access_token);
+    return resp;
+  }
+
+  async getAuthConfig(): Promise<{ bot_username: string; debug?: boolean }> {
+    return this.request<{ bot_username: string; debug?: boolean }>("/api/auth/config");
+  }
+
+  async devLogin(telegramId: number): Promise<LoginResponse> {
+    const resp = await this.request<LoginResponse>("/api/auth/dev-login", {
+      method: "POST",
+      body: JSON.stringify({ telegram_id: telegramId }),
+    });
+    this.setToken(resp.access_token);
+    return resp;
+  }
+
   async getMe(): Promise<TeamMember> {
     return this.request<TeamMember>("/api/auth/me");
+  }
+
+  async initiateWebLogin(username: string): Promise<{ request_id: string; expires_at: string }> {
+    return this.request("/api/auth/web-login", {
+      method: "POST",
+      body: JSON.stringify({ username }),
+    });
+  }
+
+  async checkWebLoginStatus(requestId: string): Promise<{
+    status: "pending" | "confirmed" | "expired";
+    access_token?: string;
+    member_id?: string;
+    role?: string;
+  }> {
+    return this.request(`/api/auth/web-login/${requestId}/status`);
   }
 
   logout() {
@@ -145,8 +285,14 @@ class ApiClient {
 
   // ==================== Meetings ====================
 
-  async getMeetings(): Promise<Meeting[]> {
-    return this.request<Meeting[]>("/api/meetings");
+  async getMeetings(params?: { upcoming?: boolean; past?: boolean; member_id?: string; department_id?: string }): Promise<Meeting[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.upcoming) searchParams.set("upcoming", "true");
+    if (params?.past) searchParams.set("past", "true");
+    if (params?.member_id) searchParams.set("member_id", params.member_id);
+    if (params?.department_id) searchParams.set("department_id", params.department_id);
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return this.request<Meeting[]>(`/api/meetings${query}`);
   }
 
   async getMeeting(id: string): Promise<Meeting> {
@@ -157,35 +303,461 @@ class ApiClient {
     return this.request<Task[]>(`/api/meetings/${id}/tasks`);
   }
 
-  async parseSummary(summaryText: string): Promise<ParseSummaryResponse> {
-    return this.request<ParseSummaryResponse>("/api/meetings/parse-summary", {
-      method: "POST",
-      body: JSON.stringify({ summary_text: summaryText }),
-    });
-  }
-
-  async createMeeting(data: CreateMeetingRequest): Promise<MeetingWithTasksResponse> {
-    return this.request<MeetingWithTasksResponse>("/api/meetings", {
+  async createMeetingManual(data: { title: string; meeting_date: string; timezone?: string; zoom_enabled?: boolean; duration_minutes?: number; participant_ids?: string[] }): Promise<Meeting> {
+    return this.request<Meeting>("/api/meetings", {
       method: "POST",
       body: JSON.stringify(data),
     });
   }
 
-  async deleteMeeting(id: string): Promise<void> {
-    return this.request<void>(`/api/meetings/${id}`, {
+  async updateMeeting(id: string, data: Partial<Meeting> & { participant_ids?: string[] }): Promise<Meeting> {
+    return this.request<Meeting>(`/api/meetings/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteMeeting(
+    id: string,
+    options?: { notifyParticipants?: boolean }
+  ): Promise<void> {
+    const params = new URLSearchParams();
+    if (options?.notifyParticipants) {
+      params.set("notify_participants", "true");
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<void>(`/api/meetings/${id}${query}`, {
+      method: "DELETE",
+    });
+  }
+
+  // Transcript & Summary
+  async addTranscript(meetingId: string, text: string): Promise<Meeting> {
+    return this.request<Meeting>(`/api/meetings/${meetingId}/transcript`, {
+      method: "POST",
+      body: JSON.stringify({ text, source: "manual" }),
+    });
+  }
+
+  async fetchZoomTranscript(meetingId: string): Promise<{ transcript: string | null; message?: string }> {
+    return this.request<{ transcript: string | null; message?: string }>(
+      `/api/meetings/${meetingId}/fetch-transcript`,
+      { method: "POST" }
+    );
+  }
+
+  async parseMeetingSummary(meetingId: string, text?: string): Promise<ParseSummaryResponse> {
+    return this.request<ParseSummaryResponse>(
+      `/api/meetings/${meetingId}/parse-summary`,
+      {
+        method: "POST",
+        body: JSON.stringify(text ? { text } : {}),
+      }
+    );
+  }
+
+  async applySummary(meetingId: string, data: CreateMeetingRequest): Promise<MeetingWithTasksResponse> {
+    return this.request<MeetingWithTasksResponse>(
+      `/api/meetings/${meetingId}/apply-summary`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
+  }
+
+  async getZoomStatus(meetingId: string): Promise<ZoomStatusResponse> {
+    return this.request<ZoomStatusResponse>(`/api/meetings/${meetingId}/zoom-status`);
+  }
+
+  // ==================== In-app Notifications ====================
+
+  async getNotifications(params?: {
+    unread_only?: boolean;
+    limit?: number;
+  }): Promise<InAppNotificationListResponse> {
+    const searchParams = new URLSearchParams();
+    if (params?.unread_only) searchParams.set("unread_only", "true");
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return this.request<InAppNotificationListResponse>(`/api/notifications${query}`);
+  }
+
+  async markNotificationRead(notificationId: string): Promise<void> {
+    await this.request(`/api/notifications/${notificationId}/read`, {
+      method: "POST",
+    });
+  }
+
+  async markAllNotificationsRead(): Promise<{ updated: number }> {
+    return this.request<{ updated: number }>("/api/notifications/read-all", {
+      method: "POST",
+    });
+  }
+
+  // ==================== Meeting Schedules ====================
+
+  async getMeetingSchedules(): Promise<MeetingSchedule[]> {
+    return this.request<MeetingSchedule[]>("/api/meeting-schedules");
+  }
+
+  async getMeetingSchedule(id: string): Promise<MeetingSchedule> {
+    return this.request<MeetingSchedule>(`/api/meeting-schedules/${id}`);
+  }
+
+  async createMeetingSchedule(data: MeetingScheduleCreateRequest): Promise<MeetingSchedule> {
+    return this.request<MeetingSchedule>("/api/meeting-schedules", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateMeetingSchedule(id: string, data: Partial<MeetingScheduleCreateRequest>): Promise<MeetingSchedule> {
+    return this.request<MeetingSchedule>(`/api/meeting-schedules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteMeetingSchedule(
+    id: string,
+    options?: { notifyParticipants?: boolean }
+  ): Promise<void> {
+    const params = new URLSearchParams();
+    if (options?.notifyParticipants) {
+      params.set("notify_participants", "true");
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<void>(`/api/meeting-schedules/${id}${query}`, {
+      method: "DELETE",
+    });
+  }
+
+  // ==================== Telegram Targets ====================
+
+  async getTelegramTargets(): Promise<TelegramNotificationTarget[]> {
+    return this.request<TelegramNotificationTarget[]>("/api/telegram-targets");
+  }
+
+  async createTelegramTarget(data: {
+    chat_id: number;
+    thread_id?: number | null;
+    label?: string | null;
+    allow_incoming_tasks?: boolean;
+  }): Promise<TelegramNotificationTarget> {
+    return this.request<TelegramNotificationTarget>("/api/telegram-targets", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateTelegramTarget(id: string, data: {
+    chat_id?: number;
+    thread_id?: number | null;
+    label?: string | null;
+    allow_incoming_tasks?: boolean;
+  }): Promise<TelegramNotificationTarget> {
+    return this.request<TelegramNotificationTarget>(`/api/telegram-targets/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteTelegramTarget(id: string): Promise<void> {
+    return this.request<void>(`/api/telegram-targets/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  // ==================== Telegram Broadcasts ====================
+
+  async getTelegramBroadcasts(params?: {
+    status?: "scheduled" | "sent" | "failed" | "cancelled";
+    limit?: number;
+  }): Promise<TelegramBroadcast[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.status) searchParams.set("status", params.status);
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return this.request<TelegramBroadcast[]>(`/api/broadcasts${query}`);
+  }
+
+  async getTelegramBroadcastImagePresets(params?: {
+    includeInactive?: boolean;
+  }): Promise<TelegramBroadcastImagePreset[]> {
+    const searchParams = new URLSearchParams();
+    if (typeof params?.includeInactive === "boolean") {
+      searchParams.set("include_inactive", params.includeInactive ? "true" : "false");
+    }
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return this.request<TelegramBroadcastImagePreset[]>(
+      `/api/broadcasts/image-presets${query}`
+    );
+  }
+
+  async createTelegramBroadcastImagePreset(data: {
+    alias: string;
+    imageFile: File;
+    sortOrder?: number;
+    isActive?: boolean;
+  }): Promise<TelegramBroadcastImagePreset> {
+    const formData = new FormData();
+    formData.append("alias", data.alias);
+    formData.append("image", data.imageFile);
+    if (typeof data.sortOrder === "number") {
+      formData.append("sort_order", String(data.sortOrder));
+    }
+    if (typeof data.isActive === "boolean") {
+      formData.append("is_active", data.isActive ? "true" : "false");
+    }
+
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await this.fetchWithApiFallback("/api/broadcasts/image-presets", {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async updateTelegramBroadcastImagePreset(
+    id: string,
+    data: {
+      alias?: string;
+      sortOrder?: number;
+      isActive?: boolean;
+      imageFile?: File | null;
+    }
+  ): Promise<TelegramBroadcastImagePreset> {
+    const formData = new FormData();
+    if (typeof data.alias === "string") {
+      formData.append("alias", data.alias);
+    }
+    if (typeof data.sortOrder === "number") {
+      formData.append("sort_order", String(data.sortOrder));
+    }
+    if (typeof data.isActive === "boolean") {
+      formData.append("is_active", data.isActive ? "true" : "false");
+    }
+    if (data.imageFile) {
+      formData.append("image", data.imageFile);
+    }
+
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await this.fetchWithApiFallback(`/api/broadcasts/image-presets/${id}`, {
+      method: "PATCH",
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async deleteTelegramBroadcastImagePreset(id: string): Promise<void> {
+    return this.request<void>(`/api/broadcasts/image-presets/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async createTelegramBroadcast(
+    data: TelegramBroadcastCreateRequest
+  ): Promise<TelegramBroadcast> {
+    return this.request<TelegramBroadcast>("/api/broadcasts", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateTelegramBroadcast(
+    id: string,
+    data: TelegramBroadcastUpdateRequest
+  ): Promise<TelegramBroadcast> {
+    return this.request<TelegramBroadcast>(`/api/broadcasts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async cancelTelegramBroadcast(id: string): Promise<void> {
+    return this.request<void>(`/api/broadcasts/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async sendNowTelegramBroadcast(id: string): Promise<TelegramBroadcast> {
+    return this.request<TelegramBroadcast>(`/api/broadcasts/${id}/send-now`, {
+      method: "POST",
+    });
+  }
+
+  async createTelegramBroadcastBatch(data: {
+    targetIds: string[];
+    messageHtml: string;
+    scheduledAt?: string;
+    sendNow?: boolean;
+    imageFile?: File | null;
+    imagePresetId?: string | null;
+  }): Promise<TelegramBroadcast[]> {
+    const formData = new FormData();
+    formData.append("target_ids", JSON.stringify(data.targetIds));
+    formData.append("message_html", data.messageHtml);
+    if (data.scheduledAt) {
+      formData.append("scheduled_at", data.scheduledAt);
+    }
+    formData.append("send_now", data.sendNow ? "true" : "false");
+    if (data.imageFile) {
+      formData.append("image", data.imageFile);
+    }
+    if (data.imagePresetId) {
+      formData.append("image_preset_id", data.imagePresetId);
+    }
+
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await this.fetchWithApiFallback("/api/broadcasts/batch", {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async sendTelegramBroadcast(
+    data: {
+      targetIds: string[];
+      messageHtml: string;
+      imageFile?: File | null;
+      imagePresetId?: string | null;
+    }
+  ): Promise<TelegramBroadcastSendResponse> {
+    const formData = new FormData();
+    formData.append("target_ids", JSON.stringify(data.targetIds));
+    formData.append("message_html", data.messageHtml);
+    if (data.imageFile) {
+      formData.append("image", data.imageFile);
+    }
+    if (data.imagePresetId) {
+      formData.append("image_preset_id", data.imagePresetId);
+    }
+
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await this.fetchWithApiFallback("/api/broadcasts/send", {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${res.status}`);
+    }
+
+    return res.json();
+  }
+
+  // ==================== Departments ====================
+
+  async getDepartments(): Promise<Department[]> {
+    return this.request<Department[]>("/api/departments");
+  }
+
+  async createDepartment(data: Partial<Department>): Promise<Department> {
+    return this.request<Department>("/api/departments", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateDepartment(id: string, data: Partial<Department>): Promise<Department> {
+    return this.request<Department>(`/api/departments/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteDepartment(id: string): Promise<void> {
+    return this.request<void>(`/api/departments/${id}`, {
       method: "DELETE",
     });
   }
 
   // ==================== Team ====================
 
-  async getTeam(): Promise<TeamMember[]> {
-    return this.request<TeamMember[]>("/api/team");
+  async getTeam(options?: { includeInactive?: boolean; includeTest?: boolean }): Promise<TeamMember[]> {
+    const params = new URLSearchParams();
+    if (options?.includeInactive) {
+      params.set("include_inactive", "true");
+    }
+    if (options?.includeTest) {
+      params.set("include_test", "true");
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<TeamMember[]>(`/api/team${query}`);
+  }
+
+  async createTeamMember(data: {
+    full_name: string;
+    role?: string;
+    is_test?: boolean;
+    telegram_id?: number | null;
+    telegram_username?: string;
+    department_id?: string | null;
+    extra_department_ids?: string[];
+    position?: string;
+    email?: string;
+    birthday?: string;
+    name_variants?: string[];
+  }): Promise<TeamMember> {
+    return this.request<TeamMember>("/api/team", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getTeamTree(options?: { includeInactive?: boolean; includeTest?: boolean }): Promise<TeamTreeResponse> {
+    const params = new URLSearchParams();
+    if (options?.includeInactive) {
+      params.set("include_inactive", "true");
+    }
+    if (options?.includeTest) {
+      params.set("include_test", "true");
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<TeamTreeResponse>(`/api/team/tree${query}`);
   }
 
   async updateTeamMember(
     id: string,
-    data: Partial<TeamMember>
+    data: TeamMemberUpdateRequest
   ): Promise<TeamMember> {
     return this.request<TeamMember>(`/api/team/${id}`, {
       method: "PATCH",
@@ -193,14 +765,67 @@ class ApiClient {
     });
   }
 
-  // ==================== Analytics ====================
-
-  async getOverview(): Promise<OverviewAnalytics> {
-    return this.request<OverviewAnalytics>("/api/analytics/overview");
+  async getTeamMemberDeactivationPreview(
+    memberId: string
+  ): Promise<MemberDeactivationPreviewResponse> {
+    return this.request<MemberDeactivationPreviewResponse>(
+      `/api/team/${memberId}/deactivation-preview`
+    );
   }
 
-  async getMembersAnalytics(): Promise<{ members: MemberStats[] }> {
-    return this.request<{ members: MemberStats[] }>("/api/analytics/members");
+  async uploadAvatar(memberId: string, file: File): Promise<{ avatar_url: string }> {
+    const formData = new FormData();
+    formData.append("file", file);
+    const token = this.getToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+    const res = await this.fetchWithApiFallback(`/api/team/${memberId}/avatar`, {
+      method: "POST",
+      headers,
+      body: formData,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `HTTP ${res.status}`);
+    }
+    return res.json();
+  }
+
+  async deleteAvatar(memberId: string): Promise<void> {
+    return this.request<void>(`/api/team/${memberId}/avatar`, {
+      method: "DELETE",
+    });
+  }
+
+  // ==================== Analytics ====================
+
+  async getOverview(departmentId?: string): Promise<OverviewAnalytics> {
+    const params = new URLSearchParams();
+    if (departmentId) {
+      params.set("department_id", departmentId);
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<OverviewAnalytics>(`/api/analytics/overview${query}`);
+  }
+
+  async getDashboardTasksAnalytics(departmentId?: string): Promise<DashboardTasksAnalytics> {
+    const params = new URLSearchParams();
+    if (departmentId) {
+      params.set("department_id", departmentId);
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<DashboardTasksAnalytics>(`/api/analytics/dashboard-tasks${query}`);
+  }
+
+  async getMembersAnalytics(departmentId?: string): Promise<{ members: MemberStats[] }> {
+    const params = new URLSearchParams();
+    if (departmentId) {
+      params.set("department_id", departmentId);
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<{ members: MemberStats[] }>(`/api/analytics/members${query}`);
   }
 
   async getMeetingsAnalytics(): Promise<MeetingAnalytics> {
@@ -209,20 +834,24 @@ class ApiClient {
 
   // ==================== Settings ====================
 
-  async getNotificationSubscriptions(): Promise<{ subscriptions: Record<string, boolean> }> {
-    return this.request<{ subscriptions: Record<string, boolean> }>(
+  async getNotificationSubscriptions(): Promise<NotificationSubscriptionsSettings> {
+    return this.request<NotificationSubscriptionsSettings>(
       "/api/settings/notifications"
     );
   }
 
   async updateNotificationSubscriptions(
-    subscriptions: Record<string, boolean>
-  ): Promise<{ subscriptions: Record<string, boolean> }> {
-    return this.request<{ subscriptions: Record<string, boolean> }>(
+    data: {
+      subscriptions: Record<string, boolean>;
+      task_overdue_interval_hours?: number;
+      task_overdue_daily_time_msk?: string;
+    }
+  ): Promise<NotificationSubscriptionsSettings> {
+    return this.request<NotificationSubscriptionsSettings>(
       "/api/settings/notifications",
       {
         method: "PUT",
-        body: JSON.stringify({ subscriptions }),
+        body: JSON.stringify(data),
       }
     );
   }
@@ -242,6 +871,56 @@ class ApiClient {
       {
         method: "PUT",
         body: JSON.stringify(data),
+      }
+    );
+  }
+
+  async getMeetingReminderTexts(): Promise<MeetingReminderTextsSettings> {
+    return this.request<MeetingReminderTextsSettings>(
+      "/api/settings/meeting-reminder-texts"
+    );
+  }
+
+  async updateMeetingReminderTexts(
+    textsByOffset: Record<string, string>
+  ): Promise<MeetingReminderTextsSettings> {
+    return this.request<MeetingReminderTextsSettings>(
+      "/api/settings/meeting-reminder-texts",
+      {
+        method: "PUT",
+        body: JSON.stringify({ texts_by_offset: textsByOffset }),
+      }
+    );
+  }
+
+  async getMeetingWeeklyDigestSettings(): Promise<MeetingWeeklyDigestSettings> {
+    return this.request<MeetingWeeklyDigestSettings>(
+      "/api/settings/meeting-weekly-digest"
+    );
+  }
+
+  async updateMeetingWeeklyDigestSettings(data: {
+    enabled: boolean;
+    day_of_week: number;
+    time_local: string;
+    target_ids: string[];
+    template: string;
+  }): Promise<MeetingWeeklyDigestSettings> {
+    return this.request<MeetingWeeklyDigestSettings>(
+      "/api/settings/meeting-weekly-digest",
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }
+    );
+  }
+
+  async sendPendingMeetingWeeklyDigest(targetIds?: string[]): Promise<MeetingWeeklyDigestSendResponse> {
+    return this.request<MeetingWeeklyDigestSendResponse>(
+      "/api/settings/meeting-weekly-digest/send-pending-now",
+      {
+        method: "POST",
+        body: JSON.stringify({ target_ids: targetIds ?? [] }),
       }
     );
   }

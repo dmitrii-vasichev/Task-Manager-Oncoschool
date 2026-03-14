@@ -1,8 +1,15 @@
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getConfiguredApiUrl } from "@/lib/api-base-url";
+
+function normalizeName(name: string | null | undefined, fallback = "Без имени"): string {
+  if (typeof name !== "string") return fallback;
+  const normalized = name.trim();
+  return normalized || fallback;
+}
 
 function getInitials(name: string): string {
   return name
-    .split(" ")
+    .split(/\s+/)
     .map((w) => w[0])
     .filter(Boolean)
     .slice(0, 2)
@@ -10,42 +17,58 @@ function getInitials(name: string): string {
     .toUpperCase();
 }
 
-const COLORS = [
-  "bg-blue-500",
-  "bg-green-500",
-  "bg-purple-500",
-  "bg-orange-500",
-  "bg-pink-500",
-  "bg-teal-500",
-  "bg-indigo-500",
-  "bg-rose-500",
-];
+// HSL-based colors generated from name hash — warm, saturated palette
+// tuned for white text readability
+const AVATAR_HUES = [174, 16, 262, 200, 340, 38, 152, 290, 120, 60];
 
-function getColor(name: string): string {
+function getAvatarColor(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return COLORS[Math.abs(hash) % COLORS.length];
+  const hue = AVATAR_HUES[Math.abs(hash) % AVATAR_HUES.length];
+  return `hsl(${hue}, 55%, 42%)`;
+}
+
+const API_URL = getConfiguredApiUrl();
+
+function resolveAvatarUrl(url: string): string {
+  if (url.startsWith("http://") || url.startsWith("https://")) return url;
+  return `${API_URL}${url}`;
 }
 
 export function UserAvatar({
   name,
+  avatarUrl,
   size = "default",
 }: {
-  name: string;
-  size?: "sm" | "default" | "lg";
+  name: string | null | undefined;
+  avatarUrl?: string | null;
+  size?: "sm" | "default" | "lg" | "xl";
 }) {
   const sizeClass = {
-    sm: "h-6 w-6 text-xs",
-    default: "h-8 w-8 text-sm",
-    lg: "h-10 w-10 text-base",
+    sm: "h-6 w-6 text-2xs",
+    default: "h-8 w-8 text-xs",
+    lg: "h-10 w-10 text-sm",
+    xl: "h-20 w-20 text-2xl",
   }[size];
 
+  const displayName = normalizeName(name);
+  const bgColor = getAvatarColor(displayName);
+  const resolvedUrl = avatarUrl ? resolveAvatarUrl(avatarUrl) : null;
+
   return (
-    <Avatar className={sizeClass}>
-      <AvatarFallback className={`${getColor(name)} text-white`}>
-        {getInitials(name)}
+    <Avatar
+      className={`${sizeClass} hover:scale-110 hover:shadow-md cursor-default`}
+    >
+      {resolvedUrl && (
+        <AvatarImage src={resolvedUrl} alt={displayName} className="object-cover" />
+      )}
+      <AvatarFallback
+        className="text-white font-heading font-semibold"
+        style={{ backgroundColor: bgColor }}
+      >
+        {getInitials(displayName)}
       </AvatarFallback>
     </Avatar>
   );

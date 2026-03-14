@@ -1,18 +1,125 @@
-import { Badge } from "@/components/ui/badge";
 import { type TaskStatus, TASK_STATUS_LABELS } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
+  CircleHelp,
+  CirclePlus,
+  Clock3,
+  Search,
+  CheckCircle2,
+  XCircle,
+} from "lucide-react";
 
-const STATUS_STYLES: Record<TaskStatus, string> = {
-  new: "bg-blue-100 text-blue-800 hover:bg-blue-100",
-  in_progress: "bg-yellow-100 text-yellow-800 hover:bg-yellow-100",
-  review: "bg-purple-100 text-purple-800 hover:bg-purple-100",
-  done: "bg-green-100 text-green-800 hover:bg-green-100",
-  cancelled: "bg-gray-100 text-gray-500 hover:bg-gray-100",
+const STATUS_CONFIG: Record<
+  TaskStatus,
+  { icon: typeof CirclePlus; badgeClassName: string; iconContainerClassName: string }
+> = {
+  new: {
+    icon: CirclePlus,
+    badgeClassName:
+      "bg-status-new-bg text-status-new-fg ring-1 ring-inset ring-status-new-ring",
+    iconContainerClassName:
+      "bg-status-new-bg text-status-new-fg ring-1 ring-inset ring-status-new-ring",
+  },
+  in_progress: {
+    icon: Clock3,
+    badgeClassName:
+      "bg-status-progress-bg text-status-progress-fg ring-1 ring-inset ring-status-progress-ring",
+    iconContainerClassName:
+      "bg-status-progress-bg text-status-progress-fg ring-1 ring-inset ring-status-progress-ring",
+  },
+  review: {
+    icon: Search,
+    badgeClassName:
+      "bg-status-review-bg text-status-review-fg ring-1 ring-inset ring-status-review-ring",
+    iconContainerClassName:
+      "bg-status-review-bg text-status-review-fg ring-1 ring-inset ring-status-review-ring",
+  },
+  done: {
+    icon: CheckCircle2,
+    badgeClassName:
+      "bg-status-done-bg text-status-done-fg ring-1 ring-inset ring-status-done-ring",
+    iconContainerClassName:
+      "bg-status-done-bg text-status-done-fg ring-1 ring-inset ring-status-done-ring",
+  },
+  cancelled: {
+    icon: XCircle,
+    badgeClassName:
+      "bg-status-cancelled-bg text-status-cancelled-fg ring-1 ring-inset ring-status-cancelled-ring",
+    iconContainerClassName:
+      "bg-status-cancelled-bg text-status-cancelled-fg ring-1 ring-inset ring-status-cancelled-ring",
+  },
 };
 
-export function StatusBadge({ status }: { status: TaskStatus }) {
+const UNKNOWN_STATUS_CONFIG = {
+  icon: CircleHelp,
+  badgeClassName:
+    "bg-muted text-muted-foreground ring-1 ring-inset ring-border/70",
+  iconContainerClassName:
+    "bg-muted text-muted-foreground ring-1 ring-inset ring-border/70",
+};
+
+function resolveStatus(status: TaskStatus | string | null | undefined): TaskStatus | null {
+  if (!status) return null;
+  return Object.prototype.hasOwnProperty.call(STATUS_CONFIG, status)
+    ? (status as TaskStatus)
+    : null;
+}
+
+export function StatusBadge({
+  status,
+}: {
+  status: TaskStatus | string | null | undefined;
+}) {
+  const resolvedStatus = resolveStatus(status);
+  const { icon: Icon, badgeClassName } = resolvedStatus
+    ? STATUS_CONFIG[resolvedStatus]
+    : UNKNOWN_STATUS_CONFIG;
+  const label = resolvedStatus ? TASK_STATUS_LABELS[resolvedStatus] : "Неизвестно";
+
   return (
-    <Badge variant="secondary" className={STATUS_STYLES[status]}>
-      {TASK_STATUS_LABELS[status]}
-    </Badge>
+    <span
+      className={`badge-animated inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium ${badgeClassName}`}
+    >
+      <Icon className="h-3 w-3 shrink-0" />
+      {label}
+    </span>
+  );
+}
+
+export function StatusIcon({
+  status,
+  className,
+}: {
+  status: TaskStatus | string | null | undefined;
+  className?: string;
+}) {
+  const resolvedStatus = resolveStatus(status);
+  const { icon: Icon, iconContainerClassName } = resolvedStatus
+    ? STATUS_CONFIG[resolvedStatus]
+    : UNKNOWN_STATUS_CONFIG;
+  const label = resolvedStatus ? TASK_STATUS_LABELS[resolvedStatus] : "Неизвестно";
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          className={cn(
+            "inline-flex h-7 w-7 items-center justify-center rounded-md transition-transform duration-150 hover:scale-[1.05]",
+            iconContainerClassName,
+            className
+          )}
+        >
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        Статус: {label}
+      </TooltipContent>
+    </Tooltip>
   );
 }

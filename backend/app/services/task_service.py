@@ -1,12 +1,16 @@
 import re
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.db.models import Task, TaskUpdate, TeamMember
 from app.db.repositories import TaskRepository, TaskUpdateRepository, TeamMemberRepository
+from app.services.in_app_notification_service import InAppNotificationService
 from app.services.permission_service import PermissionService
+from app.services.task_visibility_service import resolve_visible_department_ids
 
 
 class TaskService:
@@ -14,6 +18,7 @@ class TaskService:
         self.task_repo = TaskRepository()
         self.update_repo = TaskUpdateRepository()
         self.member_repo = TeamMemberRepository()
+        self.in_app_notifications = InAppNotificationService()
 
     async def create_task(
         self,
@@ -22,34 +27,60 @@ class TaskService:
         creator: TeamMember,
         assignee_id: uuid.UUID | None = None,
         description: str | None = None,
+        checklist: list[dict] | None = None,
         priority: str = "medium",
         deadline: date | None = None,
+        reminder_at: datetime | None = None,
+        reminder_comment: str | None = None,
         source: str = "text",
         meeting_id: uuid.UUID | None = None,
     ) -> Task:
         """
         Create a task.
-        Member can only create for self. Moderator can assign to others.
+        Active project roles can assign tasks to other participants.
         """
         if assignee_id and assignee_id != creator.id:
             if not PermissionService.can_create_task_for_others(creator):
-                raise PermissionError("Только модератор может назначать задачи другим")
+                raise PermissionError("Нет прав на назначение задачи другому участнику")
 
         # Default assignee is creator
         if not assignee_id:
             assignee_id = creator.id
 
+        if assignee_id != creator.id:
+            assignee = await self.member_repo.get_by_id(session, assignee_id)
+            if not assignee or not assignee.is_active:
+                raise ValueError("Исполнитель не найден или деактивирован")
+
+        normalized_reminder_comment = (
+            reminder_comment.strip() if isinstance(reminder_comment, str) else None
+        )
+        if normalized_reminder_comment == "":
+            normalized_reminder_comment = None
+        if reminder_at is None:
+            normalized_reminder_comment = None
+
         task = await self.task_repo.create(
             session,
             title=title,
             description=description,
+            checklist=checklist or [],
             priority=priority,
             assignee_id=assignee_id,
             created_by_id=creator.id,
             source=source,
             deadline=deadline,
+            reminder_at=reminder_at,
+            reminder_comment=normalized_reminder_comment,
+            reminder_sent_at=None,
             meeting_id=meeting_id,
         )
+        if task.assignee_id and task.assignee_id != creator.id:
+            await self.in_app_notifications.notify_task_assigned(session, task, creator)
+        elif task.assignee_id is None:
+            await self.in_app_notifications.notify_task_created_unassigned(
+                session, task, creator
+            )
         return task
 
     async def get_my_tasks(self, session: AsyncSession, member_id: uuid.UUID) -> list[Task]:
@@ -60,6 +91,37 @@ class TaskService:
     async def get_all_active_tasks(self, session: AsyncSession) -> list[Task]:
         """Get all active tasks (not done/cancelled)."""
         return await self.task_repo.get_all_active(session)
+
+    async def get_visible_active_tasks(
+        self,
+        session: AsyncSession,
+        member: TeamMember,
+    ) -> list[Task]:
+        """
+        Get active tasks by unified visibility rules (same as Web/API):
+        - moderator/admin: company-wide
+        - member: own department(s), fallback to own tasks
+        """
+        visible_department_ids = await resolve_visible_department_ids(session, member)
+
+        if visible_department_ids is None:
+            return await self.task_repo.get_all_active(session)
+
+        if visible_department_ids:
+            stmt = (
+                select(Task)
+                .options(selectinload(Task.assignee), selectinload(Task.created_by))
+                .join(Task.assignee)
+                .where(
+                    TeamMember.department_id.in_(visible_department_ids),
+                    Task.status.notin_(["done", "cancelled"]),
+                )
+                .order_by(Task.created_at.desc())
+            )
+            result = await session.execute(stmt)
+            return list(result.scalars().all())
+
+        return await self.get_my_tasks(session, member.id)
 
     async def get_task_by_short_id(self, session: AsyncSession, short_id: int) -> Task | None:
         return await self.task_repo.get_by_short_id(session, short_id)
@@ -79,7 +141,10 @@ class TaskService:
             session,
             task.id,
             status="done",
-            completed_at=datetime.now(timezone.utc),
+            completed_at=datetime.utcnow(),
+            reminder_at=None,
+            reminder_comment=None,
+            reminder_sent_at=None,
         )
 
         # Auto task update
@@ -92,6 +157,9 @@ class TaskService:
             old_status=old_status,
             new_status="done",
         )
+        await self.in_app_notifications.notify_task_status_changed(
+            session, task, member, old_status, "done"
+        )
         return task
 
     async def update_status(
@@ -102,7 +170,7 @@ class TaskService:
         new_status: str,
     ) -> Task:
         """
-        Change task status. Permission check: assignee or moderator.
+        Change task status. Permission check: assignee, author, or moderator.
         Auto-creates TaskUpdate(type=status_change).
         """
         if not PermissionService.can_change_task_status(member, task):
@@ -116,7 +184,11 @@ class TaskService:
 
         update_kwargs = {"status": new_status}
         if new_status == "done":
-            update_kwargs["completed_at"] = datetime.now(timezone.utc)
+            update_kwargs["completed_at"] = datetime.utcnow()
+        if new_status in ("done", "cancelled"):
+            update_kwargs["reminder_at"] = None
+            update_kwargs["reminder_comment"] = None
+            update_kwargs["reminder_sent_at"] = None
 
         task = await self.task_repo.update(session, task.id, **update_kwargs)
 
@@ -130,6 +202,9 @@ class TaskService:
             old_status=old_status,
             new_status=new_status,
         )
+        await self.in_app_notifications.notify_task_status_changed(
+            session, task, member, old_status, new_status
+        )
         return task
 
     async def assign_task(
@@ -139,11 +214,28 @@ class TaskService:
         member: TeamMember,
         new_assignee_id: uuid.UUID,
     ) -> Task:
-        """Reassign task. Moderator only."""
-        if not PermissionService.can_assign_task(member):
-            raise PermissionError("Только модератор может переназначать задачи")
+        """Reassign task. Allowed for moderator or task author."""
+        if not PermissionService.can_assign_task(member, task):
+            raise PermissionError("Нет прав на переназначение этой задачи")
 
-        task = await self.task_repo.update(session, task.id, assignee_id=new_assignee_id)
+        assignee = await self.member_repo.get_by_id(session, new_assignee_id)
+        if not assignee or not assignee.is_active:
+            raise ValueError("Исполнитель не найден или деактивирован")
+
+        if task.assignee_id == new_assignee_id:
+            return task
+
+        task = await self.task_repo.update(
+            session,
+            task.id,
+            assignee_id=new_assignee_id,
+            reminder_at=None,
+            reminder_comment=None,
+            reminder_sent_at=None,
+        )
+        await self.in_app_notifications.notify_task_assigned(
+            session, task, member, assignee
+        )
         return task
 
     async def delete_task(
@@ -152,7 +244,12 @@ class TaskService:
         """Delete task. Moderator only."""
         if not PermissionService.can_delete_task(member):
             raise PermissionError("Только модератор может удалять задачи")
-        return await self.task_repo.delete(session, task.id)
+        deleted = await self.task_repo.delete(session, task.id)
+        if deleted:
+            await self.in_app_notifications.delete_task_notifications(
+                session, task.short_id
+            )
+        return deleted
 
     async def add_task_update(
         self,
@@ -166,7 +263,7 @@ class TaskService:
     ) -> TaskUpdate:
         """
         Add a task update (progress, blocker, comment).
-        Permission check: assignee or moderator.
+        Permission check: assignee, author, or moderator.
         """
         if not PermissionService.can_add_task_update(member, task):
             raise PermissionError("Нет прав на добавление обновления к этой задаче")
@@ -184,6 +281,13 @@ class TaskService:
             progress_percent=progress_percent,
             source=source,
         )
+        # Treat timeline updates as task activity for stale-task tracking.
+        task.updated_at = datetime.utcnow()
+        await session.flush()
+        if update_type == "blocker":
+            await self.in_app_notifications.notify_task_blocker_added(
+                session, task, task_update, member
+            )
         return task_update
 
     async def get_task_updates(

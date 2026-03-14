@@ -44,6 +44,8 @@ class ParsedVoiceTask(BaseModel):
     assignee_name: str | None = None
     priority: str = "medium"
     deadline: str | None = None  # YYYY-MM-DD
+    reminder_at: str | None = None  # YYYY-MM-DDTHH:MM
+    reminder_comment: str | None = None
 
 
 # ── AI Prompts ──
@@ -100,23 +102,35 @@ VOICE_TASK_PROMPT = """Ты — ассистент для создания за�
   "description": "описание если есть дополнительный контекст, иначе null",
   "assignee_name": "имя исполнителя если упомянут, иначе null",
   "priority": "low | medium | high | urgent",
-  "deadline": "YYYY-MM-DD если упомянут, иначе null"
+  "deadline": "YYYY-MM-DD если упомянут, иначе null",
+  "reminder_at": "YYYY-MM-DDTHH:MM если есть явное напоминание с датой и временем, иначе null",
+  "reminder_comment": "краткий комментарий к напоминанию (что проверить/сделать), иначе null"
 }}
 
 Правила:
-- Если пользователь — участник (не модератор), assignee_name ВСЕГДА null
-  (задача будет назначена на него самого).
-- Если пользователь — модератор и упомянул другого человека, сопоставь имя
-  с участниками команды (учитывай name_variants). Если не найден — null.
+- Если пользователь может назначать задачи другим участникам и упомянул другого человека,
+  сопоставь имя с участниками команды (учитывай name_variants). Если не найден — null.
+- Если пользователь не может назначать задачи другим участникам,
+  assignee_name ВСЕГДА null (задача будет назначена на него самого).
 - Определи приоритет по контексту: "срочно", "важно", "критично" -> high/urgent;
   "когда будет время", "не горит" -> low; по умолчанию -> medium.
 - Извлеки дедлайн из фраз: "до пятницы", "к 1 марта", "на этой неделе".
   Сегодня: {today}.
+- Если в тексте есть просьба напомнить (например, "напомни завтра в 15:00"),
+  заполни reminder_at в формате YYYY-MM-DDTHH:MM.
+- Если для напоминания нет явного времени, reminder_at = null.
+- reminder_comment заполняй только если есть понятный контекст для комментария.
 - title должен быть кратким и конкретным — описание действия.
 """
 
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 1.0
+OPENAI_MAX_TOKENS = 1400
+MEETING_SUMMARY_OPENAI_MODEL = "gpt-4o-mini"
+MEETING_CHUNK_CHARS_DEFAULT = 8000
+MEETING_CHUNK_CHARS_MINI = 10000
+MEETING_CHUNK_OVERLAP_CHARS = 1200
+MEETING_MAX_CHUNKS = 24
 
 
 # ── Abstract provider ──
@@ -154,6 +168,8 @@ class OpenAIProvider(AIProvider):
     async def complete(self, system_prompt: str, user_prompt: str) -> str:
         response = await self.client.chat.completions.create(
             model=self.model,
+            max_tokens=OPENAI_MAX_TOKENS,
+            temperature=0.1,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
@@ -200,7 +216,14 @@ class AIService:
             )
 
     async def _get_current_provider(self, session: AsyncSession) -> AIProvider:
-        """Read current provider from app_settings and instantiate."""
+        """Read current provider from app_settings and instantiate.
+
+        Falls back to first available provider when the configured one
+        has no API key (e.g. seed defaults to anthropic but only openai key is set).
+        """
+        if not self.provider_factories:
+            raise ValueError("Нет доступных AI-провайдеров (не заданы API ключи)")
+
         settings_repo = AppSettingsRepository()
         setting = await settings_repo.get(session, "ai_provider")
         if not setting:
@@ -210,9 +233,24 @@ class AIService:
         model = setting.value["model"]
 
         if provider_name not in self.provider_factories:
-            raise ValueError(
-                f"Провайдер {provider_name} не настроен (нет API ключа)"
+            fallback_name = next(iter(self.provider_factories))
+            config_setting = await settings_repo.get(session, "ai_providers_config")
+            fallback_model = model
+            if config_setting and fallback_name in config_setting.value:
+                fallback_model = config_setting.value[fallback_name].get("default", model)
+
+            logger.critical(
+                "AI PROVIDER FALLBACK: %s недоступен (нет API ключа), "
+                "автоматически переключено на %s/%s. "
+                "Проверьте конфигурацию AI-провайдера!",
+                provider_name, fallback_name, fallback_model,
             )
+            await settings_repo.set(
+                session, "ai_provider",
+                {"provider": fallback_name, "model": fallback_model},
+            )
+            provider_name, model = fallback_name, fallback_model
+
         return self.provider_factories[provider_name](model)
 
     async def get_current_provider_info(self, session: AsyncSession) -> dict:
@@ -259,6 +297,152 @@ class AIService:
             text = re.sub(r"\n?```\s*$", "", text)
         return json.loads(text)
 
+    @staticmethod
+    def _prepare_meeting_text(text: str) -> str:
+        """Normalize transcript formatting while preserving full content."""
+        return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+    @staticmethod
+    def _split_meeting_text(
+        text: str,
+        model_hint: str | None = None,
+    ) -> list[str]:
+        """Split transcript into overlapping chunks so middle content is never dropped."""
+        chunk_chars = (
+            MEETING_CHUNK_CHARS_MINI
+            if model_hint == MEETING_SUMMARY_OPENAI_MODEL
+            else MEETING_CHUNK_CHARS_DEFAULT
+        )
+
+        if len(text) <= chunk_chars:
+            return [text]
+
+        chunks: list[str] = []
+        start = 0
+        total_len = len(text)
+
+        while start < total_len:
+            hard_end = min(start + chunk_chars, total_len)
+            end = hard_end
+
+            # Prefer cutting near newline to keep semantic boundaries.
+            if hard_end < total_len:
+                search_from = max(start + int(chunk_chars * 0.55), start)
+                newline_idx = text.rfind("\n", search_from, hard_end)
+                if newline_idx != -1:
+                    end = newline_idx
+
+            if end <= start:
+                end = hard_end
+
+            chunk = text[start:end].strip()
+            if chunk:
+                chunks.append(chunk)
+                if len(chunks) > MEETING_MAX_CHUNKS:
+                    raise ValueError(
+                        "Транскрипция слишком длинная для обработки одним запуском. "
+                        "Разделите встречу на части и обработайте по очереди."
+                    )
+
+            if end >= total_len:
+                break
+            start = max(end - MEETING_CHUNK_OVERLAP_CHARS, start + 1)
+
+        return chunks
+
+    @staticmethod
+    def _norm_text(value: str | None) -> str:
+        return re.sub(r"\s+", " ", (value or "").strip().lower())
+
+    @classmethod
+    def _merge_parsed_chunks(cls, chunks: list[ParsedMeeting]) -> ParsedMeeting:
+        """Deterministically merge chunk-level extraction results without losing tasks."""
+        title = ""
+        summary_parts: list[str] = []
+        summary_seen: set[str] = set()
+
+        decisions: list[str] = []
+        decisions_seen: set[str] = set()
+
+        participants: list[str] = []
+        participants_seen: set[str] = set()
+
+        tasks: list[ParsedTask] = []
+        task_index_by_key: dict[tuple[str, str, str], int] = {}
+        task_index_by_title_assignee: dict[tuple[str, str], int] = {}
+        priority_rank = {"low": 1, "medium": 2, "high": 3, "urgent": 4}
+
+        for chunk in chunks:
+            if not title and chunk.title.strip():
+                title = chunk.title.strip()
+
+            chunk_summary = chunk.summary.strip()
+            summary_key = cls._norm_text(chunk_summary)
+            if chunk_summary and summary_key and summary_key not in summary_seen:
+                summary_seen.add(summary_key)
+                summary_parts.append(chunk_summary)
+
+            for decision in chunk.decisions:
+                key = cls._norm_text(decision)
+                if not key or key in decisions_seen:
+                    continue
+                decisions_seen.add(key)
+                decisions.append(decision.strip())
+
+            for participant in chunk.participants:
+                key = cls._norm_text(participant)
+                if not key or key in participants_seen:
+                    continue
+                participants_seen.add(key)
+                participants.append(participant.strip())
+
+            for task in chunk.tasks:
+                title_key = cls._norm_text(task.title)
+                if not title_key:
+                    continue
+                assignee_key = cls._norm_text(task.assignee_name)
+                deadline_key = (task.deadline or "").strip()
+                key = (title_key, assignee_key, deadline_key)
+                weak_key = (title_key, assignee_key)
+
+                existing_idx = task_index_by_key.get(key)
+                if existing_idx is None:
+                    existing_idx = task_index_by_title_assignee.get(weak_key)
+
+                if existing_idx is None:
+                    idx = len(tasks)
+                    task_index_by_key[key] = idx
+                    if weak_key not in task_index_by_title_assignee:
+                        task_index_by_title_assignee[weak_key] = idx
+                    tasks.append(task)
+                    continue
+
+                # Merge sparse duplicates by keeping the richer version.
+                existing = tasks[existing_idx]
+                if (not existing.description) and task.description:
+                    existing.description = task.description
+                if (not existing.assignee_name) and task.assignee_name:
+                    existing.assignee_name = task.assignee_name
+                if (not existing.deadline) and task.deadline:
+                    existing.deadline = task.deadline
+                if priority_rank.get(task.priority, 2) > priority_rank.get(existing.priority, 2):
+                    existing.priority = task.priority
+
+        if not title:
+            title = "Итоги встречи"
+
+        summary = " ".join(summary_parts[:4]).strip()
+        if not summary:
+            summary = "Ключевые итоги встречи извлечены из полной транскрипции."
+
+        return ParsedMeeting(
+            title=title,
+            summary=summary,
+            decisions=decisions,
+            tasks=tasks,
+            participants=participants,
+        )
+
     async def parse_meeting_summary(
         self,
         session: AsyncSession,
@@ -267,6 +451,21 @@ class AIService:
     ) -> ParsedMeeting:
         """Parse Zoom Summary via current AI provider."""
         provider = await self._get_current_provider(session)
+        if (
+            isinstance(provider, OpenAIProvider)
+            and provider.model != MEETING_SUMMARY_OPENAI_MODEL
+        ):
+            logger.info(
+                "Meeting summary parse uses %s instead of configured OpenAI model %s",
+                MEETING_SUMMARY_OPENAI_MODEL,
+                provider.model,
+            )
+            provider = OpenAIProvider(
+                api_key=settings.OPENAI_API_KEY,
+                model=MEETING_SUMMARY_OPENAI_MODEL,
+            )
+
+        model_hint = provider.model if hasattr(provider, "model") else None
 
         team_json = json.dumps(
             [
@@ -281,21 +480,49 @@ class AIService:
             today=date.today().isoformat(),
         )
 
-        response = await self._complete_with_retry(provider, system_prompt, summary_text)
+        prepared_text = self._prepare_meeting_text(summary_text)
+        chunks = self._split_meeting_text(prepared_text, model_hint=model_hint)
+        logger.info(
+            "Meeting summary parse started (chunks=%s, total_chars=%s, model=%s)",
+            len(chunks),
+            len(prepared_text),
+            model_hint or "unknown",
+        )
 
-        try:
-            data = self._extract_json(response)
-            return ParsedMeeting(**data)
-        except (json.JSONDecodeError, ValueError) as e:
-            logger.error(f"Failed to parse AI response as ParsedMeeting: {e}\nResponse: {response}")
-            raise ValueError(f"AI вернул некорректный ответ: {e}")
+        parsed_chunks: list[ParsedMeeting] = []
+        for idx, chunk in enumerate(chunks, start=1):
+            response = await self._complete_with_retry(provider, system_prompt, chunk)
+            try:
+                data = self._extract_json(response)
+                parsed_chunks.append(ParsedMeeting(**data))
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.error(
+                    "Failed to parse AI chunk %s/%s as ParsedMeeting: %s\nResponse: %s",
+                    idx,
+                    len(chunks),
+                    e,
+                    response,
+                )
+                raise ValueError(
+                    f"AI вернул некорректный ответ на части {idx}/{len(chunks)}: {e}"
+                )
+
+        merged = self._merge_parsed_chunks(parsed_chunks)
+        logger.info(
+            "Meeting summary parse merged (chunks=%s, tasks=%s, decisions=%s, participants=%s)",
+            len(chunks),
+            len(merged.tasks),
+            len(merged.decisions),
+            len(merged.participants),
+        )
+        return merged
 
     async def parse_task_from_text(
         self,
         session: AsyncSession,
         text: str,
         author_name: str,
-        is_moderator: bool,
+        can_assign_to_others: bool,
         team_members: list[TeamMember],
     ) -> ParsedVoiceTask:
         """Extract task from arbitrary text (after STT). Used in Phase 6."""
@@ -311,7 +538,11 @@ class AIService:
 
         system_prompt = VOICE_TASK_PROMPT.format(
             author_name=author_name,
-            role_label="модератор" if is_moderator else "участник",
+            role_label=(
+                "может назначать задачи другим участникам"
+                if can_assign_to_others
+                else "назначает задачи только себе"
+            ),
             team_members_json=team_json,
             today=date.today().isoformat(),
         )

@@ -6,6 +6,7 @@ from app.db.database import get_session
 from app.db.models import TeamMember
 from app.db.schemas import TaskUpdateCreate, TaskUpdateResponse
 from app.services.task_service import TaskService
+from app.services.task_visibility_service import can_access_task
 
 router = APIRouter(prefix="/tasks/{short_id}/updates", tags=["task_updates"])
 task_service = TaskService()
@@ -21,6 +22,11 @@ async def list_task_updates(
     task = await task_service.get_task_by_short_id(session, short_id)
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
+    if not await can_access_task(session, member, task):
+        raise HTTPException(
+            status_code=403,
+            detail="Нет доступа к задаче: она вне вашей зоны видимости",
+        )
 
     updates = await task_service.get_task_updates(session, task.id)
     return updates
@@ -37,19 +43,24 @@ async def create_task_update(
     task = await task_service.get_task_by_short_id(session, short_id)
     if not task:
         raise HTTPException(status_code=404, detail="Задача не найдена")
+    if not await can_access_task(session, member, task):
+        raise HTTPException(
+            status_code=403,
+            detail="Нет доступа к задаче: нельзя добавлять обновления вне вашей зоны видимости",
+        )
 
     try:
-        async with session.begin():
-            update = await task_service.add_task_update(
-                session,
-                task=task,
-                member=member,
-                content=data.content,
-                update_type=data.update_type,
-                progress_percent=data.progress_percent,
-                source="web",
-            )
-            return update
+        update = await task_service.add_task_update(
+            session,
+            task=task,
+            member=member,
+            content=data.content,
+            update_type=data.update_type,
+            progress_percent=data.progress_percent,
+            source="web",
+        )
+        await session.commit()
+        return update
     except PermissionError as e:
         raise HTTPException(status_code=403, detail=str(e))
     except ValueError as e:

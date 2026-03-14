@@ -14,6 +14,11 @@ RUN pip install --no-cache-dir .
 # Copy app code
 COPY . .
 
+# Create non-root user
+RUN useradd -m -u 1001 appuser && \
+    chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8000
 
 CMD ["python", "-m", "app.main"]
