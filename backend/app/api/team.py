@@ -374,6 +374,18 @@ async def update_team_member(
     if not update_data:
         raise HTTPException(status_code=400, detail="Нет данных для обновления")
 
+    # Telegram ID uniqueness check
+    if "telegram_id" in update_data and update_data["telegram_id"] is not None:
+        if update_data["telegram_id"] != target.telegram_id:
+            existing = await member_repo.get_by_telegram_id(
+                session, update_data["telegram_id"]
+            )
+            if existing:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Участник с таким Telegram ID уже существует",
+                )
+
     deactivation_strategy = update_data.pop("deactivation_strategy", None)
     reassign_to_member_id = update_data.pop("reassign_to_member_id", None)
     extra_department_ids = update_data.pop("extra_department_ids", None)
