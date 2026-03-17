@@ -1,7 +1,7 @@
 """Pydantic schemas for Content module (channels, prompts, data inventory)."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, Field
 
@@ -67,3 +67,62 @@ class AnalysisPromptResponse(BaseModel):
     created_by_name: str | None = None
     created_at: datetime
     updated_at: datetime
+
+
+# ── Analysis Runs ──
+
+
+class AnalysisPrepareRequest(BaseModel):
+    channel_ids: list[uuid.UUID] = Field(..., min_length=1)
+    date_from: date
+    date_to: date
+    content_type: str = Field("all", pattern=r"^(posts|comments|all)$")
+
+
+class ChannelPrepareSummary(BaseModel):
+    channel_id: uuid.UUID
+    channel_name: str
+    existing_count: int
+    estimated_missing: int | None = None
+
+
+class AnalysisPrepareResponse(BaseModel):
+    channels: list[ChannelPrepareSummary]
+    total_existing: int
+    total_estimated_missing: int | None = None
+    telegram_connected: bool
+
+
+class AnalysisRunRequest(BaseModel):
+    channel_ids: list[uuid.UUID] = Field(..., min_length=1)
+    date_from: date
+    date_to: date
+    content_type: str = Field("all", pattern=r"^(posts|comments|all)$")
+    prompt_id: uuid.UUID | None = None
+    prompt_text: str | None = None
+
+
+class AnalysisRunResponse(BaseModel):
+    id: uuid.UUID
+    channels: list
+    date_from: date
+    date_to: date
+    content_type: str
+    prompt_id: uuid.UUID | None
+    prompt_snapshot: str
+    ai_provider: str | None
+    ai_model: str | None
+    result_markdown: str | None
+    status: str
+    error_message: str | None
+    run_by_id: uuid.UUID
+    run_by_name: str | None = None
+    created_at: datetime
+    completed_at: datetime | None
+
+
+class AnalysisHistoryResponse(BaseModel):
+    items: list[AnalysisRunResponse]
+    total: int
+    page: int
+    per_page: int
