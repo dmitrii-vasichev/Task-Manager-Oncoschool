@@ -32,6 +32,7 @@ from app.services.broadcast_scheduler_service import BroadcastSchedulerService
 from app.services.meeting_scheduler_service import MeetingSchedulerService
 from app.services.reminder_service import ReminderService
 from app.services.supabase_storage import SupabaseStorageService
+from app.services.telegram_connection_service import TelegramConnectionService
 from app.services.zoom_service import ZoomService
 
 logging.basicConfig(level=logging.INFO)
@@ -161,6 +162,10 @@ broadcast_scheduler = BroadcastSchedulerService(
     storage_service=storage_service,
 )
 
+# Telegram Connection (Pyrofork userbot — optional, for content module)
+telegram_connection_service = TelegramConnectionService()
+app.state.telegram_connection_service = telegram_connection_service
+
 
 @app.on_event("startup")
 async def _start_background_schedulers() -> None:
@@ -169,6 +174,14 @@ async def _start_background_schedulers() -> None:
     await reminder_service.refresh_task_overdue_schedule_from_settings()
     meeting_scheduler.start()
     broadcast_scheduler.start()
+    try:
+        async with async_session() as db_session:
+            connected = await telegram_connection_service.ensure_connected(db_session)
+            if connected:
+                logger.info("Telegram userbot session restored on startup")
+    except Exception:
+        logger.exception("Failed to restore Telegram userbot session on startup")
+
     try:
         created_slots = await meeting_scheduler.ensure_upcoming_slots_now()
         if created_slots:

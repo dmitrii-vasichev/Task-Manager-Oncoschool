@@ -1,9 +1,9 @@
-"""Admin API: AI feature config, content access management."""
+"""Admin API: AI feature config, content access management, Telegram connection."""
 
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +18,16 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 ai_service = AIService()
+
+
+def _get_telegram_service(request: Request):
+    service = getattr(request.app.state, "telegram_connection_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Telegram connection service not available",
+        )
+    return service
 
 
 # ── AI Feature Config ──
@@ -174,5 +184,71 @@ async def revoke_content_access(
     revoked = await ContentAccessService.revoke_access(session, access_id)
     if not revoked:
         raise HTTPException(status_code=404, detail="Доступ не найден")
+    await session.commit()
+    return {"ok": True}
+
+
+# ── Telegram Connection ──
+
+
+class TelegramConnectRequest(BaseModel):
+    api_id: str
+    api_hash: str
+    phone: str
+
+
+class TelegramVerifyRequest(BaseModel):
+    code: str
+    password: str | None = None
+
+
+@router.get("/telegram/status")
+async def get_telegram_status(
+    request: Request,
+    member: TeamMember = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Get Telegram connection status. Admin only."""
+    service = _get_telegram_service(request)
+    return await service.get_status(session)
+
+
+@router.post("/telegram/connect")
+async def connect_telegram(
+    request: Request,
+    data: TelegramConnectRequest,
+    member: TeamMember = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Initiate Telegram authorization (sends code to phone). Admin only."""
+    service = _get_telegram_service(request)
+    result = await service.initiate_connection(session, data.api_id, data.api_hash, data.phone)
+    await session.commit()
+    return result
+
+
+@router.post("/telegram/verify")
+async def verify_telegram(
+    request: Request,
+    data: TelegramVerifyRequest,
+    member: TeamMember = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Submit auth code (and optional 2FA password) to complete Telegram authorization. Admin only."""
+    service = _get_telegram_service(request)
+    result = await service.verify_code(session, data.code, data.password)
+    await session.commit()
+    return result
+
+
+@router.post("/telegram/disconnect")
+async def disconnect_telegram(
+    request: Request,
+    member: TeamMember = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
+):
+    """Terminate Telegram session and clear credentials. Admin only."""
+    service = _get_telegram_service(request)
+    await service.disconnect(session)
     await session.commit()
     return {"ok": True}
