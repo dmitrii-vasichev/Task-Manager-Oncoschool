@@ -97,6 +97,9 @@ export function TelegramConnectionSection() {
       } else if (result.status === "connected") {
         setPhase("connected");
         toastSuccess("Telegram подключён");
+      } else if (result.status === "error") {
+        setPhase("error");
+        toastError(result.error_message || "Ошибка подключения");
       }
     } catch (e) {
       toastError(e instanceof Error ? e.message : "Ошибка подключения");

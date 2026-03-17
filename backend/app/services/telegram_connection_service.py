@@ -57,7 +57,7 @@ class TelegramConnectionService:
         }
 
         if ts.phone_number:
-            result["phone_masked"] = ts.phone_number  # Already stored masked
+            result["phone"] = ts.phone_number  # Already stored masked
         if ts.api_hash_encrypted:
             try:
                 api_hash = decrypt(ts.api_hash_encrypted)
@@ -76,7 +76,7 @@ class TelegramConnectionService:
     ) -> dict:
         """Start Telegram authorization: send code to phone.
 
-        Returns: {"status": "code_required"} or {"status": "error", "message": "..."}
+        Returns: {"status": "code_required"} or {"status": "error", "error_message": "..."}
         """
         try:
             from pyrogram import Client
@@ -150,7 +150,7 @@ class TelegramConnectionService:
                 status="error",
                 error_message=str(e)[:500],
             )
-            return {"status": "error", "message": str(e)[:500]}
+            return {"status": "error", "error_message": str(e)[:500]}
 
     async def verify_code(
         self,
@@ -160,7 +160,7 @@ class TelegramConnectionService:
     ) -> dict:
         """Complete Telegram authorization with code (and optional 2FA password).
 
-        Returns: {"status": "connected"} or {"status": "2fa_required"} or {"status": "error", "message": "..."}
+        Returns: {"status": "connected"} or {"status": "password_required"} or {"status": "error", "error_message": "..."}
         """
         global _client, _client_connected
 
@@ -182,7 +182,7 @@ class TelegramConnectionService:
                         # Try with 2FA password
                         signed_in = await client.check_password(password)
                     else:
-                        return {"status": "2fa_required"}
+                        return {"status": "password_required"}
                 else:
                     raise
 
@@ -213,7 +213,7 @@ class TelegramConnectionService:
                 status="error",
                 error_message=str(e)[:500],
             )
-            return {"status": "error", "message": str(e)[:500]}
+            return {"status": "error", "error_message": str(e)[:500]}
 
     async def disconnect(self, session: AsyncSession) -> None:
         """Terminate Telegram session and clear DB."""
