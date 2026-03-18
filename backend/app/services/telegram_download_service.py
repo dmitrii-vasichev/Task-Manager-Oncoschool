@@ -1,6 +1,10 @@
 """Service for downloading Telegram channel content via Pyrofork.
 
 Handles: per-channel locking, rate limiting, deduplication, progress callbacks.
+
+IMPORTANT: DB sessions are opened/closed for each DB operation to avoid
+holding connections idle during long Telegram API calls (Supabase PgBouncer
+drops idle connections after ~60s).
 """
 
 import asyncio
@@ -11,6 +15,7 @@ from typing import Any, Callable, Coroutine
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.database import async_session
 from app.db.models import ContentType
 from app.db.repositories import TelegramChannelRepository, TelegramContentRepository
 from app.services.telegram_connection_service import TelegramConnectionService
@@ -90,7 +95,6 @@ class TelegramDownloadService:
 
     async def download_missing(
         self,
-        session: AsyncSession,
         channel_ids: list[uuid.UUID],
         date_from: date,
         date_to: date,
@@ -101,33 +105,42 @@ class TelegramDownloadService:
 
         Acquires per-channel locks (raises if locked).
         Returns download results per channel.
+
+        Uses short-lived DB sessions to avoid idle connection timeouts.
         """
-        client = await self._telegram.get_client(session)
+        # Get Telegram client (short DB session)
+        async with async_session() as session:
+            client = await self._telegram.get_client(session)
         if not client:
             raise ValueError("Telegram not connected. Connect via Settings first.")
 
         dt_from = datetime.combine(date_from, datetime.min.time())
         dt_to = datetime.combine(date_to, datetime.max.time())
 
+        # Load channel metadata (short DB session)
+        channels = []
+        async with async_session() as session:
+            for ch_id in channel_ids:
+                channel = await self._channel_repo.get_by_id(session, ch_id)
+                if channel:
+                    channels.append((ch_id, channel.username, channel.display_name, channel.id))
+
         results = {}
         total_downloaded = 0
 
-        for ch_id in channel_ids:
-            channel = await self._channel_repo.get_by_id(session, ch_id)
-            if not channel:
-                continue
-
+        for ch_id, username, display_name, db_id in channels:
             lock = _get_channel_lock(ch_id)
             if lock.locked():
                 raise ChannelLockError(
-                    f"Channel '{channel.display_name}' is currently being downloaded"
+                    f"Channel '{display_name}' is currently being downloaded"
                 )
 
             async with lock:
                 count = await self._download_channel(
-                    session=session,
                     client=client,
-                    channel=channel,
+                    channel_db_id=db_id,
+                    username=username,
+                    display_name=display_name,
                     dt_from=dt_from,
                     dt_to=dt_to,
                     content_type=content_type,
@@ -140,36 +153,42 @@ class TelegramDownloadService:
 
     async def _download_channel(
         self,
-        session: AsyncSession,
         client,
-        channel,
+        channel_db_id: uuid.UUID,
+        username: str,
+        display_name: str,
         dt_from: datetime,
         dt_to: datetime,
         content_type: str,
         progress_callback: ProgressCallback | None,
     ) -> int:
-        """Download posts/comments from a single channel."""
-        # Get existing message IDs to skip duplicates
-        existing_ids = await self._content_repo.get_existing_message_ids(
-            session, channel.id, dt_from, dt_to
-        )
+        """Download posts/comments from a single channel.
+
+        Uses short-lived DB sessions: one for reading existing IDs,
+        one per batch for inserts. No session held during Telegram API calls.
+        """
+        # Get existing message IDs to skip duplicates (short session)
+        async with async_session() as session:
+            existing_ids = await self._content_repo.get_existing_message_ids(
+                session, channel_db_id, dt_from, dt_to
+            )
 
         if progress_callback:
             await progress_callback({
                 "phase": "downloading",
-                "channel": channel.display_name,
+                "channel": display_name,
                 "progress": 0,
-                "detail": f"Starting download from @{channel.username}",
+                "detail": f"Starting download from @{username}",
             })
 
-        username = channel.username.lstrip("@")
+        clean_username = username.lstrip("@")
         messages_batch: list[dict] = []
         downloaded = 0
         skipped = 0
 
         try:
-            # Fetch channel history within date range
-            async for message in client.get_chat_history(username):
+            # Fetch channel history within date range (NO DB session held)
+            async for message in client.get_chat_history(clean_username):
                 # Stop if message is older than our range
                 if message.date and message.date < dt_from:
                     break
@@ -201,35 +220,37 @@ class TelegramDownloadService:
                 text = message.text or message.caption or ""
 
                 messages_batch.append({
-                    "channel_id": channel.id,
+                    "channel_id": channel_db_id,
                     "telegram_message_id": message.id,
                     "content_type": msg_type,
                     "text": text,
                     "message_date": message.date,
                 })
 
-                # Bulk insert when batch is full
+                # Bulk insert when batch is full (short session per batch)
                 if len(messages_batch) >= BATCH_SIZE:
-                    inserted = await self._content_repo.bulk_insert(session, messages_batch)
-                    await session.commit()
+                    async with async_session() as session:
+                        inserted = await self._content_repo.bulk_insert(session, messages_batch)
+                        await session.commit()
                     downloaded += inserted
                     messages_batch.clear()
 
                     if progress_callback:
                         await progress_callback({
                             "phase": "downloading",
-                            "channel": channel.display_name,
+                            "channel": display_name,
                             "progress": downloaded,
                             "detail": f"Downloaded {downloaded} messages (skipped {skipped} duplicates)",
                         })
 
-                    # Rate limiting
+                    # Rate limiting (no DB session held during sleep)
                     await asyncio.sleep(BATCH_DELAY_SEC)
 
-            # Insert remaining messages
+            # Insert remaining messages (short session)
             if messages_batch:
-                inserted = await self._content_repo.bulk_insert(session, messages_batch)
-                await session.commit()
+                async with async_session() as session:
+                    inserted = await self._content_repo.bulk_insert(session, messages_batch)
+                    await session.commit()
                 downloaded += inserted
 
         except Exception as e:
@@ -239,41 +260,32 @@ class TelegramDownloadService:
                 wait_time = getattr(e, "value", 60)
                 logger.warning(
                     "FloodWait for channel %s: sleeping %s seconds",
-                    channel.username, wait_time,
+                    username, wait_time,
                 )
                 if progress_callback:
                     await progress_callback({
                         "phase": "downloading",
-                        "channel": channel.display_name,
+                        "channel": display_name,
                         "progress": downloaded,
                         "detail": f"Rate limited — waiting {wait_time}s",
                     })
                 await asyncio.sleep(wait_time)
-                # Commit what was downloaded so far
-                try:
-                    await session.commit()
-                except Exception:
-                    await session.rollback()
+                # Don't re-raise — partial download is still useful
             else:
-                logger.error("Error downloading channel %s: %s", channel.username, e)
-                # Rollback to clean session state before re-raising
-                try:
-                    await session.rollback()
-                except Exception:
-                    pass
+                logger.error("Error downloading channel %s: %s", username, e)
                 raise
 
         if progress_callback:
             await progress_callback({
                 "phase": "downloading",
-                "channel": channel.display_name,
+                "channel": display_name,
                 "progress": downloaded,
                 "detail": f"Completed: {downloaded} new messages",
             })
 
         logger.info(
             "Downloaded %d messages from @%s (skipped %d duplicates)",
-            downloaded, channel.username, skipped,
+            downloaded, username, skipped,
         )
         return downloaded
 
