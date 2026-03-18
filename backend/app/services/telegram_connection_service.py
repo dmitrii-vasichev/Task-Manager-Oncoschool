@@ -53,6 +53,18 @@ class TelegramConnectionService:
         if not ts:
             return {"status": "disconnected"}
 
+        # Clear stale encryption-key errors now that the key is configured
+        if ts.status == "error" and ts.error_message and (
+            "TELEGRAM_ENCRYPTION_KEY" in ts.error_message
+            or "Encryption key not configured" in ts.error_message
+        ):
+            await _repo.upsert(
+                session,
+                status="disconnected",
+                error_message=None,
+            )
+            return {"status": "disconnected"}
+
         result = {
             "status": ts.status,
             "error_message": ts.error_message,
