@@ -218,6 +218,8 @@ class TelegramDownloadService:
         downloaded = 0
         skipped = 0
         seen_total = 0
+        skipped_no_text = 0
+        skipped_type_filter = 0
 
         # Use offset_date to start iteration from dt_to + 1 day instead of
         # iterating from the very latest message. This avoids scanning
@@ -248,6 +250,7 @@ class TelegramDownloadService:
 
                     # Skip if no text content
                     if not message.text and not message.caption:
+                        skipped_no_text += 1
                         continue
 
                     # Skip duplicates
@@ -262,8 +265,10 @@ class TelegramDownloadService:
 
                     # Filter by content_type
                     if content_type == "posts" and msg_type != ContentType.post:
+                        skipped_type_filter += 1
                         continue
                     if content_type == "comments" and msg_type != ContentType.comment:
+                        skipped_type_filter += 1
                         continue
 
                     text = message.text or message.caption or ""
@@ -332,17 +337,26 @@ class TelegramDownloadService:
                     )
                     raise
 
+        detail_parts = [f"{downloaded} new"]
+        if skipped:
+            detail_parts.append(f"{skipped} duplicates")
+        if skipped_no_text:
+            detail_parts.append(f"{skipped_no_text} without text")
+        if skipped_type_filter:
+            detail_parts.append(f"{skipped_type_filter} filtered by type")
+        detail_parts.append(f"{seen_total} scanned")
+
         if progress_callback:
             await progress_callback({
                 "phase": "downloading",
                 "channel": display_name,
                 "progress": downloaded,
-                "detail": f"Completed: {downloaded} new, {skipped} duplicates, {seen_total} scanned",
+                "detail": f"Completed: {', '.join(detail_parts)}",
             })
 
         logger.info(
-            "Downloaded %d messages from @%s (skipped %d duplicates, scanned %d total)",
-            downloaded, username, skipped, seen_total,
+            "Downloaded %d from @%s (no_text=%d, type_filtered=%d, duplicates=%d, scanned=%d)",
+            downloaded, username, skipped_no_text, skipped_type_filter, skipped, seen_total,
         )
         return downloaded
 
