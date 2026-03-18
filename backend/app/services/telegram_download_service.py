@@ -210,8 +210,8 @@ class TelegramDownloadService:
 
                 # Bulk insert when batch is full
                 if len(messages_batch) >= BATCH_SIZE:
-                    async with session.begin_nested():
-                        inserted = await self._content_repo.bulk_insert(session, messages_batch)
+                    inserted = await self._content_repo.bulk_insert(session, messages_batch)
+                    await session.commit()
                     downloaded += inserted
                     messages_batch.clear()
 
@@ -228,8 +228,8 @@ class TelegramDownloadService:
 
             # Insert remaining messages
             if messages_batch:
-                async with session.begin_nested():
-                    inserted = await self._content_repo.bulk_insert(session, messages_batch)
+                inserted = await self._content_repo.bulk_insert(session, messages_batch)
+                await session.commit()
                 downloaded += inserted
 
         except Exception as e:

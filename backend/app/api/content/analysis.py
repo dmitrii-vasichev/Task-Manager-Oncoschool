@@ -123,18 +123,17 @@ async def run_analysis(
 
     # Create analysis run record
     channel_ids_str = [str(cid) for cid in body.channel_ids]
-    async with session.begin_nested():
-        run = await _run_repo.create(
-            session,
-            channels=channel_ids_str,
-            date_from=body.date_from,
-            date_to=body.date_to,
-            content_type=body.content_type,
-            prompt_id=prompt_id,
-            prompt_snapshot=prompt_text,
-            status=AnalysisStatus.preparing,
-            run_by_id=member.id,
-        )
+    run = await _run_repo.create(
+        session,
+        channels=channel_ids_str,
+        date_from=body.date_from,
+        date_to=body.date_to,
+        content_type=body.content_type,
+        prompt_id=prompt_id,
+        prompt_snapshot=prompt_text,
+        status=AnalysisStatus.preparing,
+        run_by_id=member.id,
+    )
     await session.commit()
 
     run_id = run.id
