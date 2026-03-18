@@ -43,6 +43,7 @@ class TelegramConnectionService:
         self._pending_api_id = None
         self._pending_api_hash = None
         self._pending_phone = None
+        self._pending_phone_code_hash = None
 
     async def get_status(self, session: AsyncSession) -> dict:
         """Get current connection status with masked credentials."""
@@ -124,33 +125,19 @@ class TelegramConnectionService:
                 in_memory=True,
             )
 
-            # Connect but don't fully sign in yet — this triggers sending the code
-            sent_code = await client.connect()
+            # Establish TCP connection first
+            await client.connect()
 
-            if sent_code is None:
-                # Already authorized — session was cached
-                _client = client
-                _client_connected = True
+            # Send verification code to the phone
+            sent_code = await client.send_code(phone)
+            logger.info("Telegram verification code sent to %s", _mask_phone(phone))
 
-                # Save to DB
-                session_string = await client.export_session_string()
-                await _repo.upsert(
-                    session,
-                    api_id_encrypted=encrypt(api_id),
-                    api_hash_encrypted=encrypt(api_hash),
-                    phone_number=_mask_phone(phone),
-                    session_string_encrypted=encrypt(session_string),
-                    status="connected",
-                    error_message=None,
-                    connected_at=datetime.utcnow(),
-                )
-                return {"status": "connected"}
-
-            # Code sent — store pending state
+            # Store pending state including phone_code_hash for sign_in
             self._pending_client = client
             self._pending_api_id = api_id
             self._pending_api_hash = api_hash
             self._pending_phone = phone
+            self._pending_phone_code_hash = sent_code.phone_code_hash
 
             # Save pending status to DB
             await _repo.upsert(
@@ -186,7 +173,7 @@ class TelegramConnectionService:
         global _client, _client_connected
 
         if not self._pending_client:
-            return {"status": "error", "message": "No pending connection. Initiate connection first."}
+            return {"status": "error", "error_message": "No pending connection. Initiate connection first."}
 
         client = self._pending_client
 
@@ -194,6 +181,7 @@ class TelegramConnectionService:
             try:
                 signed_in = await client.sign_in(
                     phone_number=self._pending_phone,
+                    phone_code_hash=self._pending_phone_code_hash,
                     phone_code=code,
                 )
             except Exception as e:
@@ -224,6 +212,7 @@ class TelegramConnectionService:
             self._pending_api_id = None
             self._pending_api_hash = None
             self._pending_phone = None
+            self._pending_phone_code_hash = None
 
             return {"status": "connected"}
 
@@ -250,6 +239,7 @@ class TelegramConnectionService:
             _client_connected = False
 
         self._pending_client = None
+        self._pending_phone_code_hash = None
 
         await _repo.upsert(
             session,
