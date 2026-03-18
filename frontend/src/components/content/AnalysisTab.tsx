@@ -182,9 +182,11 @@ export function AnalysisTab() {
   };
 
   const canPrepare = selectedChannelIds.length > 0 && dateFrom && dateTo;
-  const canRun =
+  const hasPrompt = promptMode === "library" ? selectedPromptId : customPromptText.trim();
+  const hasDataOrTelegram =
     prepareSummary &&
-    (promptMode === "library" ? selectedPromptId : customPromptText.trim());
+    (prepareSummary.total_existing > 0 || prepareSummary.telegram_connected);
+  const canRun = prepareSummary && hasPrompt && hasDataOrTelegram;
 
   if (loadingData) {
     return (
@@ -482,20 +484,30 @@ export function AnalysisTab() {
             ))}
           </div>
 
-          {/* Totals */}
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <span>Всего в базе: {prepareSummary.total_existing}</span>
-            {prepareSummary.total_estimated_missing !== null &&
-              prepareSummary.total_estimated_missing > 0 && (
-                <span>К загрузке: ~{prepareSummary.total_estimated_missing}</span>
-              )}
-            {!prepareSummary.telegram_connected &&
-              prepareSummary.total_estimated_missing !== null &&
-              prepareSummary.total_estimated_missing > 0 && (
+          {/* Totals + Telegram status */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <span>Всего в базе: {prepareSummary.total_existing}</span>
+              {prepareSummary.telegram_connected ? (
+                <Badge variant="outline" className="text-xs text-green-600 border-green-300">
+                  Telegram подключён
+                </Badge>
+              ) : (
                 <Badge variant="destructive" className="text-xs">
                   Telegram не подключён
                 </Badge>
               )}
+            </div>
+            {!prepareSummary.telegram_connected && prepareSummary.total_existing === 0 && (
+              <p className="text-xs text-destructive">
+                Нет данных для анализа. Подключите Telegram в настройках, чтобы загрузить сообщения из каналов.
+              </p>
+            )}
+            {prepareSummary.telegram_connected && prepareSummary.total_existing === 0 && (
+              <p className="text-xs text-muted-foreground">
+                При запуске анализа данные будут загружены из Telegram автоматически.
+              </p>
+            )}
           </div>
 
           {/* Run button */}
