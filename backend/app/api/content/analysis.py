@@ -187,12 +187,18 @@ async def _run_analysis_background(
                 content_type=content_type,
                 progress_callback=progress_callback,
             )
+            total_dl = download_result["total_downloaded"]
+            logger.info(
+                "Run %s download complete: %d new messages, per_channel=%s",
+                run_id, total_dl, download_result.get("per_channel"),
+            )
             await progress_callback({
                 "phase": "downloading",
-                "detail": f"Download complete: {download_result['total_downloaded']} new messages",
+                "detail": f"Download complete: {total_dl} new messages",
                 "progress": 100,
             })
         except ChannelLockError as e:
+            logger.warning("Run %s: channel locked — %s", run_id, e)
             async with async_session() as session:
                 await _run_repo.update_status(
                     session, run_id, AnalysisStatus.failed,
@@ -203,7 +209,7 @@ async def _run_analysis_background(
             return
         except ValueError as e:
             # Telegram not connected — proceed with existing content only
-            logger.warning("Download skipped: %s. Proceeding with existing content.", e)
+            logger.warning("Run %s: download skipped: %s. Proceeding with existing content.", run_id, e)
             await progress_callback({
                 "phase": "downloading",
                 "detail": f"Download skipped: {e}. Using existing content.",
