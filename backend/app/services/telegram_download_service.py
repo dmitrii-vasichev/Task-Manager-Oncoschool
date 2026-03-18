@@ -10,7 +10,7 @@ drops idle connections after ~60s).
 import asyncio
 import logging
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Callable, Coroutine
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 # Rate limiting
 BATCH_SIZE = 100
 BATCH_DELAY_SEC = 2.0
+
+# Max retries after FloodWait
+MAX_FLOOD_RETRIES = 2
 
 ProgressCallback = Callable[[dict[str, Any]], Coroutine[Any, Any, None]]
 
@@ -64,9 +67,15 @@ class TelegramDownloadService:
         channels_summary = []
         total_existing = 0
 
+        logger.info(
+            "Preparing analysis: %d channels, range=%s..%s, type=%s",
+            len(channel_ids), date_from, date_to, content_type,
+        )
+
         for ch_id in channel_ids:
             channel = await self._channel_repo.get_by_id(session, ch_id)
             if not channel:
+                logger.warning("Channel %s not found in DB, skipping", ch_id)
                 continue
 
             ct_filter = None if content_type == "all" else content_type
@@ -74,6 +83,11 @@ class TelegramDownloadService:
                 session, ch_id, dt_from, dt_to, ct_filter
             )
             total_existing += existing
+
+            logger.info(
+                "Channel '%s' (id=%s, @%s): %d existing messages in range",
+                channel.display_name, ch_id, channel.username, existing,
+            )
 
             channels_summary.append({
                 "channel_id": ch_id,
@@ -128,6 +142,11 @@ class TelegramDownloadService:
         results = {}
         total_downloaded = 0
 
+        logger.info(
+            "Starting download for %d channels, range=%s..%s, type=%s",
+            len(channels), dt_from.date(), dt_to.date(), content_type,
+        )
+
         for ch_id, username, display_name, db_id in channels:
             lock = _get_channel_lock(ch_id)
             if lock.locked():
@@ -149,7 +168,20 @@ class TelegramDownloadService:
                 results[str(ch_id)] = count
                 total_downloaded += count
 
+        logger.info(
+            "Download complete: %d total messages from %d channels",
+            total_downloaded, len(channels),
+        )
         return {"total_downloaded": total_downloaded, "per_channel": results}
+
+    @staticmethod
+    def _make_naive(dt: datetime | None) -> datetime | None:
+        """Strip timezone info from datetime (convert to UTC if tz-aware)."""
+        if dt is None:
+            return None
+        if dt.tzinfo is not None:
+            return dt.astimezone(timezone.utc).replace(tzinfo=None)
+        return dt
 
     async def _download_channel(
         self,
@@ -185,107 +217,132 @@ class TelegramDownloadService:
         messages_batch: list[dict] = []
         downloaded = 0
         skipped = 0
+        seen_total = 0
 
-        try:
-            # Fetch channel history within date range (NO DB session held)
-            async for message in client.get_chat_history(clean_username):
-                # Stop if message is older than our range
-                if message.date and message.date < dt_from:
-                    break
+        # Use offset_date to start iteration from dt_to + 1 day instead of
+        # iterating from the very latest message. This avoids scanning
+        # thousands of newer messages and hitting FloodWait before reaching
+        # the target date range.
+        offset_date = dt_to + timedelta(days=1)
 
-                # Skip if message is newer than our range
-                if message.date and message.date > dt_to:
-                    continue
+        flood_retries = 0
 
-                # Skip if no text content
-                if not message.text and not message.caption:
-                    continue
+        while True:
+            try:
+                async for message in client.get_chat_history(
+                    clean_username, offset_date=offset_date
+                ):
+                    seen_total += 1
 
-                # Skip duplicates
-                if message.id in existing_ids:
-                    skipped += 1
-                    continue
+                    # Normalize message date (Pyrofork may return tz-aware UTC)
+                    msg_date = self._make_naive(message.date)
 
-                # Determine content type
-                msg_type = ContentType.post
-                if message.reply_to_message_id:
-                    msg_type = ContentType.comment
+                    # Stop if message is older than our range
+                    if msg_date and msg_date < dt_from:
+                        break
 
-                # Filter by content_type
-                if content_type == "posts" and msg_type != ContentType.post:
-                    continue
-                if content_type == "comments" and msg_type != ContentType.comment:
-                    continue
+                    # Skip if message is newer than our range (shouldn't happen
+                    # with offset_date, but guard anyway)
+                    if msg_date and msg_date > dt_to:
+                        continue
 
-                text = message.text or message.caption or ""
+                    # Skip if no text content
+                    if not message.text and not message.caption:
+                        continue
 
-                messages_batch.append({
-                    "channel_id": channel_db_id,
-                    "telegram_message_id": message.id,
-                    "content_type": msg_type,
-                    "text": text,
-                    "message_date": message.date,
-                })
+                    # Skip duplicates
+                    if message.id in existing_ids:
+                        skipped += 1
+                        continue
 
-                # Bulk insert when batch is full (short session per batch)
-                if len(messages_batch) >= BATCH_SIZE:
+                    # Determine content type
+                    msg_type = ContentType.post
+                    if message.reply_to_message_id:
+                        msg_type = ContentType.comment
+
+                    # Filter by content_type
+                    if content_type == "posts" and msg_type != ContentType.post:
+                        continue
+                    if content_type == "comments" and msg_type != ContentType.comment:
+                        continue
+
+                    text = message.text or message.caption or ""
+
+                    messages_batch.append({
+                        "channel_id": channel_db_id,
+                        "telegram_message_id": message.id,
+                        "content_type": msg_type,
+                        "text": text,
+                        "message_date": msg_date,
+                    })
+
+                    # Bulk insert when batch is full (short session per batch)
+                    if len(messages_batch) >= BATCH_SIZE:
+                        async with async_session() as session:
+                            inserted = await self._content_repo.bulk_insert(session, messages_batch)
+                            await session.commit()
+                        downloaded += inserted
+                        messages_batch.clear()
+
+                        if progress_callback:
+                            await progress_callback({
+                                "phase": "downloading",
+                                "channel": display_name,
+                                "progress": downloaded,
+                                "detail": f"Downloaded {downloaded} messages (skipped {skipped} duplicates)",
+                            })
+
+                        # Rate limiting (no DB session held during sleep)
+                        await asyncio.sleep(BATCH_DELAY_SEC)
+
+                # Insert remaining messages (short session)
+                if messages_batch:
                     async with async_session() as session:
                         inserted = await self._content_repo.bulk_insert(session, messages_batch)
                         await session.commit()
                     downloaded += inserted
                     messages_batch.clear()
 
+                # Iteration completed successfully — exit the retry loop
+                break
+
+            except Exception as e:
+                error_name = type(e).__name__
+                if "FloodWait" in error_name and flood_retries < MAX_FLOOD_RETRIES:
+                    flood_retries += 1
+                    wait_time = getattr(e, "value", 60)
+                    logger.warning(
+                        "FloodWait for channel %s (attempt %d/%d): sleeping %s seconds",
+                        username, flood_retries, MAX_FLOOD_RETRIES, wait_time,
+                    )
                     if progress_callback:
                         await progress_callback({
                             "phase": "downloading",
                             "channel": display_name,
                             "progress": downloaded,
-                            "detail": f"Downloaded {downloaded} messages (skipped {skipped} duplicates)",
+                            "detail": f"Rate limited — waiting {wait_time}s (attempt {flood_retries}/{MAX_FLOOD_RETRIES})",
                         })
-
-                    # Rate limiting (no DB session held during sleep)
-                    await asyncio.sleep(BATCH_DELAY_SEC)
-
-            # Insert remaining messages (short session)
-            if messages_batch:
-                async with async_session() as session:
-                    inserted = await self._content_repo.bulk_insert(session, messages_batch)
-                    await session.commit()
-                downloaded += inserted
-
-        except Exception as e:
-            error_name = type(e).__name__
-            if "FloodWait" in error_name:
-                # Extract wait time from FloodWait error
-                wait_time = getattr(e, "value", 60)
-                logger.warning(
-                    "FloodWait for channel %s: sleeping %s seconds",
-                    username, wait_time,
-                )
-                if progress_callback:
-                    await progress_callback({
-                        "phase": "downloading",
-                        "channel": display_name,
-                        "progress": downloaded,
-                        "detail": f"Rate limited — waiting {wait_time}s",
-                    })
-                await asyncio.sleep(wait_time)
-                # Don't re-raise — partial download is still useful
-            else:
-                logger.error("Error downloading channel %s: %s", username, e)
-                raise
+                    await asyncio.sleep(wait_time)
+                    # Retry the entire iteration
+                    continue
+                else:
+                    logger.error(
+                        "Error downloading channel %s: %s (type=%s, seen=%d, downloaded=%d)",
+                        username, e, error_name, seen_total, downloaded,
+                    )
+                    raise
 
         if progress_callback:
             await progress_callback({
                 "phase": "downloading",
                 "channel": display_name,
                 "progress": downloaded,
-                "detail": f"Completed: {downloaded} new messages",
+                "detail": f"Completed: {downloaded} new, {skipped} duplicates, {seen_total} scanned",
             })
 
         logger.info(
-            "Downloaded %d messages from @%s (skipped %d duplicates)",
-            downloaded, username, skipped,
+            "Downloaded %d messages from @%s (skipped %d duplicates, scanned %d total)",
+            downloaded, username, skipped, seen_total,
         )
         return downloaded
 
