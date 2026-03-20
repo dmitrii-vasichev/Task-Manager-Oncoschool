@@ -744,11 +744,12 @@ export const TELEGRAM_BROADCAST_STATUS_LABELS: Record<TelegramBroadcastStatus, s
 // ============================================
 
 export type ContentSubSection = "telegram_analysis" | "reports";
-export type ContentRole = "operator" | "editor";
+export type ContentRole = "viewer" | "operator" | "editor";
 export type AnalysisContentType = "posts" | "comments" | "all";
 export type AnalysisStatus = "preparing" | "downloading" | "analyzing" | "completed" | "failed";
 
 export const CONTENT_ROLE_LABELS: Record<ContentRole, string> = {
+  viewer: "Просмотр",
   operator: "Оператор",
   editor: "Редактор",
 };

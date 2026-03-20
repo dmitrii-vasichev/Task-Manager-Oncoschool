@@ -29,9 +29,9 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: {
     template: "%s — Онкошкола",
-    default: "Онкошкола — Таск-менеджер",
+    default: "Онкошкола — Портал",
   },
-  description: "Система управления задачами для команды Онкошколы",
+  description: "Рабочий портал команды Онкошколы",
   icons: {
     icon: "/favicon.svg",
   },
