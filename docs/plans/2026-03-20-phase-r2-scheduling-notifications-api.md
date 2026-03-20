@@ -4,6 +4,8 @@
 **PRD:** docs/prd-reports-and-rebranding.md
 **Covers:** FR-4, FR-5, FR-7, FR-15, FR-16
 **Depends on:** Phase R1 (PR #68 merged)
+**Issues:** #69, #70, #71, #72, #73, #74, #75, #76
+**Project Board:** #14 (Oncoschool Portal)
 
 ## Task Dependency Order
 
