@@ -64,6 +64,8 @@ export function useSidebar() {
 /* ------------------------------------------------
    Navigation items
    ------------------------------------------------ */
+type SidebarSection = "dashboard" | "work" | "analytics" | "content" | "manage";
+
 interface NavItem {
   href: string;
   label: string;
@@ -71,15 +73,22 @@ interface NavItem {
   moderatorOnly?: boolean;
   contentAccess?: boolean;
   contentSubSection?: ContentSubSection;
-  section: "main" | "content" | "manage";
+  section: SidebarSection;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard, section: "main" },
-  { href: "/tasks", label: "Задачи", icon: CheckSquare, section: "main" },
-  { href: "/meetings", label: "Встречи", icon: CalendarDays, section: "main" },
-  { href: "/analytics", label: "Аналитика", icon: BarChart3, section: "main" },
-  { href: "/team", label: "Команда", icon: Users, section: "main" },
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, section: "dashboard" },
+  { href: "/tasks", label: "Задачи", icon: CheckSquare, section: "work" },
+  { href: "/meetings", label: "Встречи", icon: CalendarDays, section: "work" },
+  { href: "/analytics", label: "Аналитика", icon: BarChart3, section: "analytics" },
+  {
+    href: "/reports",
+    label: "Отчёты",
+    icon: FileBarChart,
+    contentAccess: true,
+    contentSubSection: "reports",
+    section: "analytics",
+  },
   {
     href: "/content/telegram-analysis",
     label: "Telegram-анализ",
@@ -88,14 +97,7 @@ const NAV_ITEMS: NavItem[] = [
     contentSubSection: "telegram_analysis",
     section: "content",
   },
-  {
-    href: "/reports",
-    label: "Отчёты",
-    icon: FileBarChart,
-    contentAccess: true,
-    contentSubSection: "reports",
-    section: "content",
-  },
+  { href: "/team", label: "Команда", icon: Users, moderatorOnly: true, section: "manage" },
   {
     href: "/broadcasts",
     label: "Рассылки",
@@ -111,6 +113,15 @@ const NAV_ITEMS: NavItem[] = [
     section: "manage",
   },
 ];
+
+const SECTION_LABELS: Partial<Record<SidebarSection, string>> = {
+  work: "Операционное",
+  analytics: "Аналитика",
+  content: "Контент",
+  manage: "Управление",
+};
+
+const SECTION_ORDER: SidebarSection[] = ["dashboard", "work", "analytics", "content", "manage"];
 
 /* ------------------------------------------------
    Mobile trigger (hamburger)
@@ -142,17 +153,17 @@ function SidebarInner({ collapsed }: { collapsed: boolean }) {
 
   const isModerator = PermissionService.isModerator(user);
 
-  const mainItems = NAV_ITEMS.filter(
-    (i) => i.section === "main" && (!i.moderatorOnly || isModerator)
-  );
-  const contentItems = NAV_ITEMS.filter(
-    (i) =>
-      i.section === "content" &&
-      (!i.contentAccess || hasContentAccess(i.contentSubSection ?? "telegram_analysis"))
-  );
-  const manageItems = NAV_ITEMS.filter(
-    (i) => i.section === "manage" && (!i.moderatorOnly || isModerator)
-  );
+  const visibleItems = NAV_ITEMS.filter((i) => {
+    if (i.moderatorOnly && !isModerator) return false;
+    if (i.contentAccess && !hasContentAccess(i.contentSubSection ?? "telegram_analysis")) return false;
+    return true;
+  });
+
+  const sections = SECTION_ORDER.map((key) => ({
+    key,
+    label: SECTION_LABELS[key],
+    items: visibleItems.filter((i) => i.section === key),
+  })).filter((s) => s.items.length > 0);
 
   function isActive(href: string) {
     if (href === "/") return pathname === "/";
@@ -220,7 +231,7 @@ function SidebarInner({ collapsed }: { collapsed: boolean }) {
               Онкошкола
             </span>
             <span className="text-[10px] text-muted-foreground font-medium tracking-wider uppercase">
-              Task Manager
+              Портал
             </span>
           </div>
         )}
@@ -231,63 +242,29 @@ function SidebarInner({ collapsed }: { collapsed: boolean }) {
 
       {/* Navigation */}
       <ScrollArea className="flex-1 py-4">
-        <nav className={cn("flex flex-col gap-1", collapsed ? "px-2" : "px-3")}>
-          {mainItems.map((item) => (
-            <NavLink key={item.href} item={item} />
-          ))}
-        </nav>
-
-        {/* Content section */}
-        {contentItems.length > 0 && (
-          <>
-            <div className={cn("my-3", collapsed ? "mx-2" : "mx-3")}>
-              <div className="h-px bg-border/60" />
-            </div>
-            {!collapsed && (
+        {sections.map((section, idx) => (
+          <div key={section.key}>
+            {/* Divider between sections (not before the first) */}
+            {idx > 0 && (
+              <div className={cn("my-3", collapsed ? "mx-2" : "mx-3")}>
+                <div className="h-px bg-border/60" />
+              </div>
+            )}
+            {/* Section label (dashboard has none; collapsed mode shows no labels) */}
+            {section.label && !collapsed && (
               <div className="px-4 mb-2">
                 <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
-                  Контент
+                  {section.label}
                 </span>
               </div>
             )}
-            <nav
-              className={cn(
-                "flex flex-col gap-1",
-                collapsed ? "px-2" : "px-3"
-              )}
-            >
-              {contentItems.map((item) => (
+            <nav className={cn("flex flex-col gap-1", collapsed ? "px-2" : "px-3")}>
+              {section.items.map((item) => (
                 <NavLink key={item.href} item={item} />
               ))}
             </nav>
-          </>
-        )}
-
-        {/* Moderator section */}
-        {manageItems.length > 0 && (
-          <>
-            <div className={cn("my-3", collapsed ? "mx-2" : "mx-3")}>
-              <div className="h-px bg-border/60" />
-            </div>
-            {!collapsed && (
-              <div className="px-4 mb-2">
-                <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
-                  Управление
-                </span>
-              </div>
-            )}
-            <nav
-              className={cn(
-                "flex flex-col gap-1",
-                collapsed ? "px-2" : "px-3"
-              )}
-            >
-              {manageItems.map((item) => (
-                <NavLink key={item.href} item={item} />
-              ))}
-            </nav>
-          </>
-        )}
+          </div>
+        ))}
       </ScrollArea>
 
       {/* Divider */}

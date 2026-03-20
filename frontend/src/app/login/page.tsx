@@ -567,7 +567,7 @@ export default function LoginPage() {
 
         {/* Footer */}
         <p className="mt-auto pt-8 text-center text-xs text-muted-foreground/50">
-          Онкошкола &middot; Таск-менеджер
+          Онкошкола &middot; Портал
         </p>
       </div>
     </div>

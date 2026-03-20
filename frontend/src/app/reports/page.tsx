@@ -22,6 +22,8 @@ import {
   Info,
   Settings,
   Loader2,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react";
 import {
   Area,
@@ -187,7 +189,26 @@ export default function ReportsPage() {
   const { toastSuccess, toastError } = useToast();
   const [credentials, setCredentials] = useState<GetCourseCredentials | null>(null);
   const [credentialsLoading, setCredentialsLoading] = useState(true);
-  const [collecting, setCollecting] = useState(false);
+  type CollectionStage = "idle" | "requesting" | "collecting" | "done" | "error";
+  const [stage, setStage] = useState<CollectionStage>("idle");
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [collectError, setCollectError] = useState<string | null>(null);
+
+  const ESTIMATED_DURATION = 15 * 60; // 15 minutes in seconds
+
+  // Timer for elapsed seconds
+  useEffect(() => {
+    if (stage !== "requesting" && stage !== "collecting") return;
+    const interval = setInterval(() => setElapsedSeconds((s) => s + 1), 1000);
+    return () => clearInterval(interval);
+  }, [stage]);
+
+  // Auto-dismiss success banner after 5 seconds
+  useEffect(() => {
+    if (stage !== "done") return;
+    const timeout = setTimeout(() => setStage("idle"), 5000);
+    return () => clearTimeout(timeout);
+  }, [stage]);
 
   const fetchCredentials = useCallback(async () => {
     try {
@@ -205,25 +226,42 @@ export default function ReportsPage() {
     fetchCredentials();
   }, [fetchCredentials]);
 
+  const collecting = stage === "requesting" || stage === "collecting";
+
   const handleCollect = async () => {
-    setCollecting(true);
+    setStage("requesting");
+    setElapsedSeconds(0);
+    setCollectError(null);
     try {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
       const dateStr = yesterday.toISOString().split("T")[0];
+      setStage("collecting");
       const result = await api.collectReport(dateStr);
+      setStage("done");
       if (result.status === "already_exists") {
         toastSuccess(`Данные за ${dateStr} уже собраны`);
       } else {
-        toastSuccess(`Сбор данных за ${dateStr} запущен`);
+        toastSuccess(`Сбор данных за ${dateStr} завершён`);
       }
-      setTimeout(() => refetch(), 2000);
+      refetch();
     } catch (e) {
-      toastError(e instanceof Error ? e.message : "Ошибка сбора данных");
-    } finally {
-      setCollecting(false);
+      setStage("error");
+      const msg = e instanceof Error ? e.message : "Ошибка сбора данных";
+      setCollectError(msg);
+      toastError(msg);
+      // Auto-dismiss error after 5 seconds
+      setTimeout(() => setStage("idle"), 5000);
     }
   };
+
+  const formatElapsed = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+
+  const progressPercent = Math.min(95, Math.round((elapsedSeconds / ESTIMATED_DURATION) * 100));
 
   const chartData = useMemo(() => {
     if (!summary?.metrics) return [];
@@ -338,11 +376,16 @@ export default function ReportsPage() {
               disabled={collecting}
             >
               {collecting ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Сбор данных...
+                </>
               ) : (
-                <RefreshCw className="h-3.5 w-3.5" />
+                <>
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Обновить данные
+                </>
               )}
-              Обновить данные
             </Button>
           </div>
         </div>
@@ -388,6 +431,60 @@ export default function ReportsPage() {
           isMoney
         />
       </section>
+
+      {/* Collection progress banner */}
+      {collecting && (
+        <section className="animate-in fade-in slide-in-from-top-2 duration-300 rounded-2xl border border-primary/20 bg-primary/5 p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">
+              <Loader2 className="h-5 w-5 text-primary animate-spin" />
+            </div>
+            <div className="flex-1 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-foreground">
+                  Сбор данных...
+                </p>
+                <span className="text-xs font-mono text-muted-foreground">
+                  {formatElapsed(elapsedSeconds)} / ~15 мин
+                </span>
+              </div>
+              <div className="h-2 w-full rounded-full bg-primary/10 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-primary transition-all duration-1000 ease-linear"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Собираем данные из GetCourse (пользователи, платежи, заказы). Можно продолжить работу.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* Success banner */}
+      {stage === "done" && (
+        <section className="animate-in fade-in slide-in-from-top-2 duration-300 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
+          <div className="flex items-center gap-3">
+            <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+            <p className="text-sm font-medium text-emerald-700 dark:text-emerald-400">
+              Данные успешно собраны
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* Error banner */}
+      {stage === "error" && (
+        <section className="animate-in fade-in slide-in-from-top-2 duration-300 rounded-2xl border border-destructive/20 bg-destructive/5 p-4">
+          <div className="flex items-center gap-3">
+            <XCircle className="h-5 w-5 text-destructive shrink-0" />
+            <p className="text-sm font-medium text-destructive">
+              {collectError || "Ошибка сбора данных"}
+            </p>
+          </div>
+        </section>
+      )}
 
       {/* Charts */}
       <section className="grid gap-4 lg:grid-cols-3">
