@@ -114,8 +114,15 @@ class GetCourseService:
                 data = response.json()
 
             if not data.get("success"):
+                error_msg = data.get("error_message", "")
+                # "Файл еще не создан" = file not yet created — normal intermediate state
+                if "еще не создан" in str(error_msg).lower():
+                    logger.debug("Export %d not ready yet, retrying...", export_id)
+                    await asyncio.sleep(POLL_INTERVAL_SECONDS)
+                    elapsed += POLL_INTERVAL_SECONDS
+                    continue
                 raise RuntimeError(
-                    f"GetCourse export poll failed: {data.get('error_message', data)}"
+                    f"GetCourse export poll failed: {error_msg or data}"
                 )
 
             info = data.get("info", {})
