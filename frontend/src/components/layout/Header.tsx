@@ -11,11 +11,13 @@ import {
   CheckCheck,
   CheckSquare,
   ChevronRight,
+  FileBarChart,
   LayoutDashboard,
   Loader2,
   MessageSquareWarning,
   Megaphone,
   RefreshCw,
+  Search,
   Settings,
   UserPlus,
   Users,
@@ -44,7 +46,9 @@ const PAGE_META: Record<string, PageMeta> = {
   "/": { title: "Dashboard", icon: LayoutDashboard },
   "/tasks": { title: "Задачи", icon: CheckSquare },
   "/meetings": { title: "Встречи", icon: CalendarDays },
-  "/analytics": { title: "Аналитика", icon: BarChart3 },
+  "/analytics": { title: "Статистика задач", icon: BarChart3 },
+  "/reports": { title: "Отчёты", icon: FileBarChart },
+  "/content/telegram-analysis": { title: "Telegram-анализ", icon: Search },
   "/team": { title: "Команда", icon: Users },
   "/broadcasts": { title: "Рассылки", icon: Megaphone },
   "/settings": { title: "Настройки", icon: Settings },
@@ -54,6 +58,12 @@ function getPageMeta(
   pathname: string,
   pageTitle: string | null,
 ): PageMeta & { crumbs: { label: string; href?: string }[] } {
+  // Exact match first (handles multi-segment routes like /content/telegram-analysis)
+  if (PAGE_META[pathname]) {
+    const meta = PAGE_META[pathname];
+    return { ...meta, crumbs: [{ label: meta.title }] };
+  }
+
   // Check for detail pages like /tasks/42
   const segments = pathname.split("/").filter(Boolean);
 
@@ -78,7 +88,7 @@ function getPageMeta(
     }
   }
 
-  const meta = PAGE_META[pathname] || { title: "Онкошкола", icon: LayoutDashboard };
+  const meta = { title: "Онкошкола", icon: LayoutDashboard };
   return {
     ...meta,
     crumbs: [{ label: meta.title }],
