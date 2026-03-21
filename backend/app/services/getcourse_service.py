@@ -22,9 +22,10 @@ MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2
 
 # Rate limit handling
-RATE_LIMIT_DELAY = 30  # seconds to wait when GetCourse says "too many requests"
-MAX_RATE_LIMIT_RETRIES = 10  # max rate-limit waits (separate from error retries)
-EXPORT_PAUSE = 10  # seconds between sequential export requests
+RATE_LIMIT_BASE_DELAY = 30  # initial seconds to wait on rate limit
+RATE_LIMIT_MAX_DELAY = 120  # max seconds to wait on rate limit (exponential backoff cap)
+MAX_RATE_LIMIT_RETRIES = 30  # max rate-limit waits (separate from error retries)
+EXPORT_PAUSE = 30  # seconds between sequential export requests
 
 
 
@@ -85,11 +86,15 @@ class GetCourseService:
                             raise RuntimeError(
                                 f"GetCourse export request failed: rate limited {rate_limit_count} times"
                             )
+                        delay = min(
+                            RATE_LIMIT_BASE_DELAY * (2 ** (rate_limit_count - 1)),
+                            RATE_LIMIT_MAX_DELAY,
+                        )
                         logger.warning(
                             "Rate limited on export request (%s), attempt %d, waiting %ds...",
-                            export_type, rate_limit_count, RATE_LIMIT_DELAY,
+                            export_type, rate_limit_count, delay,
                         )
-                        await asyncio.sleep(RATE_LIMIT_DELAY)
+                        await asyncio.sleep(delay)
                         continue  # does NOT increment attempt
                     raise RuntimeError(
                         f"GetCourse export request failed: {error_msg or data}"
@@ -143,12 +148,13 @@ class GetCourseService:
                     continue
                 # "Слишком много запросов" = rate limited — wait longer and retry
                 if "слишком много" in error_msg.lower():
+                    delay = RATE_LIMIT_BASE_DELAY
                     logger.warning(
                         "Rate limited polling export %d, waiting %ds...",
-                        export_id, RATE_LIMIT_DELAY,
+                        export_id, delay,
                     )
-                    await asyncio.sleep(RATE_LIMIT_DELAY)
-                    elapsed += RATE_LIMIT_DELAY
+                    await asyncio.sleep(delay)
+                    elapsed += delay
                     continue
                 raise RuntimeError(
                     f"GetCourse export poll failed: {error_msg or data}"

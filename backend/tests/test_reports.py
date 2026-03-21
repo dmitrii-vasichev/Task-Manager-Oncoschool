@@ -724,7 +724,89 @@ class TestRateLimitRetry(unittest.IsolatedAsyncioTestCase):
 
         # Two pauses (after users, after payments — not after deals)
         sleep_calls = [c.args[0] for c in mock_sleep.await_args_list]
-        self.assertEqual(sleep_calls.count(10), 2)
+        self.assertEqual(sleep_calls.count(30), 2)
+
+
+class TestRateLimitExponentialBackoff(unittest.IsolatedAsyncioTestCase):
+    """Regression #130: rate limit retries must use exponential backoff."""
+
+    async def test_request_export_uses_exponential_backoff(self) -> None:
+        """Rate limit delays should increase: 30s, 60s, 120s (capped)."""
+        service = GetCourseService()
+
+        rate_limited = MagicMock()
+        rate_limited.status_code = 200
+        rate_limited.raise_for_status = MagicMock()
+        rate_limited.json = MagicMock(return_value={
+            "success": False,
+            "error_message": "Слишком много запросов",
+        })
+
+        success = MagicMock()
+        success.status_code = 200
+        success.raise_for_status = MagicMock()
+        success.json = MagicMock(return_value={
+            "success": True,
+            "info": {"export_id": 55},
+        })
+
+        # 3 rate limits then success
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(
+            side_effect=[rate_limited, rate_limited, rate_limited, success]
+        )
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.services.getcourse_service.httpx.AsyncClient", return_value=mock_client):
+            with patch("app.services.getcourse_service.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                export_id = await service._request_export(
+                    "https://school.getcourse.ru", "secret", "users", "2026-03-14", "2026-03-20"
+                )
+
+        self.assertEqual(export_id, 55)
+        # Delays: 30s (30*2^0), 60s (30*2^1), 120s (30*2^2)
+        sleep_calls = [c.args[0] for c in mock_sleep.await_args_list]
+        self.assertEqual(sleep_calls, [30, 60, 120])
+
+    async def test_backoff_caps_at_max_delay(self) -> None:
+        """Exponential backoff should cap at RATE_LIMIT_MAX_DELAY (120s)."""
+        service = GetCourseService()
+
+        rate_limited = MagicMock()
+        rate_limited.status_code = 200
+        rate_limited.raise_for_status = MagicMock()
+        rate_limited.json = MagicMock(return_value={
+            "success": False,
+            "error_message": "Слишком много запросов",
+        })
+
+        success = MagicMock()
+        success.status_code = 200
+        success.raise_for_status = MagicMock()
+        success.json = MagicMock(return_value={
+            "success": True,
+            "info": {"export_id": 66},
+        })
+
+        # 5 rate limits then success — delays: 30, 60, 120, 120, 120
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(
+            side_effect=[rate_limited] * 5 + [success]
+        )
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.services.getcourse_service.httpx.AsyncClient", return_value=mock_client):
+            with patch("app.services.getcourse_service.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+                export_id = await service._request_export(
+                    "https://school.getcourse.ru", "secret", "users", "2026-03-14", "2026-03-20"
+                )
+
+        self.assertEqual(export_id, 66)
+        sleep_calls = [c.args[0] for c in mock_sleep.await_args_list]
+        # 30, 60, 120, 120, 120 — capped at 120
+        self.assertEqual(sleep_calls, [30, 60, 120, 120, 120])
 
 
 if __name__ == "__main__":
