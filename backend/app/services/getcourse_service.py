@@ -22,7 +22,7 @@ MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2
 
 # Pause between export requests (seconds) to respect GetCourse rate limits
-EXPORT_REQUEST_PAUSE = 60
+EXPORT_REQUEST_PAUSE = 300  # 5 minutes
 
 
 class GetCourseService:
