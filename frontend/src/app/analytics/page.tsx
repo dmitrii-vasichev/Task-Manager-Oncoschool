@@ -521,10 +521,7 @@ export default function AnalyticsPage() {
       <section className="animate-fade-in-up stagger-1 rounded-2xl border border-border/60 bg-card p-5">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <h1 className="text-xl font-bold font-heading tracking-tight md:text-2xl">
-              Аналитика задач
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">{scopeLabel}</p>
+            <p className="text-sm text-muted-foreground">{scopeLabel}</p>
           </div>
 
           {canSelectDepartment && (
