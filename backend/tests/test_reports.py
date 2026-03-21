@@ -465,5 +465,66 @@ class TestRequestExportHTTPMethod(unittest.IsolatedAsyncioTestCase):
             self.assertIn("created_at[to]", sent_params, f"{export_type} must use created_at[to]")
 
 
+class TestPollExportNotReady(unittest.IsolatedAsyncioTestCase):
+    """Regression: _poll_export must keep polling when file is not yet created."""
+
+    async def test_poll_continues_on_file_not_ready(self) -> None:
+        """'Файл еще не создан' is a normal intermediate state, not an error."""
+        service = GetCourseService()
+
+        not_ready = MagicMock()
+        not_ready.status_code = 200
+        not_ready.raise_for_status = MagicMock()
+        not_ready.json = MagicMock(return_value={
+            "success": False,
+            "error_message": "Файл еще не создан",
+        })
+
+        ready = MagicMock()
+        ready.status_code = 200
+        ready.raise_for_status = MagicMock()
+        ready.json = MagicMock(return_value={
+            "success": True,
+            "info": {"status": "exported", "items": [{"email": "a@test.com"}]},
+        })
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[not_ready, not_ready, ready])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.services.getcourse_service.httpx.AsyncClient", return_value=mock_client):
+            with patch("app.services.getcourse_service.asyncio.sleep", new_callable=AsyncMock):
+                items = await service._poll_export(
+                    "https://school.getcourse.ru", "secret", 42
+                )
+
+        self.assertEqual(len(items), 1)
+        self.assertEqual(mock_client.get.await_count, 3)
+
+    async def test_poll_raises_on_real_error(self) -> None:
+        """Genuine API errors should still raise."""
+        service = GetCourseService()
+
+        error_resp = MagicMock()
+        error_resp.status_code = 200
+        error_resp.raise_for_status = MagicMock()
+        error_resp.json = MagicMock(return_value={
+            "success": False,
+            "error_message": "Неверный ключ API",
+        })
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=error_resp)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.services.getcourse_service.httpx.AsyncClient", return_value=mock_client):
+            with self.assertRaises(RuntimeError, msg="Неверный ключ API"):
+                await service._poll_export(
+                    "https://school.getcourse.ru", "secret", 42
+                )
+
+
 if __name__ == "__main__":
     unittest.main()
