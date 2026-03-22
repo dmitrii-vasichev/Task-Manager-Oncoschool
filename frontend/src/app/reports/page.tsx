@@ -463,6 +463,7 @@ export default function ReportsPage() {
         rate_limited: `Ожидание (rate limit #${backfillStatus.rate_limit_count ?? 0}, пауза ${backfillStatus.wait_seconds ?? 0}с)`,
         fetching: `Получение данных: ${backfillStatus.export_type ?? ""}`,
         export_done: `Готово: ${backfillStatus.export_type ?? ""} (${backfillStatus.rows_count ?? 0} записей)`,
+        export_failed: `Ошибка: ${backfillStatus.export_type ?? ""} — данные не получены`,
         saving: "Сохранение в базу данных…",
       };
       const stage = backfillStatus.stage ?? "starting";

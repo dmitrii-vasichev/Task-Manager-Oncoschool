@@ -496,7 +496,8 @@ class GetCourseService:
 
         # ── Phase 2: Fetch all results ──
         # By now: users had 2×pause, payments had 1×pause, deals had 0
-        results: list[list] = []
+        results: dict[str, list] = {}
+        errors: dict[str, str] = {}
 
         for idx, export_type in enumerate(export_types):
             step = f"{idx + 1}/{len(export_types)}"
@@ -518,26 +519,48 @@ class GetCourseService:
 
             logger.info("Fetching export %d (%s)...", eid, export_type)
 
-            rows = await self._poll_export(
-                base_url, api_key, eid,
-                timeout=timeout,
-                on_progress=_fetch_progress,
-                cancel_flag=cancel_flag,
+            try:
+                rows = await self._poll_export(
+                    base_url, api_key, eid,
+                    timeout=timeout,
+                    on_progress=_fetch_progress,
+                    cancel_flag=cancel_flag,
+                )
+                results[export_type] = rows
+
+                if on_progress:
+                    await on_progress("export_done", {
+                        "export_type": export_type,
+                        "step": step,
+                        "rows_count": len(rows),
+                    })
+
+                logger.info(
+                    "Export %d (%s) fetched: %d rows", eid, export_type, len(rows),
+                )
+            except (TimeoutError, RuntimeError) as e:
+                errors[export_type] = str(e)
+                logger.error(
+                    "Export %d (%s) FAILED: %s", eid, export_type, e,
+                )
+                if on_progress:
+                    await on_progress("export_failed", {
+                        "export_type": export_type,
+                        "step": step,
+                        "error": str(e),
+                    })
+
+        # ── Phase 3: Validate all exports succeeded ──
+        if errors:
+            failed = ", ".join(f"{t} ({e})" for t, e in errors.items())
+            succeeded = [t for t in export_types if t in results]
+            raise RuntimeError(
+                f"Не все данные получены. Не удалось: {failed}. "
+                f"Успешно: {', '.join(succeeded) if succeeded else 'нет'}. "
+                "Данные не сохранены."
             )
 
-            if on_progress:
-                await on_progress("export_done", {
-                    "export_type": export_type,
-                    "step": step,
-                    "rows_count": len(rows),
-                })
-
-            results.append(rows)
-            logger.info(
-                "Export %d (%s) fetched: %d rows", eid, export_type, len(rows),
-            )
-
-        return results[0], results[1], results[2]
+        return results["users"], results["payments"], results["deals"]
 
     async def collect_metrics(
         self,

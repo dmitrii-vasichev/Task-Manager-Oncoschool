@@ -233,5 +233,156 @@ class TestConfigurablePause(unittest.TestCase):
         self.assertEqual(EXPORT_PAUSE, 300)
 
 
+class TestExportValidation(unittest.TestCase):
+    """Issue #169: If any export fails, don't save partial data."""
+
+    def test_partial_failure_raises_with_details(self):
+        """If one export fails, RuntimeError lists which failed and which succeeded."""
+        service = GetCourseService()
+
+        export_id_counter = [0]
+
+        def request_json():
+            export_id_counter[0] += 1
+            return _make_export_response(export_id_counter[0])
+
+        request_mock = MagicMock()
+        request_mock.raise_for_status = MagicMock()
+        request_mock.json = request_json
+
+        # Users and payments succeed, deals times out
+        fetch_count = [0]
+
+        def poll_json():
+            fetch_count[0] += 1
+            if fetch_count[0] <= 2:  # users and payments
+                return _make_exported_response([{"data": "ok"}])
+            return _make_not_ready_response()  # deals — never ready
+
+        poll_mock = MagicMock()
+        poll_mock.raise_for_status = MagicMock()
+        poll_mock.json = poll_json
+
+        def mock_get(url, params=None):
+            if "/exports/" in url:
+                return poll_mock
+            return request_mock
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=mock_get)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.services.getcourse_service.httpx.AsyncClient", return_value=mock_client):
+            with patch("app.services.getcourse_service.asyncio.sleep", new_callable=AsyncMock):
+                with self.assertRaises(RuntimeError) as ctx:
+                    asyncio.run(
+                        service._request_and_poll_exports(
+                            "https://test.getcourse.ru", "key",
+                            "2026-03-21", "2026-03-21",
+                            pause_seconds=0,
+                        )
+                    )
+
+        error_msg = str(ctx.exception)
+        self.assertIn("deals", error_msg)
+        self.assertIn("users", error_msg)
+        self.assertIn("payments", error_msg)
+        self.assertIn("Не все данные получены", error_msg)
+        self.assertIn("Данные не сохранены", error_msg)
+
+    def test_all_succeed_returns_data(self):
+        """When all 3 exports succeed, returns all data normally."""
+        service = GetCourseService()
+
+        export_id_counter = [0]
+
+        def request_json():
+            export_id_counter[0] += 1
+            return _make_export_response(export_id_counter[0])
+
+        request_mock = MagicMock()
+        request_mock.raise_for_status = MagicMock()
+        request_mock.json = request_json
+
+        poll_mock = MagicMock()
+        poll_mock.raise_for_status = MagicMock()
+        poll_mock.json = MagicMock(return_value=_make_exported_response([{"id": 1}]))
+
+        def mock_get(url, params=None):
+            if "/exports/" in url:
+                return poll_mock
+            return request_mock
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=mock_get)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.services.getcourse_service.httpx.AsyncClient", return_value=mock_client):
+            with patch("app.services.getcourse_service.asyncio.sleep", new_callable=AsyncMock):
+                users, payments, deals = asyncio.run(
+                    service._request_and_poll_exports(
+                        "https://test.getcourse.ru", "key",
+                        "2026-03-21", "2026-03-21",
+                        pause_seconds=0,
+                    )
+                )
+
+        self.assertEqual(len(users), 1)
+        self.assertEqual(len(payments), 1)
+        self.assertEqual(len(deals), 1)
+
+    def test_progress_reports_export_failed(self):
+        """On failure, progress callback should receive 'export_failed' event."""
+        service = GetCourseService()
+        progress_events = []
+
+        async def on_progress(event, detail):
+            progress_events.append((event, detail))
+
+        export_id_counter = [0]
+
+        def request_json():
+            export_id_counter[0] += 1
+            return _make_export_response(export_id_counter[0])
+
+        request_mock = MagicMock()
+        request_mock.raise_for_status = MagicMock()
+        request_mock.json = request_json
+
+        # All exports timeout (never ready)
+        poll_mock = MagicMock()
+        poll_mock.raise_for_status = MagicMock()
+        poll_mock.json = MagicMock(return_value=_make_not_ready_response())
+
+        def mock_get(url, params=None):
+            if "/exports/" in url:
+                return poll_mock
+            return request_mock
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=mock_get)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("app.services.getcourse_service.httpx.AsyncClient", return_value=mock_client):
+            with patch("app.services.getcourse_service.asyncio.sleep", new_callable=AsyncMock):
+                with self.assertRaises(RuntimeError):
+                    asyncio.run(
+                        service._request_and_poll_exports(
+                            "https://test.getcourse.ru", "key",
+                            "2026-03-21", "2026-03-21",
+                            pause_seconds=0,
+                            on_progress=on_progress,
+                        )
+                    )
+
+        failed_events = [e for e in progress_events if e[0] == "export_failed"]
+        self.assertEqual(len(failed_events), 3)
+        failed_types = [e[1]["export_type"] for e in failed_events]
+        self.assertEqual(failed_types, ["users", "payments", "deals"])
+
+
 if __name__ == "__main__":
     unittest.main()
