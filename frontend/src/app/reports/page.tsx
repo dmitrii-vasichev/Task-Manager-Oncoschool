@@ -17,6 +17,7 @@ import { DatePicker } from "@/components/shared/DatePicker";
 import { useReports } from "@/hooks/useReports";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { api } from "@/lib/api";
+import { formatDateOnly, toLocalDateString } from "@/lib/dateUtils";
 import type { BackfillStatus, DailyMetric, GetCourseCredentials } from "@/lib/types";
 import {
   Users,
@@ -67,11 +68,6 @@ function formatShortMoney(value: number): string {
   if (value >= 1_000_000) return (value / 1_000_000).toFixed(1) + "M";
   if (value >= 1_000) return (value / 1_000).toFixed(0) + "K";
   return String(value);
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
 }
 
 function DeltaBadge({ value }: { value: number | null }) {
@@ -280,7 +276,7 @@ export default function ReportsPage() {
     try {
       const yesterday = new Date();
       yesterday.setDate(yesterday.getDate() - 1);
-      const dateStr = yesterday.toISOString().split("T")[0];
+      const dateStr = toLocalDateString(yesterday);
       setStage("collecting");
       const result = await api.collectReport(dateStr);
       setStage("done");
@@ -372,7 +368,7 @@ export default function ReportsPage() {
     return [...summary.metrics]
       .sort((a, b) => a.metric_date.localeCompare(b.metric_date))
       .map((m: DailyMetric) => ({
-        date: formatDate(m.metric_date),
+        date: formatDateOnly(m.metric_date),
         users_count: m.users_count,
         payments_count: m.payments_count,
         payments_sum: Number(m.payments_sum),
@@ -435,11 +431,7 @@ export default function ReportsPage() {
 
   const formatBackfillDates = (status: BackfillStatus) => {
     if (!status.date_from || !status.date_to) return "";
-    const formatDate = (iso: string) => {
-      const [y, m, d] = iso.split("-");
-      return `${d}.${m}.${y}`;
-    };
-    return `${formatDate(status.date_from)} — ${formatDate(status.date_to)}`;
+    return `${formatDateOnly(status.date_from, { includeYear: true })} — ${formatDateOnly(status.date_to, { includeYear: true })}`;
   };
 
   const dismissBackfillStatus = () => {
@@ -724,7 +716,7 @@ export default function ReportsPage() {
               Отчёты GetCourse
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {summary.date_from} — {summary.date_to}
+              {formatDateOnly(summary.date_from, { includeYear: true })} — {formatDateOnly(summary.date_to, { includeYear: true })}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -1089,7 +1081,7 @@ export default function ReportsPage() {
               {sortedMetrics.map((m) => (
                 <tr key={m.id} className="hover:bg-muted/30">
                   <td className="px-2 py-2 text-sm font-medium">
-                    {(() => { const [y, mo, d] = m.metric_date.split("-"); return `${d}.${mo}.${y}`; })()}
+                    {formatDateOnly(m.metric_date, { includeYear: true })}
                   </td>
                   <td className="px-2 py-2 text-right font-mono text-xs">
                     {m.users_count.toLocaleString("ru-RU")}
