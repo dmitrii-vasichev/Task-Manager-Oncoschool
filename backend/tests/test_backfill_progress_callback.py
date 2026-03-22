@@ -171,5 +171,80 @@ class TestProgressCallback(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(items), 1)
 
 
+class TestPollHttpRetry(unittest.IsolatedAsyncioTestCase):
+    """Regression #159: transient HTTP errors in _poll_export should be retried."""
+
+    def setUp(self):
+        self.service = GetCourseService()
+
+    @patch("app.services.getcourse_service.asyncio.sleep", new_callable=AsyncMock)
+    @patch("app.services.getcourse_service.httpx.AsyncClient")
+    async def test_transient_http_error_is_retried(self, mock_client_cls, mock_sleep):
+        """A single HTTP error should be retried, not crash the poll."""
+        import httpx as _httpx
+
+        mock_client = AsyncMock()
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        # First call: timeout error, second call: exported
+        error_response = _httpx.TimeoutException("read timeout")
+        ok_response = MagicMock()
+        ok_response.json.return_value = _make_exported_response([{"id": 1}])
+        ok_response.raise_for_status = MagicMock()
+
+        mock_client.get = AsyncMock(side_effect=[error_response, ok_response])
+
+        items = await self.service._poll_export(
+            "https://example.com", "key", 100, timeout=300,
+        )
+        self.assertEqual(len(items), 1)
+
+    @patch("app.services.getcourse_service.asyncio.sleep", new_callable=AsyncMock)
+    @patch("app.services.getcourse_service.httpx.AsyncClient")
+    async def test_too_many_http_errors_raises(self, mock_client_cls, mock_sleep):
+        """MAX_POLL_HTTP_ERRORS consecutive HTTP errors should raise RuntimeError."""
+        import httpx as _httpx
+        from app.services.getcourse_service import MAX_POLL_HTTP_ERRORS
+
+        mock_client = AsyncMock()
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        mock_client.get = AsyncMock(
+            side_effect=_httpx.TimeoutException("timeout")
+        )
+
+        with self.assertRaises(RuntimeError) as ctx:
+            await self.service._poll_export(
+                "https://example.com", "key", 200, timeout=9999,
+            )
+        self.assertIn("HTTP errors", str(ctx.exception))
+
+
+class TestPollCancellation(unittest.IsolatedAsyncioTestCase):
+    """Regression #159: cancel_flag should stop polling."""
+
+    def setUp(self):
+        self.service = GetCourseService()
+
+    @patch("app.services.getcourse_service.asyncio.sleep", new_callable=AsyncMock)
+    @patch("app.services.getcourse_service.httpx.AsyncClient")
+    async def test_cancel_flag_stops_poll(self, mock_client_cls, mock_sleep):
+        """Setting cancel_flag should raise CancelledError."""
+        cancel = asyncio.Event()
+        cancel.set()  # already cancelled
+
+        mock_client = AsyncMock()
+        mock_client_cls.return_value.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        with self.assertRaises(asyncio.CancelledError):
+            await self.service._poll_export(
+                "https://example.com", "key", 300, timeout=300,
+                cancel_flag=cancel,
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

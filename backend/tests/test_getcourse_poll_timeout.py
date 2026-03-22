@@ -176,10 +176,10 @@ class TestPollExportRateLimitBackoff(unittest.TestCase):
 
 
 class TestPollMaxWaitConstant(unittest.TestCase):
-    """Verify the timeout constant was increased."""
+    """Verify the base timeout constant (5 min, reduced from 20 min in #159)."""
 
-    def test_poll_max_wait_is_1200(self):
-        self.assertEqual(POLL_MAX_WAIT_SECONDS, 1200)
+    def test_poll_max_wait_is_300(self):
+        self.assertEqual(POLL_MAX_WAIT_SECONDS, 300)
 
 
 class TestPollIntervalConstant(unittest.TestCase):
@@ -224,8 +224,8 @@ class TestScaledTimeout(unittest.TestCase):
         self.assertEqual(timeout, POLL_MAX_WAIT_SECONDS)
 
     def test_constants_are_sane(self):
-        """Verify the new constants have expected values."""
-        self.assertEqual(POLL_SECONDS_PER_DAY, 600)
+        """Verify the timeout constants (#159: reduced from 600 to 300)."""
+        self.assertEqual(POLL_SECONDS_PER_DAY, 300)
         self.assertEqual(POLL_MAX_TIMEOUT_CAP, 7200)
 
 

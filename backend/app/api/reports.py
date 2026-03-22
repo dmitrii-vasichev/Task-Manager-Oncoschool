@@ -231,6 +231,21 @@ async def backfill_status(
     return _detect_stale_backfill(setting.value)
 
 
+@router.post("/backfill/cancel")
+async def backfill_cancel(
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    member: TeamMember = Depends(require_admin),
+):
+    """Cancel a running backfill. Admin only."""
+    scheduler = _get_report_scheduler(request)
+    cancelled = scheduler.cancel_backfill()
+    if not cancelled:
+        raise HTTPException(status_code=409, detail="Нет активной загрузки для отмены")
+    logger.info("Backfill cancel requested by admin %s", member.id)
+    return {"status": "cancelling"}
+
+
 @router.post("/backfill/reset")
 async def backfill_reset(
     session: AsyncSession = Depends(get_session),

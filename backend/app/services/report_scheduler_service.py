@@ -47,6 +47,7 @@ class ReportSchedulerService:
         self._sent_today: date | None = None
         self._last_collected_metric = None
         self._last_collected_date: date | None = None
+        self._backfill_cancel: asyncio.Event | None = None
 
     def start(self) -> None:
         """Start the scheduler with collection check, send check and cleanup jobs."""
@@ -311,6 +312,14 @@ class ReportSchedulerService:
         except Exception as e:
             logger.error("Report cleanup failed: %s", e)
 
+    def cancel_backfill(self) -> bool:
+        """Signal the running backfill to stop. Returns True if a backfill was running."""
+        if self._backfill_cancel and not self._backfill_cancel.is_set():
+            self._backfill_cancel.set()
+            logger.info("Backfill cancel requested")
+            return True
+        return False
+
     async def run_backfill(
         self, date_from: date, date_to: date, collected_by_id=None
     ) -> None:
@@ -323,6 +332,9 @@ class ReportSchedulerService:
         collected = 0
         failed = 0
         error_message = None
+
+        # Set up cancellation flag
+        self._backfill_cancel = asyncio.Event()
 
         logger.info("Backfill started: %s to %s (%d dates)", date_from, date_to, total)
 
@@ -372,16 +384,28 @@ class ReportSchedulerService:
             result = await self._getcourse_service.collect_metrics_range(
                 self.session_maker, date_from, date_to, collected_by_id,
                 on_progress=_update_progress,
+                cancel_flag=self._backfill_cancel,
             )
             collected = result["collected"]
+        except asyncio.CancelledError:
+            error_message = "Отменено пользователем"
+            logger.info("Backfill cancelled by user")
         except Exception as e:
             failed = total
             error_message = str(e)
             logger.error("Backfill failed: %s", e)
 
+        # Determine final status
+        if error_message == "Отменено пользователем":
+            final_status = "cancelled"
+        elif failed == 0:
+            final_status = "completed"
+        else:
+            final_status = "failed"
+
         # Save final status (blocking — must complete before function returns)
         await _save_progress({
-            "status": "completed" if failed == 0 else "failed",
+            "status": final_status,
             "total_dates": total,
             "collected": collected,
             "failed": failed,
@@ -392,7 +416,9 @@ class ReportSchedulerService:
             "error": error_message,
         })
 
+        self._backfill_cancel = None
+
         logger.info(
-            "Backfill completed: total=%d, collected=%d, failed=%d",
-            total, collected, failed,
+            "Backfill %s: total=%d, collected=%d, failed=%d",
+            final_status, total, collected, failed,
         )
