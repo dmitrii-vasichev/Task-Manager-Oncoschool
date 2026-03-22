@@ -27,6 +27,7 @@ from app.services.report_scheduler_service import (
     ReportSchedulerService,
     REPORT_SCHEDULE_KEY,
     CLEANUP_RETENTION_DAYS,
+    BACKFILL_RESTART_ERROR,
 )
 
 
@@ -368,6 +369,63 @@ class TestReportSchedulerService(unittest.IsolatedAsyncioTestCase):
         cutoff = call_args.args[2]
         expected = date.today() - timedelta(days=CLEANUP_RETENTION_DAYS)
         self.assertEqual(cutoff, expected)
+
+    async def test_recover_orphaned_backfill_marks_running_job_failed(self) -> None:
+        service = self._make_service()
+
+        mock_setting = MagicMock()
+        mock_setting.value = {
+            "status": "running",
+            "startup_id": "old-startup",
+            "date_from": "2026-03-21",
+            "date_to": "2026-03-21",
+        }
+
+        mock_session = AsyncMock()
+        mock_begin = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+        mock_begin.__aenter__ = AsyncMock(return_value=None)
+        mock_begin.__aexit__ = AsyncMock(return_value=False)
+        mock_session.begin = MagicMock(return_value=mock_begin)
+
+        service.session_maker = MagicMock(return_value=mock_session)
+        service._app_settings_repo.get = AsyncMock(return_value=mock_setting)
+        service._app_settings_repo.set = AsyncMock()
+
+        await service.recover_orphaned_backfill()
+
+        service._app_settings_repo.set.assert_awaited_once()
+        saved_value = service._app_settings_repo.set.await_args.args[2]
+        self.assertEqual(saved_value["status"], "failed")
+        self.assertEqual(saved_value["error"], BACKFILL_RESTART_ERROR)
+        self.assertEqual(saved_value["previous_startup_id"], "old-startup")
+        self.assertEqual(saved_value["recovered_by_startup_id"], service.startup_id)
+
+    async def test_recover_orphaned_backfill_ignores_current_startup(self) -> None:
+        service = self._make_service()
+
+        mock_setting = MagicMock()
+        mock_setting.value = {
+            "status": "running",
+            "startup_id": service.startup_id,
+        }
+
+        mock_session = AsyncMock()
+        mock_begin = AsyncMock()
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock(return_value=False)
+        mock_begin.__aenter__ = AsyncMock(return_value=None)
+        mock_begin.__aexit__ = AsyncMock(return_value=False)
+        mock_session.begin = MagicMock(return_value=mock_begin)
+
+        service.session_maker = MagicMock(return_value=mock_session)
+        service._app_settings_repo.get = AsyncMock(return_value=mock_setting)
+        service._app_settings_repo.set = AsyncMock()
+
+        await service.recover_orphaned_backfill()
+
+        service._app_settings_repo.set.assert_not_awaited()
 
 
 class TestReportMessageFormatting(unittest.TestCase):
@@ -720,9 +778,9 @@ class TestRateLimitRetry(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mock_client.get.await_count, 5)
 
     async def test_exports_have_pauses_between_them(self) -> None:
-        """n8n-style flow (#167): pauses happen between export requests.
+        """n8n-style flow (#167): each export request is followed by a pause.
 
-        Phase 1: request users → pause → request payments → pause → request deals
+        Phase 1: request users → pause → request payments → pause → request deals → pause
         Phase 2: fetch all 3 (no pauses needed, exports already processed)
         """
         service = GetCourseService()
@@ -740,11 +798,54 @@ class TestRateLimitRetry(unittest.IsolatedAsyncioTestCase):
                 "https://school.getcourse.ru", "secret", "2026-03-13", "2026-03-19"
             )
 
-        # Two inter-request pauses (in 60s heartbeat chunks)
+        # Three pauses: after users, payments, and deals requests.
         from app.services.getcourse_service import EXPORT_PAUSE
         sleep_calls = [c.args[0] for c in mock_sleep.await_args_list]
         total_sleep = sum(sleep_calls)
-        self.assertEqual(total_sleep, 2 * EXPORT_PAUSE)
+        self.assertEqual(total_sleep, 3 * EXPORT_PAUSE)
+
+    async def test_request_rate_limit_wait_emits_progress_heartbeat(self) -> None:
+        """Rate limit waits must emit progress so stale detection does not trigger."""
+        service = GetCourseService()
+
+        rate_limited = MagicMock()
+        rate_limited.status_code = 200
+        rate_limited.raise_for_status = MagicMock()
+        rate_limited.json = MagicMock(return_value={
+            "success": False,
+            "error_message": "Слишком много запросов",
+        })
+
+        success = MagicMock()
+        success.status_code = 200
+        success.raise_for_status = MagicMock()
+        success.json = MagicMock(return_value={
+            "success": True,
+            "info": {"export_id": 99},
+        })
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[rate_limited, success])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        on_progress = AsyncMock()
+
+        with patch("app.services.getcourse_service.httpx.AsyncClient", return_value=mock_client):
+            with patch("app.services.getcourse_service.asyncio.sleep", new_callable=AsyncMock):
+                await service._request_export(
+                    "https://school.getcourse.ru",
+                    "secret",
+                    "users",
+                    "2026-03-14",
+                    "2026-03-20",
+                    on_progress=on_progress,
+                    step="1/3",
+                )
+
+        self.assertTrue(any(
+            call.args[0] == "polling" and call.args[1].get("detail") == "rate_limited"
+            for call in on_progress.await_args_list
+        ))
 
 
 class TestRateLimitExponentialBackoff(unittest.IsolatedAsyncioTestCase):

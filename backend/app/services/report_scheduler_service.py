@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -30,6 +31,7 @@ DEFAULT_SCHEDULE = {
 }
 CLEANUP_RETENTION_DAYS = 180
 BACKFILL_PROGRESS_KEY = "backfill_progress"
+BACKFILL_RESTART_ERROR = "Загрузка была прервана перезапуском сервера. Запустите заново."
 
 
 class ReportSchedulerService:
@@ -39,6 +41,7 @@ class ReportSchedulerService:
         self.bot = bot
         self.session_maker = session_maker
         self.scheduler = AsyncIOScheduler()
+        self.startup_id = str(uuid.uuid4())
         self._app_settings_repo = AppSettingsRepository()
         self._metrics_repo = DailyMetricRepository()
         self._target_repo = TelegramTargetRepository()
@@ -320,6 +323,51 @@ class ReportSchedulerService:
             return True
         return False
 
+    async def recover_orphaned_backfill(self) -> None:
+        """Mark an in-progress backfill from an older process as failed.
+
+        Backfill runs as an in-process background task. If Railway restarts the
+        container, the task is terminated and cannot be resumed safely. On the
+        next startup we convert the orphaned status into an explicit failure so
+        the UI no longer shows a misleading long-running job.
+        """
+        try:
+            async with self.session_maker() as session:
+                async with session.begin():
+                    setting = await self._app_settings_repo.get(session, BACKFILL_PROGRESS_KEY)
+                    if not setting or not isinstance(setting.value, dict):
+                        return
+
+                    progress = setting.value
+                    if progress.get("status") != "running":
+                        return
+
+                    if progress.get("startup_id") == self.startup_id:
+                        return
+
+                    now = datetime.now(tz=ZoneInfo("UTC")).isoformat()
+                    previous_startup_id = progress.get("startup_id")
+                    await self._app_settings_repo.set(
+                        session,
+                        BACKFILL_PROGRESS_KEY,
+                        {
+                            **progress,
+                            "status": "failed",
+                            "error": BACKFILL_RESTART_ERROR,
+                            "interrupted_at": now,
+                            "recovered_at": now,
+                            "recovered_by_startup_id": self.startup_id,
+                            "previous_startup_id": previous_startup_id,
+                        },
+                    )
+            logger.warning(
+                "Recovered orphaned backfill from startup %s on startup %s",
+                previous_startup_id,
+                self.startup_id,
+            )
+        except Exception:
+            logger.exception("Failed to recover orphaned backfill state")
+
     async def run_backfill(
         self, date_from: date, date_to: date, collected_by_id=None,
         pause_seconds: int = 300,
@@ -364,6 +412,8 @@ class ReportSchedulerService:
             "date_from": date_from.isoformat(),
             "date_to": date_to.isoformat(),
             "started_at": started_at,
+            "startup_id": self.startup_id,
+            "pause_seconds": pause_seconds,
         })
 
         # Non-blocking progress callback: fires DB write without blocking backfill
@@ -377,6 +427,8 @@ class ReportSchedulerService:
                 "date_from": date_from.isoformat(),
                 "date_to": date_to.isoformat(),
                 "started_at": started_at,
+                "startup_id": self.startup_id,
+                "pause_seconds": pause_seconds,
             }
             progress.update(detail)
             asyncio.create_task(_save_progress(progress))
@@ -416,6 +468,8 @@ class ReportSchedulerService:
             "started_at": started_at,
             "completed_at": datetime.now(tz=ZoneInfo("UTC")).isoformat(),
             "error": error_message,
+            "startup_id": self.startup_id,
+            "pause_seconds": pause_seconds,
         })
 
         self._backfill_cancel = None

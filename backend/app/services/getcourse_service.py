@@ -66,6 +66,9 @@ class GetCourseService:
         export_type: str,
         date_from: str,
         date_to: str,
+        on_progress: ProgressCallback | None = None,
+        step: str | None = None,
+        cancel_flag: asyncio.Event | None = None,
     ) -> int:
         """Request an export and return the export_id.
 
@@ -108,7 +111,18 @@ class GetCourseService:
                             "Rate limited on export request (%s), attempt %d, waiting %ds...",
                             export_type, rate_limit_count, delay,
                         )
-                        await asyncio.sleep(delay)
+                        await self._sleep_with_heartbeat(
+                            delay,
+                            on_progress,
+                            cancel_flag,
+                            {
+                                "detail": "rate_limited",
+                                "export_type": export_type,
+                                "step": step,
+                                "rate_limit_count": rate_limit_count,
+                                "wait_seconds": delay,
+                            },
+                        )
                         continue  # does NOT increment attempt
                     raise RuntimeError(
                         f"GetCourse export request failed: {error_msg or data}"
@@ -129,7 +143,17 @@ class GetCourseService:
                         "Export request attempt %d failed (%s), retrying in %ds",
                         attempt, e, delay,
                     )
-                    await asyncio.sleep(delay)
+                    await self._sleep_with_heartbeat(
+                        delay,
+                        on_progress,
+                        cancel_flag,
+                        {
+                            "detail": "request_retry",
+                            "export_type": export_type,
+                            "step": step,
+                            "wait_seconds": delay,
+                        },
+                    )
                 else:
                     raise
 
@@ -140,6 +164,9 @@ class GetCourseService:
         base_url: str,
         api_key: str,
         export_id: int,
+        on_progress: ProgressCallback | None = None,
+        export_type: str | None = None,
+        step: str | None = None,
         cancel_flag: asyncio.Event | None = None,
     ) -> list:
         """Fetch export results. Like n8n: single attempt, quick retry if not ready.
@@ -166,7 +193,18 @@ class GetCourseService:
                         "Export %d fetch attempt %d/%d: HTTP error (%s), retrying in %ds",
                         export_id, attempt, FETCH_MAX_ATTEMPTS, e, FETCH_RETRY_DELAY,
                     )
-                    await asyncio.sleep(FETCH_RETRY_DELAY)
+                    await self._sleep_with_heartbeat(
+                        FETCH_RETRY_DELAY,
+                        on_progress,
+                        cancel_flag,
+                        {
+                            "detail": "fetch_retry",
+                            "export_type": export_type,
+                            "step": step,
+                            "poll_count": attempt,
+                            "wait_seconds": FETCH_RETRY_DELAY,
+                        },
+                    )
                     continue
                 raise RuntimeError(
                     f"GetCourse export {export_id}: HTTP error after {attempt} attempts: {e}"
@@ -183,7 +221,18 @@ class GetCourseService:
                             "Export %d fetch attempt %d/%d: not ready, retrying in %ds",
                             export_id, attempt, FETCH_MAX_ATTEMPTS, FETCH_RETRY_DELAY,
                         )
-                        await asyncio.sleep(FETCH_RETRY_DELAY)
+                        await self._sleep_with_heartbeat(
+                            FETCH_RETRY_DELAY,
+                            on_progress,
+                            cancel_flag,
+                            {
+                                "detail": "fetch_retry",
+                                "export_type": export_type,
+                                "step": step,
+                                "poll_count": attempt,
+                                "wait_seconds": FETCH_RETRY_DELAY,
+                            },
+                        )
                         continue
                     raise RuntimeError(
                         f"GetCourse export {export_id}: данные не готовы после {attempt} попыток. "
@@ -198,7 +247,19 @@ class GetCourseService:
                             "Export %d fetch attempt %d/%d: rate limited, waiting %ds",
                             export_id, attempt, FETCH_MAX_ATTEMPTS, delay,
                         )
-                        await asyncio.sleep(delay)
+                        await self._sleep_with_heartbeat(
+                            delay,
+                            on_progress,
+                            cancel_flag,
+                            {
+                                "detail": "rate_limited",
+                                "export_type": export_type,
+                                "step": step,
+                                "poll_count": attempt,
+                                "rate_limit_count": attempt,
+                                "wait_seconds": delay,
+                            },
+                        )
                         continue
                     raise RuntimeError(
                         f"GetCourse export {export_id}: rate limited after {attempt} attempts"
@@ -388,6 +449,13 @@ class GetCourseService:
         heartbeat_detail: dict[str, Any] | None = None,
     ) -> None:
         """Sleep for `seconds`, sending heartbeat every 60s to prevent stale detection."""
+        if cancel_flag and cancel_flag.is_set():
+            raise asyncio.CancelledError("Cancelled by user")
+
+        if not on_progress or not heartbeat_detail:
+            await asyncio.sleep(seconds)
+            return
+
         heartbeat_interval = 60
         waited = 0
         while waited < seconds:
@@ -436,7 +504,8 @@ class GetCourseService:
                 })
 
             export_id = await self._request_export(
-                base_url, api_key, export_type, date_from, date_to
+                base_url, api_key, export_type, date_from, date_to,
+                on_progress=on_progress, step=step, cancel_flag=cancel_flag,
             )
             export_ids[export_type] = export_id
 
@@ -473,6 +542,9 @@ class GetCourseService:
             try:
                 rows = await self._fetch_export(
                     base_url, api_key, eid,
+                    on_progress=on_progress,
+                    export_type=export_type,
+                    step=step,
                     cancel_flag=cancel_flag,
                 )
                 results[export_type] = rows
@@ -644,6 +716,12 @@ class GetCourseService:
                         collected_by_id=collected_by_id,
                     )
                     collected += 1
+
+                    if on_progress:
+                        await on_progress("saving", {
+                            "saved_days": collected,
+                            "total_days": total_days,
+                        })
 
         logger.info("Range collection completed: %d days upserted", collected)
         return {"collected": collected, "total_days": total_days}
