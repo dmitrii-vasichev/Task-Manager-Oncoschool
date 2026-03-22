@@ -22,8 +22,9 @@ from app.utils.encryption import decrypt
 logger = logging.getLogger(__name__)
 
 # Export poll settings
-POLL_INTERVAL_SECONDS = 15  # check export status every 15s (was 60s)
-POLL_MAX_WAIT_SECONDS = 300  # 5 min base timeout (was 1200)
+POLL_INITIAL_WAIT_SECONDS = 180  # wait 3 min before first poll (exports need time)
+POLL_INTERVAL_SECONDS = 60  # check export status every 60s
+POLL_MAX_WAIT_SECONDS = 900  # 15 min base timeout
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2
 MAX_POLL_HTTP_ERRORS = 5  # consecutive HTTP errors before aborting poll
@@ -32,11 +33,15 @@ MAX_POLL_HTTP_ERRORS = 5  # consecutive HTTP errors before aborting poll
 RATE_LIMIT_BASE_DELAY = 30  # initial seconds to wait on rate limit
 RATE_LIMIT_MAX_DELAY = 120  # max seconds to wait on rate limit (exponential backoff cap)
 MAX_RATE_LIMIT_RETRIES = 30  # max rate-limit waits (separate from error retries)
-EXPORT_PAUSE = 10  # seconds between sequential export requests (was 30s)
+EXPORT_PAUSE = 60  # seconds between sequential export requests
 
 # Scaled timeout for multi-day ranges
 POLL_SECONDS_PER_DAY = 300  # 5 min per day in range (was 600)
 POLL_MAX_TIMEOUT_CAP = 7200  # absolute cap: 2 hours
+
+# Column indices in GetCourse export items (stable per account, matches n8n)
+PAYMENT_PRICE_INDEX = 7   # payment amount column
+ORDER_SUM_INDEX = 10      # order cost ("Стоимость, RUB") column
 
 
 
@@ -78,6 +83,10 @@ class GetCourseService:
         # All export types use created_at filter
         params["created_at[from]"] = date_from
         params["created_at[to]"] = date_to
+
+        # Payments: only accepted (matching n8n flow)
+        if export_type == "payments":
+            params["status"] = "accepted"
 
         attempt = 0
         rate_limit_count = 0
@@ -140,7 +149,7 @@ class GetCourseService:
         timeout: int = POLL_MAX_WAIT_SECONDS,
         on_progress: ProgressCallback | None = None,
         cancel_flag: asyncio.Event | None = None,
-    ) -> list[dict]:
+    ) -> list:
         """Poll until the export is ready and return the items list.
 
         Rate-limit delays do NOT count toward the timeout because the export
@@ -277,69 +286,108 @@ class GetCourseService:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _count_users(rows: list[dict]) -> int:
-        """Count unique users from export rows."""
-        emails = set()
-        for row in rows:
-            email = row.get("email") or row.get("id")
-            if email:
-                emails.add(email)
-        return len(emails)
+    def _parse_decimal(raw: Any) -> Decimal:
+        """Parse a numeric value from a GetCourse export cell.
+
+        Handles whitespace separators (including non-breaking spaces) and
+        comma as decimal separator — common in Russian-locale exports.
+        """
+        if not raw:
+            return Decimal("0")
+        clean = str(raw).replace("\xa0", "").replace(" ", "").replace(",", ".")
+        try:
+            return Decimal(clean)
+        except Exception:
+            return Decimal("0")
 
     @staticmethod
-    def _sum_payments(rows: list[dict]) -> tuple[int, Decimal]:
-        """Count payments and sum amounts. Returns (count, total_sum)."""
-        count = 0
+    def _count_users(rows: list) -> int:
+        """Count users — each row is one user."""
+        return len(rows)
+
+    @staticmethod
+    def _sum_payments(rows: list) -> tuple[int, Decimal]:
+        """Count payments and sum amounts.
+
+        Payments are pre-filtered by status=accepted in the API request.
+        Amount is at column PAYMENT_PRICE_INDEX (index 7).
+        """
+        count = len(rows)
         total = Decimal("0")
         for row in rows:
-            status = row.get("status", "")
-            if status in ("accepted", "approved", "success"):
-                count += 1
-                amount = row.get("amount") or row.get("cost") or 0
-                total += Decimal(str(amount))
-        return count, total
-
-    @staticmethod
-    def _sum_orders(rows: list[dict]) -> tuple[int, Decimal]:
-        """Count completed orders and sum amounts. Returns (count, total_sum)."""
-        count = 0
-        total = Decimal("0")
-        for row in rows:
-            status = row.get("status", "")
-            if status in ("finished", "completed", "paid"):
-                count += 1
-                cost = row.get("cost") or row.get("amount") or 0
-                total += Decimal(str(cost))
-        return count, total
-
-    # ------------------------------------------------------------------
-    # Date extraction for grouping
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _extract_date(row: dict, date_fields: tuple[str, ...]) -> date | None:
-        """Extract a date from a row, trying multiple field names."""
-        for field in date_fields:
-            val = row.get(field)
-            if not val:
+            if not isinstance(row, list) or PAYMENT_PRICE_INDEX >= len(row):
                 continue
-            try:
-                return datetime.fromisoformat(str(val).replace(" ", "T")).date()
-            except (ValueError, TypeError):
-                try:
-                    return datetime.strptime(str(val)[:10], "%Y-%m-%d").date()
-                except (ValueError, TypeError):
-                    continue
+            total += GetCourseService._parse_decimal(row[PAYMENT_PRICE_INDEX])
+        return count, total
+
+    @staticmethod
+    def _sum_orders(rows: list) -> tuple[int, Decimal]:
+        """Count orders with positive cost and sum amounts.
+
+        Cost is at column ORDER_SUM_INDEX (index 10).
+        Only rows where cost > 0 are counted (matching n8n logic).
+        """
+        count = 0
+        total = Decimal("0")
+        for row in rows:
+            if not isinstance(row, list) or ORDER_SUM_INDEX >= len(row):
+                continue
+            val = GetCourseService._parse_decimal(row[ORDER_SUM_INDEX])
+            if val > 0:
+                count += 1
+                total += val
+        return count, total
+
+    # ------------------------------------------------------------------
+    # Date extraction for grouping (array-based rows)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _try_parse_date(val: Any) -> date | None:
+        """Try to parse a value as a date."""
+        if not val:
+            return None
+        s = str(val).strip()
+        if len(s) < 10:
+            return None
+        try:
+            return datetime.fromisoformat(s.replace(" ", "T")).date()
+        except (ValueError, TypeError):
+            pass
+        try:
+            return datetime.strptime(s[:10], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            pass
         return None
 
     @staticmethod
-    def _group_by_date(
-        rows: list[dict], date_fields: tuple[str, ...]
-    ) -> dict[date, list[dict]]:
-        """Group export rows by date."""
-        grouped: dict[date, list[dict]] = defaultdict(list)
+    def _extract_date_from_row(
+        row: list, date_range: tuple[date, date] | None = None
+    ) -> date | None:
+        """Extract a date from an array row by scanning all columns.
+
+        If date_range is given, only dates within [from, to] are accepted.
+        This avoids picking up unrelated date-like strings.
+        """
+        for val in row:
+            d = GetCourseService._try_parse_date(val)
+            if d is None:
+                continue
+            if date_range and not (date_range[0] <= d <= date_range[1]):
+                continue
+            return d
+        return None
+
+    @staticmethod
+    def _group_rows_by_date(
+        rows: list, date_range: tuple[date, date] | None = None
+    ) -> dict[date, list]:
+        """Group export rows (arrays) by date."""
+        grouped: dict[date, list] = defaultdict(list)
         for row in rows:
-            d = GetCourseService._extract_date(row, date_fields)
+            if not isinstance(row, list):
+                continue
+            d = GetCourseService._extract_date_from_row(row, date_range)
             if d:
                 grouped[d].append(row)
         return grouped
@@ -366,11 +414,25 @@ class GetCourseService:
         timeout: int = POLL_MAX_WAIT_SECONDS,
         on_progress: ProgressCallback | None = None,
         cancel_flag: asyncio.Event | None = None,
-    ) -> list[dict]:
-        """Request a single export and poll until ready before returning."""
+    ) -> list:
+        """Request a single export, wait for it to process, then poll until ready."""
         export_id = await self._request_export(
             base_url, api_key, export_type, date_from, date_to
         )
+
+        # Initial wait — exports typically take 3-5 min on GetCourse side
+        logger.info(
+            "Export %d requested, waiting %ds before polling...",
+            export_id, POLL_INITIAL_WAIT_SECONDS,
+        )
+        if on_progress:
+            await on_progress("polling", {
+                "detail": "initial_wait",
+                "poll_count": 0,
+                "elapsed_seconds": 0,
+            })
+        await asyncio.sleep(POLL_INITIAL_WAIT_SECONDS)
+
         return await self._poll_export(
             base_url, api_key, export_id, timeout=timeout,
             on_progress=on_progress, cancel_flag=cancel_flag,
@@ -394,7 +456,7 @@ class GetCourseService:
         self, base_url: str, api_key: str, date_from: str, date_to: str,
         on_progress: ProgressCallback | None = None,
         cancel_flag: asyncio.Event | None = None,
-    ) -> tuple[list[dict], list[dict], list[dict]]:
+    ) -> tuple[list, list, list]:
         """Request and poll 3 exports sequentially with pauses between them."""
         timeout = self._scaled_timeout(date_from, date_to)
         logger.info(
@@ -402,7 +464,7 @@ class GetCourseService:
         )
 
         export_types = ["users", "payments", "deals"]
-        results: list[list[dict]] = []
+        results: list[list] = []
 
         for idx, export_type in enumerate(export_types):
             step = f"{idx + 1}/{len(export_types)}"
@@ -525,13 +587,10 @@ class GetCourseService:
         )
 
         # Phase 3: Aggregate (pure computation)
-        user_date_fields = ("created_at", "addDate", "registration_date", "exported_at")
-        payment_date_fields = ("created_at", "payDate")
-        deal_date_fields = ("created_at", "dealDate")
-
-        users_by_date = self._group_by_date(user_rows, user_date_fields)
-        payments_by_date = self._group_by_date(payment_rows, payment_date_fields)
-        deals_by_date = self._group_by_date(deal_rows, deal_date_fields)
+        date_range = (range_from, range_to)
+        users_by_date = self._group_rows_by_date(user_rows, date_range)
+        payments_by_date = self._group_rows_by_date(payment_rows, date_range)
+        deals_by_date = self._group_rows_by_date(deal_rows, date_range)
 
         logger.info(
             "Range collection: got %d user rows, %d payment rows, %d deal rows",
