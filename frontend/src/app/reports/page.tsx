@@ -298,6 +298,17 @@ export default function ReportsPage() {
     }
   };
 
+  const handleResetBackfill = async () => {
+    try {
+      await api.resetBackfillStatus();
+      setBackfillStatus(null);
+      toastSuccess("Статус загрузки сброшен");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Ошибка сброса";
+      toastError(msg);
+    }
+  };
+
   const handleBackfill = async () => {
     if (!backfillFrom || !backfillTo) return;
     if (backfillFrom > backfillTo) {
@@ -488,6 +499,17 @@ export default function ReportsPage() {
                 Период: {formatBackfillDates(backfillStatus)}
               </p>
             </div>
+            {isAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 rounded-lg gap-1.5 text-xs"
+                onClick={handleResetBackfill}
+              >
+                <RefreshCw className="h-3 w-3" />
+                Сбросить
+              </Button>
+            )}
             <button onClick={dismissBackfillStatus} className="text-destructive/50 hover:text-destructive">
               <XCircle className="h-4 w-4" />
             </button>

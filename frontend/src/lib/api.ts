@@ -1130,6 +1130,12 @@ class ApiClient {
     return this.request<BackfillStatus>("/api/reports/getcourse/backfill/status");
   }
 
+  async resetBackfillStatus(): Promise<{ status: string; previous_status?: string }> {
+    return this.request("/api/reports/getcourse/backfill/reset", {
+      method: "POST",
+    });
+  }
+
   // ==================== Settings: Reports ====================
 
   async getGetCourseCredentials(): Promise<GetCourseCredentials> {
