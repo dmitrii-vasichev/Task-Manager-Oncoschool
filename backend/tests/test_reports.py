@@ -79,28 +79,31 @@ class TestTelegramNotificationTargetType(unittest.TestCase):
 class TestGetCourseServiceAggregation(unittest.TestCase):
     """R1.6 — GetCourseService pure aggregation helpers."""
 
-    def test_count_users_unique_by_email(self) -> None:
+    def test_count_users_returns_row_count(self) -> None:
+        """#163: users_count = len(rows), items are arrays."""
         rows = [
-            {"email": "a@test.com", "id": "1"},
-            {"email": "b@test.com", "id": "2"},
-            {"email": "a@test.com", "id": "3"},  # duplicate email
+            ["a@test.com", "Иванов", "2026-03-15"],
+            ["b@test.com", "Петров", "2026-03-15"],
+            ["c@test.com", "Сидоров", "2026-03-15"],
         ]
-        self.assertEqual(GetCourseService._count_users(rows), 2)
+        self.assertEqual(GetCourseService._count_users(rows), 3)
 
     def test_count_users_empty(self) -> None:
         self.assertEqual(GetCourseService._count_users([]), 0)
 
-    def test_count_users_fallback_to_id(self) -> None:
-        rows = [{"id": "100"}, {"id": "200"}]
+    def test_count_users_two_rows(self) -> None:
+        rows = [["100"], ["200"]]
         self.assertEqual(GetCourseService._count_users(rows), 2)
 
-    def test_sum_payments_filters_by_status(self) -> None:
-        rows = [
-            {"status": "accepted", "amount": "1000.50"},
-            {"status": "rejected", "amount": "500"},
-            {"status": "success", "amount": "200"},
-        ]
-        count, total = GetCourseService._sum_payments(rows)
+    def test_sum_payments_uses_column_index(self) -> None:
+        """#163: payments pre-filtered by status=accepted in request.
+        Sum from column index 7."""
+        from app.services.getcourse_service import PAYMENT_PRICE_INDEX
+        row1 = [""] * (PAYMENT_PRICE_INDEX + 1)
+        row1[PAYMENT_PRICE_INDEX] = "1000.50"
+        row2 = [""] * (PAYMENT_PRICE_INDEX + 1)
+        row2[PAYMENT_PRICE_INDEX] = "200"
+        count, total = GetCourseService._sum_payments([row1, row2])
         self.assertEqual(count, 2)
         self.assertEqual(total, Decimal("1200.50"))
 
@@ -109,13 +112,16 @@ class TestGetCourseServiceAggregation(unittest.TestCase):
         self.assertEqual(count, 0)
         self.assertEqual(total, Decimal("0"))
 
-    def test_sum_orders_filters_by_status(self) -> None:
-        rows = [
-            {"status": "finished", "cost": "5000"},
-            {"status": "pending", "cost": "1000"},
-            {"status": "paid", "amount": "3000.75"},
-        ]
-        count, total = GetCourseService._sum_orders(rows)
+    def test_sum_orders_positive_cost_only(self) -> None:
+        """#163: orders counted where column[10] > 0."""
+        from app.services.getcourse_service import ORDER_SUM_INDEX
+        row1 = [""] * (ORDER_SUM_INDEX + 1)
+        row1[ORDER_SUM_INDEX] = "5000"
+        row2 = [""] * (ORDER_SUM_INDEX + 1)
+        row2[ORDER_SUM_INDEX] = "0"
+        row3 = [""] * (ORDER_SUM_INDEX + 1)
+        row3[ORDER_SUM_INDEX] = "3000.75"
+        count, total = GetCourseService._sum_orders([row1, row2, row3])
         self.assertEqual(count, 2)
         self.assertEqual(total, Decimal("8000.75"))
 
@@ -154,21 +160,29 @@ class TestGetCourseServiceCollectMetrics(unittest.IsolatedAsyncioTestCase):
         service._metrics_repo = MagicMock()
         service._metrics_repo.upsert = AsyncMock(return_value=mock_metric)
 
-        # Mock _request_export and _poll_export
+        # Mock _request_export and _poll_export (array-based items, #163)
+        from app.services.getcourse_service import PAYMENT_PRICE_INDEX, ORDER_SUM_INDEX
+        payment_row = [""] * (PAYMENT_PRICE_INDEX + 1)
+        payment_row[PAYMENT_PRICE_INDEX] = "1000"
+        order_row = [""] * (ORDER_SUM_INDEX + 1)
+        order_row[ORDER_SUM_INDEX] = "5000"
+
         service._request_export = AsyncMock(side_effect=[101, 102, 103])
         service._poll_export = AsyncMock(
             side_effect=[
-                # users
-                [{"email": "a@test.com"}, {"email": "b@test.com"}],
-                # payments
-                [{"status": "accepted", "amount": "1000"}],
-                # deals
-                [{"status": "finished", "cost": "5000"}],
+                # users (2 rows)
+                [["a@test.com", "Иванов"], ["b@test.com", "Петров"]],
+                # payments (1 row, pre-filtered by status=accepted)
+                [payment_row],
+                # deals (1 row with positive cost)
+                [order_row],
             ]
         )
 
         session_maker, _ = self._make_session_maker()
-        result = await service.collect_metrics(session_maker, date(2026, 3, 19))
+
+        with patch("app.services.getcourse_service.asyncio.sleep", new_callable=AsyncMock):
+            result = await service.collect_metrics(session_maker, date(2026, 3, 19))
 
         # Verify 3 exports requested
         self.assertEqual(service._request_export.await_count, 3)
@@ -723,8 +737,9 @@ class TestRateLimitRetry(unittest.IsolatedAsyncioTestCase):
             )
 
         # Two pauses (after users, after payments — not after deals)
+        from app.services.getcourse_service import EXPORT_PAUSE
         sleep_calls = [c.args[0] for c in mock_sleep.await_args_list]
-        self.assertEqual(sleep_calls.count(10), 2)
+        self.assertEqual(sleep_calls.count(EXPORT_PAUSE), 2)
 
 
 class TestRateLimitExponentialBackoff(unittest.IsolatedAsyncioTestCase):
