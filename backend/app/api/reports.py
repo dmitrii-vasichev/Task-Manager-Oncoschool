@@ -237,11 +237,37 @@ async def backfill_cancel(
     session: AsyncSession = Depends(get_session),
     member: TeamMember = Depends(require_admin),
 ):
-    """Cancel a running backfill. Admin only."""
+    """Cancel a running backfill. Admin only.
+
+    Two modes:
+    1. In-memory cancel — if the backfill is running in this process, signal it to stop.
+    2. DB fallback — if the process was restarted (or backfill started before deployment),
+       reset the DB status directly to 'cancelled'.
+    """
     scheduler = _get_report_scheduler(request)
     cancelled = scheduler.cancel_backfill()
+
     if not cancelled:
+        # Fallback: reset DB status if it's "running" (orphaned backfill)
+        repo = AppSettingsRepository()
+        existing = await repo.get(session, "backfill_progress")
+        if existing and isinstance(existing.value, dict) and existing.value.get("status") == "running":
+            await repo.set(
+                session,
+                "backfill_progress",
+                {
+                    **existing.value,
+                    "status": "cancelled",
+                    "error": "Отменено пользователем",
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                },
+            )
+            await session.commit()
+            logger.info("Backfill DB-cancelled by admin %s (orphaned process)", member.id)
+            return {"status": "cancelled"}
+
         raise HTTPException(status_code=409, detail="Нет активной загрузки для отмены")
+
     logger.info("Backfill cancel requested by admin %s", member.id)
     return {"status": "cancelling"}
 
