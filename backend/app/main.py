@@ -179,6 +179,7 @@ app.state.content_cleanup = content_cleanup
 @app.on_event("startup")
 async def _start_background_schedulers() -> None:
     """Ensure schedulers run for both `python -m app.main` and `uvicorn app.main:app`."""
+    await report_scheduler.recover_orphaned_backfill()
     reminder_service.start()
     await reminder_service.refresh_task_overdue_schedule_from_settings()
     meeting_scheduler.start()
