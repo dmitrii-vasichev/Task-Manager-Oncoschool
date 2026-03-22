@@ -213,9 +213,9 @@ class GetCourseService:
             info = data.get("info", {})
             status = info.get("status")
 
-            logger.debug(
-                "Export %d response keys: %s, status=%s",
-                export_id, list(info.keys()), status,
+            logger.info(
+                "Export %d response: keys=%s, status=%s, has_items=%s",
+                export_id, list(info.keys()), status, "items" in info,
             )
 
             # Primary check: if items are present, the export is ready.
