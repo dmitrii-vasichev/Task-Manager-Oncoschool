@@ -514,7 +514,7 @@ export interface BackfillResponse {
 }
 
 export interface BackfillStatus {
-  status: "idle" | "running" | "completed" | "failed";
+  status: "idle" | "running" | "completed" | "failed" | "cancelled";
   stage?: string;
   total_dates?: number;
   collected?: number;
@@ -529,6 +529,7 @@ export interface BackfillStatus {
   step?: string;
   detail?: string;
   elapsed_seconds?: number;
+  poll_count?: number;
   rate_limit_count?: number;
   wait_seconds?: number;
   rows_count?: number;

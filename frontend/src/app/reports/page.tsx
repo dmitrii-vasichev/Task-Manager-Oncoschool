@@ -298,6 +298,17 @@ export default function ReportsPage() {
     }
   };
 
+  const handleCancelBackfill = async () => {
+    try {
+      await api.cancelBackfill();
+      toastSuccess("Отмена загрузки запрошена");
+      await fetchBackfillStatus();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Ошибка отмены";
+      toastError(msg);
+    }
+  };
+
   const handleResetBackfill = async () => {
     try {
       await api.resetBackfillStatus();
@@ -422,12 +433,13 @@ export default function ReportsPage() {
     if (!backfillStatus || backfillStatus.status === "idle") return null;
 
     if (backfillStatus.status === "running") {
+      const pollInfo = backfillStatus.poll_count ? ` (опрос #${backfillStatus.poll_count})` : "";
       const stageLabels: Record<string, string> = {
         starting: "Подготовка…",
         export_started: `Запрос экспорта: ${backfillStatus.export_type ?? ""}`,
         polling: backfillStatus.detail === "rate_limited"
           ? `Ожидание (rate limit #${backfillStatus.rate_limit_count ?? 0}, пауза ${backfillStatus.wait_seconds ?? 0}с)`
-          : `Ожидание данных: ${backfillStatus.export_type ?? ""}`,
+          : `Ожидание данных: ${backfillStatus.export_type ?? ""}${pollInfo}`,
         rate_limited: `Ожидание (rate limit #${backfillStatus.rate_limit_count ?? 0}, пауза ${backfillStatus.wait_seconds ?? 0}с)`,
         export_done: `Экспорт ${backfillStatus.export_type ?? ""} готов (${backfillStatus.rows_count ?? 0} записей)`,
         saving: "Сохранение в базу данных…",
@@ -455,6 +467,17 @@ export default function ReportsPage() {
                 Период: {formatBackfillDates(backfillStatus)} ({backfillStatus.total_dates ?? 0} дн.)
               </p>
             </div>
+            {isAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="shrink-0 rounded-lg gap-1.5 text-xs border-blue-500/30 text-blue-700 dark:text-blue-400 hover:bg-blue-500/10"
+                onClick={handleCancelBackfill}
+              >
+                <XCircle className="h-3 w-3" />
+                Отменить
+              </Button>
+            )}
           </div>
         </section>
       );
@@ -481,21 +504,26 @@ export default function ReportsPage() {
       );
     }
 
-    if (backfillStatus.status === "failed") {
+    if (backfillStatus.status === "failed" || backfillStatus.status === "cancelled") {
+      const isCancelled = backfillStatus.status === "cancelled";
       return (
-        <section className="animate-in fade-in slide-in-from-top-2 duration-300 rounded-2xl border border-destructive/20 bg-destructive/5 p-4">
+        <section className={`animate-in fade-in slide-in-from-top-2 duration-300 rounded-2xl border p-4 ${
+          isCancelled
+            ? "border-amber-500/20 bg-amber-500/5"
+            : "border-destructive/20 bg-destructive/5"
+        }`}>
           <div className="flex items-center gap-3">
-            <XCircle className="h-5 w-5 text-destructive shrink-0" />
+            <XCircle className={`h-5 w-5 shrink-0 ${isCancelled ? "text-amber-600" : "text-destructive"}`} />
             <div className="flex-1">
-              <p className="text-sm font-medium text-destructive">
-                Загрузка не удалась
+              <p className={`text-sm font-medium ${isCancelled ? "text-amber-700 dark:text-amber-400" : "text-destructive"}`}>
+                {isCancelled ? "Загрузка отменена" : "Загрузка не удалась"}
               </p>
-              {backfillStatus.error && (
+              {backfillStatus.error && !isCancelled && (
                 <p className="text-xs text-destructive/70 mt-0.5">
                   {backfillStatus.error}
                 </p>
               )}
-              <p className="text-xs text-destructive/70 mt-0.5">
+              <p className={`text-xs mt-0.5 ${isCancelled ? "text-amber-600/70 dark:text-amber-400/70" : "text-destructive/70"}`}>
                 Период: {formatBackfillDates(backfillStatus)}
               </p>
             </div>
@@ -510,7 +538,11 @@ export default function ReportsPage() {
                 Сбросить
               </Button>
             )}
-            <button onClick={dismissBackfillStatus} className="text-destructive/50 hover:text-destructive">
+            <button onClick={dismissBackfillStatus} className={`${
+              isCancelled
+                ? "text-amber-600/50 hover:text-amber-600"
+                : "text-destructive/50 hover:text-destructive"
+            }`}>
               <XCircle className="h-4 w-4" />
             </button>
           </div>
