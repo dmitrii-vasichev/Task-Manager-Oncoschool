@@ -243,17 +243,17 @@ async def backfill_reset(
         return {"status": "idle"}
 
     prev_status = existing.value.get("status", "idle")
-    async with session.begin():
-        await repo.set(
-            session,
-            "backfill_progress",
-            {
-                "status": "idle",
-                "reset_at": datetime.now(timezone.utc).isoformat(),
-                "reset_by_id": str(member.id),
-                "previous_status": prev_status,
-            },
-        )
+    await repo.set(
+        session,
+        "backfill_progress",
+        {
+            "status": "idle",
+            "reset_at": datetime.now(timezone.utc).isoformat(),
+            "reset_by_id": str(member.id),
+            "previous_status": prev_status,
+        },
+    )
+    await session.commit()
 
     logger.info("Backfill status reset by admin %s (was: %s)", member.id, prev_status)
     return {"status": "idle", "previous_status": prev_status}
