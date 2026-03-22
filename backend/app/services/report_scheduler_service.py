@@ -1,5 +1,6 @@
 """ReportSchedulerService — daily GetCourse data collection and cleanup via APScheduler."""
 
+import asyncio
 import logging
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -327,48 +328,45 @@ class ReportSchedulerService:
 
         started_at = datetime.now(tz=ZoneInfo("UTC")).isoformat()
 
-        # Save "running" status at the start
-        try:
-            async with self.session_maker() as session:
-                async with session.begin():
-                    await self._app_settings_repo.set(
-                        session,
-                        BACKFILL_PROGRESS_KEY,
-                        {
-                            "status": "running",
-                            "stage": "starting",
-                            "total_dates": total,
-                            "collected": 0,
-                            "failed": 0,
-                            "date_from": date_from.isoformat(),
-                            "date_to": date_to.isoformat(),
-                            "started_at": started_at,
-                        },
-                    )
-        except Exception as e:
-            logger.error("Failed to save backfill start progress: %s", e)
-
-        # Progress callback: updates app_settings with current stage
-        async def _update_progress(event: str, detail: dict) -> None:
+        async def _save_progress(progress: dict) -> None:
+            """Write progress dict to app_settings (with 10s timeout)."""
+            progress["last_heartbeat"] = datetime.now(tz=ZoneInfo("UTC")).isoformat()
             try:
-                progress: dict = {
-                    "status": "running",
-                    "stage": event,
-                    "total_dates": total,
-                    "collected": 0,
-                    "failed": 0,
-                    "date_from": date_from.isoformat(),
-                    "date_to": date_to.isoformat(),
-                    "started_at": started_at,
-                }
-                progress.update(detail)
-                async with self.session_maker() as session:
-                    async with session.begin():
-                        await self._app_settings_repo.set(
-                            session, BACKFILL_PROGRESS_KEY, progress,
-                        )
+                async with asyncio.timeout(10):
+                    async with self.session_maker() as session:
+                        async with session.begin():
+                            await self._app_settings_repo.set(
+                                session, BACKFILL_PROGRESS_KEY, progress,
+                            )
             except Exception as e:
-                logger.debug("Failed to update backfill progress: %s", e)
+                logger.error("Failed to save backfill progress: %s", e)
+
+        # Save "running" status at the start
+        await _save_progress({
+            "status": "running",
+            "stage": "starting",
+            "total_dates": total,
+            "collected": 0,
+            "failed": 0,
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+            "started_at": started_at,
+        })
+
+        # Non-blocking progress callback: fires DB write without blocking backfill
+        async def _update_progress(event: str, detail: dict) -> None:
+            progress: dict = {
+                "status": "running",
+                "stage": event,
+                "total_dates": total,
+                "collected": 0,
+                "failed": 0,
+                "date_from": date_from.isoformat(),
+                "date_to": date_to.isoformat(),
+                "started_at": started_at,
+            }
+            progress.update(detail)
+            asyncio.create_task(_save_progress(progress))
 
         try:
             result = await self._getcourse_service.collect_metrics_range(
@@ -381,27 +379,18 @@ class ReportSchedulerService:
             error_message = str(e)
             logger.error("Backfill failed: %s", e)
 
-        # Save final status
-        try:
-            async with self.session_maker() as session:
-                async with session.begin():
-                    await self._app_settings_repo.set(
-                        session,
-                        BACKFILL_PROGRESS_KEY,
-                        {
-                            "status": "completed" if failed == 0 else "failed",
-                            "total_dates": total,
-                            "collected": collected,
-                            "failed": failed,
-                            "date_from": date_from.isoformat(),
-                            "date_to": date_to.isoformat(),
-                            "started_at": started_at,
-                            "completed_at": datetime.now(tz=ZoneInfo("UTC")).isoformat(),
-                            "error": error_message,
-                        },
-                    )
-        except Exception as e:
-            logger.error("Failed to save backfill progress: %s", e)
+        # Save final status (blocking — must complete before function returns)
+        await _save_progress({
+            "status": "completed" if failed == 0 else "failed",
+            "total_dates": total,
+            "collected": collected,
+            "failed": failed,
+            "date_from": date_from.isoformat(),
+            "date_to": date_to.isoformat(),
+            "started_at": started_at,
+            "completed_at": datetime.now(tz=ZoneInfo("UTC")).isoformat(),
+            "error": error_message,
+        })
 
         logger.info(
             "Backfill completed: total=%d, collected=%d, failed=%d",

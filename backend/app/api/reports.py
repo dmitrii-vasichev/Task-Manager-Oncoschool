@@ -1,7 +1,7 @@
 """REST API endpoints for the reports module."""
 
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
@@ -11,7 +11,7 @@ from app.api.auth import require_admin
 from app.api.deps import require_content_operator
 from app.db.database import async_session, get_session
 from app.db.models import ContentSubSection, TeamMember
-from app.db.repositories import DailyMetricRepository
+from app.db.repositories import AppSettingsRepository, DailyMetricRepository
 from app.db.schemas import (
     BackfillRequest,
     BackfillResponse,
@@ -150,16 +150,63 @@ async def collect(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+BACKFILL_STALE_SECONDS = 300  # 5 minutes without heartbeat = stale
+
+
+def _detect_stale_backfill(value: dict) -> dict:
+    """If backfill is 'running' but heartbeat is stale, mark as failed."""
+    if value.get("status") != "running":
+        return value
+
+    heartbeat = value.get("last_heartbeat")
+    if not heartbeat:
+        # No heartbeat field — legacy entry, check started_at instead
+        heartbeat = value.get("started_at")
+    if not heartbeat:
+        return value
+
+    try:
+        hb_dt = datetime.fromisoformat(heartbeat)
+        if hb_dt.tzinfo is None:
+            hb_dt = hb_dt.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - hb_dt).total_seconds()
+    except (ValueError, TypeError):
+        return value
+
+    if age > BACKFILL_STALE_SECONDS:
+        value = {**value}
+        value["status"] = "failed"
+        value["error"] = (
+            f"Процесс перестал отвечать (последний heartbeat {int(age)}с назад). "
+            "Возможно, сервер был перезапущен. Попробуйте запустить заново."
+        )
+        return value
+
+    return value
+
+
 @router.post("/backfill", response_model=BackfillResponse)
 async def backfill(
     data: BackfillRequest,
     request: Request,
     background_tasks: BackgroundTasks,
     member: TeamMember = Depends(require_admin),
+    session: AsyncSession = Depends(get_session),
 ):
     """Start backfill for a date range. Admin only. Runs in background."""
     if data.date_from > data.date_to:
         raise HTTPException(status_code=400, detail="date_from must be <= date_to")
+
+    # Concurrency check: reject if another backfill is actively running
+    repo = AppSettingsRepository()
+    existing = await repo.get(session, "backfill_progress")
+    if existing and isinstance(existing.value, dict):
+        status_data = _detect_stale_backfill(existing.value)
+        if status_data.get("status") == "running":
+            raise HTTPException(
+                status_code=409,
+                detail="Загрузка уже выполняется. Дождитесь завершения или сбросьте статус.",
+            )
 
     total_dates = (data.date_to - data.date_from).days + 1
 
@@ -176,11 +223,37 @@ async def backfill_status(
     session: AsyncSession = Depends(get_session),
     member: TeamMember = Depends(_require_reports_viewer),
 ):
-    """Get current backfill status from app_settings."""
-    from app.db.repositories import AppSettingsRepository
-
+    """Get current backfill status from app_settings (with stale detection)."""
     repo = AppSettingsRepository()
     setting = await repo.get(session, "backfill_progress")
     if not setting or not isinstance(setting.value, dict):
         return {"status": "idle"}
-    return setting.value
+    return _detect_stale_backfill(setting.value)
+
+
+@router.post("/backfill/reset")
+async def backfill_reset(
+    session: AsyncSession = Depends(get_session),
+    member: TeamMember = Depends(require_admin),
+):
+    """Reset stuck backfill status. Admin only."""
+    repo = AppSettingsRepository()
+    existing = await repo.get(session, "backfill_progress")
+    if not existing or not isinstance(existing.value, dict):
+        return {"status": "idle"}
+
+    prev_status = existing.value.get("status", "idle")
+    async with session.begin():
+        await repo.set(
+            session,
+            "backfill_progress",
+            {
+                "status": "idle",
+                "reset_at": datetime.now(timezone.utc).isoformat(),
+                "reset_by_id": str(member.id),
+                "previous_status": prev_status,
+            },
+        )
+
+    logger.info("Backfill status reset by admin %s (was: %s)", member.id, prev_status)
+    return {"status": "idle", "previous_status": prev_status}
