@@ -262,9 +262,6 @@ def _calc_next_occurrence_datetime(schedule: MeetingSchedule) -> datetime | None
             candidate = candidate.replace(tzinfo=ZoneInfo("UTC"))
         else:
             candidate = candidate.astimezone(ZoneInfo("UTC"))
-        now_utc = datetime.now(ZoneInfo("UTC"))
-        if candidate <= now_utc:
-            return None
         return candidate.replace(tzinfo=None)
 
     next_date = _calc_next_occurrence_date(schedule)

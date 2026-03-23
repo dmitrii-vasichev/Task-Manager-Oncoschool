@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, time
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -319,6 +320,7 @@ class TelegramTargetCreate(BaseModel):
     chat_id: int
     thread_id: int | None = None
     label: str | None = None
+    type: str | None = "meeting"
     allow_incoming_tasks: bool = False
 
 
@@ -329,6 +331,7 @@ class TelegramTargetResponse(BaseModel):
     chat_id: int
     thread_id: int | None
     label: str | None
+    type: str | None
     allow_incoming_tasks: bool
     is_active: bool
     created_at: datetime
@@ -526,3 +529,92 @@ class AppSettingsResponse(BaseModel):
 class AIProviderUpdate(BaseModel):
     provider: str
     model: str
+
+
+# ── Reports ──
+
+
+class DailyMetricResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    metric_date: date
+    source: str
+    users_count: int
+    payments_count: int
+    payments_sum: Decimal
+    orders_count: int
+    orders_sum: Decimal
+    collected_at: datetime
+    collected_by_id: uuid.UUID | None = None
+
+
+class DailyMetricWithDelta(DailyMetricResponse):
+    """Single metric with delta vs previous day."""
+    delta_users: int | None = None
+    delta_payments_count: int | None = None
+    delta_payments_sum: Decimal | None = None
+    delta_orders_count: int | None = None
+    delta_orders_sum: Decimal | None = None
+
+
+class ReportSummaryResponse(BaseModel):
+    """Aggregated summary for a period."""
+    days: int
+    date_from: date
+    date_to: date
+    total_users: int
+    total_payments_count: int
+    total_payments_sum: Decimal
+    total_orders_count: int
+    total_orders_sum: Decimal
+    avg_users_per_day: float
+    avg_payments_sum_per_day: float
+    avg_orders_sum_per_day: float
+    metrics: list[DailyMetricResponse]
+
+
+class CollectRequest(BaseModel):
+    date: date
+    pause_minutes: int = 5  # minutes to wait between exports (min 5)
+
+
+class CollectResponse(BaseModel):
+    status: str  # "started" | "completed" | "already_exists"
+    metric: DailyMetricResponse | None = None
+
+
+class BackfillRequest(BaseModel):
+    date_from: date
+    date_to: date
+    pause_minutes: int = 5  # minutes to wait between exports (min 5)
+
+
+class BackfillResponse(BaseModel):
+    status: str  # "started"
+    total_dates: int
+
+
+class ReportScheduleResponse(BaseModel):
+    collection_time: str  # "HH:MM"
+    send_time: str  # "HH:MM"
+    timezone: str
+    enabled: bool
+
+
+class ReportScheduleUpdate(BaseModel):
+    collection_time: str  # "HH:MM"
+    send_time: str  # "HH:MM"
+    timezone: str = "Europe/Moscow"
+    enabled: bool = True
+
+
+class GetCourseCredentialsResponse(BaseModel):
+    configured: bool
+    base_url: str | None = None
+    updated_at: datetime | None = None
+
+
+class GetCourseCredentialsUpdate(BaseModel):
+    base_url: str
+    api_key: str

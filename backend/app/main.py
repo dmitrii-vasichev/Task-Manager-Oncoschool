@@ -32,6 +32,7 @@ from app.services.broadcast_scheduler_service import BroadcastSchedulerService
 from app.services.content_cleanup_service import ContentCleanupService
 from app.services.meeting_scheduler_service import MeetingSchedulerService
 from app.services.reminder_service import ReminderService
+from app.services.report_scheduler_service import ReportSchedulerService
 from app.services.supabase_storage import SupabaseStorageService
 from app.services.telegram_connection_service import TelegramConnectionService
 from app.services.zoom_service import ZoomService
@@ -40,7 +41,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(
-    title="Oncoschool Task Manager",
+    title="Oncoschool Portal",
     version="0.1.0",
     docs_url="/docs" if settings.DEBUG else None,
     redoc_url="/redoc" if settings.DEBUG else None,
@@ -163,6 +164,9 @@ broadcast_scheduler = BroadcastSchedulerService(
     storage_service=storage_service,
 )
 
+report_scheduler = ReportSchedulerService(bot=bot, session_maker=async_session)
+app.state.report_scheduler = report_scheduler
+
 # Telegram Connection (Pyrofork userbot — optional, for content module)
 telegram_connection_service = TelegramConnectionService()
 app.state.telegram_connection_service = telegram_connection_service
@@ -175,9 +179,11 @@ app.state.content_cleanup = content_cleanup
 @app.on_event("startup")
 async def _start_background_schedulers() -> None:
     """Ensure schedulers run for both `python -m app.main` and `uvicorn app.main:app`."""
+    await report_scheduler.recover_orphaned_backfill()
     reminder_service.start()
     await reminder_service.refresh_task_overdue_schedule_from_settings()
     meeting_scheduler.start()
+    report_scheduler.start()
     broadcast_scheduler.start()
     content_cleanup.start()
     try:
@@ -200,6 +206,7 @@ async def _start_background_schedulers() -> None:
 async def _stop_background_schedulers() -> None:
     reminder_service.stop()
     meeting_scheduler.stop()
+    report_scheduler.stop()
     broadcast_scheduler.stop()
     content_cleanup.stop()
 

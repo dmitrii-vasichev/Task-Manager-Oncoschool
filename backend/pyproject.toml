@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "oncoschool-tasks"
 version = "0.1.0"
-description = "Task Manager for Oncoschool team"
+description = "Portal for Oncoschool team"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.110",

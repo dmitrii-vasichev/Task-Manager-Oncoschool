@@ -40,16 +40,29 @@ import type {
 
 const SUB_SECTION_LABELS: Record<string, string> = {
   telegram_analysis: "Telegram-анализ",
+  reports: "Отчёты",
 };
 
 const ROLE_LABELS: Record<string, string> = {
+  viewer: "Просмотр",
   operator: "Оператор",
   editor: "Редактор",
 };
 
 const ROLE_COLORS: Record<string, string> = {
+  viewer: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
   operator: "bg-blue-500/10 text-blue-600 border-blue-500/20",
   editor: "bg-amber-500/10 text-amber-600 border-amber-500/20",
+};
+
+const ROLES_BY_SECTION: Record<string, { value: ContentRole; label: string; desc: string }[]> = {
+  telegram_analysis: [
+    { value: "operator", label: "Оператор", desc: "просмотр и запуск анализа" },
+    { value: "editor", label: "Редактор", desc: "управление каналами и промптами" },
+  ],
+  reports: [
+    { value: "viewer", label: "Просмотр", desc: "просмотр отчётов и дашборда" },
+  ],
 };
 
 /**
@@ -115,10 +128,10 @@ export function ContentAccessSection() {
         </div>
         <div className="flex-1">
           <h2 className="font-heading font-semibold text-base">
-            Доступ к контенту
+            Доступ к разделам
           </h2>
           <p className="text-xs text-muted-foreground">
-            Управление доступом пользователей и отделов к модулю контента
+            Управление доступом пользователей и отделов к разделам портала
           </p>
         </div>
         <Button
@@ -309,7 +322,12 @@ function AddAccessDialog({
             <Label className="text-xs font-medium">Раздел</Label>
             <Select
               value={subSection}
-              onValueChange={(v) => setSubSection(v as ContentSubSection)}
+              onValueChange={(v) => {
+                const newSection = v as ContentSubSection;
+                setSubSection(newSection);
+                const availableRoles = ROLES_BY_SECTION[newSection] || [];
+                setRole(availableRoles[0]?.value || "operator");
+              }}
             >
               <SelectTrigger className="rounded-xl">
                 <SelectValue />
@@ -317,6 +335,9 @@ function AddAccessDialog({
               <SelectContent>
                 <SelectItem value="telegram_analysis">
                   Telegram-анализ
+                </SelectItem>
+                <SelectItem value="reports">
+                  Отчёты
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -394,32 +415,35 @@ function AddAccessDialog({
           {/* Role */}
           <div className="space-y-1.5">
             <Label className="text-xs font-medium">Роль</Label>
-            <Select
-              value={role}
-              onValueChange={(v) => setRole(v as ContentRole)}
-            >
-              <SelectTrigger className="rounded-xl">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="operator">
-                  <div>
-                    <span className="font-medium">Оператор</span>
-                    <span className="text-muted-foreground text-xs ml-2">
-                      — просмотр и запуск анализа
-                    </span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="editor">
-                  <div>
-                    <span className="font-medium">Редактор</span>
-                    <span className="text-muted-foreground text-xs ml-2">
-                      — + управление каналами и промптами
-                    </span>
-                  </div>
-                </SelectItem>
-              </SelectContent>
-            </Select>
+            {(ROLES_BY_SECTION[subSection] || []).length === 1 ? (
+              <div className="rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-sm">
+                <span className="font-medium">{ROLES_BY_SECTION[subSection][0].label}</span>
+                <span className="text-muted-foreground text-xs ml-2">
+                  — {ROLES_BY_SECTION[subSection][0].desc}
+                </span>
+              </div>
+            ) : (
+              <Select
+                value={role}
+                onValueChange={(v) => setRole(v as ContentRole)}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(ROLES_BY_SECTION[subSection] || []).map((r) => (
+                    <SelectItem key={r.value} value={r.value}>
+                      <div>
+                        <span className="font-medium">{r.label}</span>
+                        <span className="text-muted-foreground text-xs ml-2">
+                          — {r.desc}
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
           <Button

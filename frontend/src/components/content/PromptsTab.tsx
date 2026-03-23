@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Plus,
   Pencil,
@@ -170,16 +172,18 @@ export function PromptsTab({ isEditor }: PromptsTabProps) {
 
       {/* View dialog */}
       <Dialog open={!!viewPrompt} onOpenChange={(open) => !open && setViewPrompt(null)}>
-        <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{viewPrompt?.title}</DialogTitle>
           </DialogHeader>
           {viewPrompt?.description && (
             <p className="text-sm text-muted-foreground">{viewPrompt.description}</p>
           )}
-          <pre className="text-sm whitespace-pre-wrap bg-muted/50 rounded-xl p-4 border border-border/40 max-h-96 overflow-y-auto">
-            {viewPrompt?.text}
-          </pre>
+          <div className="rounded-xl bg-muted/50 p-5 border border-border/40 max-h-[60vh] overflow-y-auto prose prose-sm dark:prose-invert max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {viewPrompt?.text ?? ""}
+            </ReactMarkdown>
+          </div>
         </DialogContent>
       </Dialog>
 

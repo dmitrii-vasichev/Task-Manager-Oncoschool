@@ -59,6 +59,15 @@ import type {
   TelegramConnectionStatus,
   TelegramConnectRequest,
   TelegramVerifyRequest,
+  // Reports
+  DailyMetric,
+  DailyMetricWithDelta,
+  ReportSummary,
+  CollectResponse,
+  BackfillResponse,
+  BackfillStatus,
+  ReportSchedule,
+  GetCourseCredentials,
 } from "./types";
 
 class ApiClient {
@@ -463,6 +472,7 @@ class ApiClient {
     chat_id: number;
     thread_id?: number | null;
     label?: string | null;
+    type?: string | null;
     allow_incoming_tasks?: boolean;
   }): Promise<TelegramNotificationTarget> {
     return this.request<TelegramNotificationTarget>("/api/telegram-targets", {
@@ -475,6 +485,7 @@ class ApiClient {
     chat_id?: number;
     thread_id?: number | null;
     label?: string | null;
+    type?: string | null;
     allow_incoming_tasks?: boolean;
   }): Promise<TelegramNotificationTarget> {
     return this.request<TelegramNotificationTarget>(`/api/telegram-targets/${id}`, {
@@ -1080,6 +1091,81 @@ class ApiClient {
     return new EventSource(url);
   }
 
+  // ==================== Reports ====================
+
+  async getReportToday(): Promise<DailyMetricWithDelta> {
+    return this.request<DailyMetricWithDelta>("/api/reports/getcourse/today");
+  }
+
+  async getReportRange(dateFrom?: string, dateTo?: string): Promise<DailyMetric[]> {
+    const params = new URLSearchParams();
+    if (dateFrom) params.set("date_from", dateFrom);
+    if (dateTo) params.set("date_to", dateTo);
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<DailyMetric[]>(`/api/reports/getcourse/range${query}`);
+  }
+
+  async getReportSummary(days?: number): Promise<ReportSummary> {
+    const params = new URLSearchParams();
+    if (days) params.set("days", String(days));
+    const query = params.toString() ? `?${params.toString()}` : "";
+    return this.request<ReportSummary>(`/api/reports/getcourse/summary${query}`);
+  }
+
+  async collectReport(date: string, pauseMinutes = 5): Promise<CollectResponse> {
+    return this.request<CollectResponse>("/api/reports/getcourse/collect", {
+      method: "POST",
+      body: JSON.stringify({ date, pause_minutes: pauseMinutes }),
+    });
+  }
+
+  async backfillReports(dateFrom: string, dateTo: string, pauseMinutes = 5): Promise<BackfillResponse> {
+    return this.request<BackfillResponse>("/api/reports/getcourse/backfill", {
+      method: "POST",
+      body: JSON.stringify({ date_from: dateFrom, date_to: dateTo, pause_minutes: pauseMinutes }),
+    });
+  }
+
+  async getBackfillStatus(): Promise<BackfillStatus> {
+    return this.request<BackfillStatus>("/api/reports/getcourse/backfill/status");
+  }
+
+  async cancelBackfill(): Promise<{ status: string }> {
+    return this.request("/api/reports/getcourse/backfill/cancel", {
+      method: "POST",
+    });
+  }
+
+  async resetBackfillStatus(): Promise<{ status: string; previous_status?: string }> {
+    return this.request("/api/reports/getcourse/backfill/reset", {
+      method: "POST",
+    });
+  }
+
+  // ==================== Settings: Reports ====================
+
+  async getGetCourseCredentials(): Promise<GetCourseCredentials> {
+    return this.request<GetCourseCredentials>("/api/settings/getcourse-credentials");
+  }
+
+  async updateGetCourseCredentials(data: { base_url: string; api_key: string }): Promise<GetCourseCredentials> {
+    return this.request<GetCourseCredentials>("/api/settings/getcourse-credentials", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getReportSchedule(): Promise<ReportSchedule> {
+    return this.request<ReportSchedule>("/api/settings/report-schedule");
+  }
+
+  async updateReportSchedule(data: ReportSchedule): Promise<ReportSchedule> {
+    return this.request<ReportSchedule>("/api/settings/report-schedule", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
   // ==================== Admin: AI Feature Config ====================
 
   async getAIFeatureConfigs(): Promise<AIFeatureConfig[]> {
@@ -1091,6 +1177,12 @@ class ApiClient {
       method: "PUT",
       body: JSON.stringify(data),
     });
+  }
+
+  // ==================== Content: My Access ====================
+
+  async getMyContentAccess(): Promise<{ sub_section: string; role: string }[]> {
+    return this.request<{ sub_section: string; role: string }[]>("/api/content/my-access");
   }
 
   // ==================== Admin: Content Access ====================
