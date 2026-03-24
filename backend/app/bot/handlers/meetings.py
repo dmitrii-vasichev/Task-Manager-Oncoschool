@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from zoneinfo import ZoneInfo
 
 from aiogram import Router
@@ -333,7 +333,7 @@ async def cmd_stats(
 
     if inactive_members:
         text += (
-            f"\n<b>⚠️ Не обновлялись &gt;3 дней:</b>\n"
+            "\n<b>⚠️ Не обновлялись &gt;3 дней:</b>\n"
             + "\n".join(f"  • {name}" for name in inactive_members)
         )
 

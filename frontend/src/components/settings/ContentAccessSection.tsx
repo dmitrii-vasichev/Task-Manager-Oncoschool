@@ -68,8 +68,13 @@ const ROLES_BY_SECTION: Record<string, { value: ContentRole; label: string; desc
 /**
  * Content access management section for admin settings.
  * Shows a table of access grants and allows adding/removing access.
+ * When subSection is provided, only shows grants for that sub_section.
  */
-export function ContentAccessSection() {
+export function ContentAccessSection({
+  subSection: filterSubSection,
+}: {
+  subSection?: ContentSubSection;
+} = {}) {
   const { toastSuccess, toastError } = useToast();
   const { members } = useTeam();
   const { departments } = useDepartments();
@@ -110,6 +115,18 @@ export function ContentAccessSection() {
     }
   };
 
+  const filteredGrants = filterSubSection
+    ? grants.filter((g) => g.sub_section === filterSubSection)
+    : grants;
+
+  const sectionTitle = filterSubSection
+    ? `Доступ — ${SUB_SECTION_LABELS[filterSubSection] || filterSubSection}`
+    : "Доступ к разделам";
+
+  const sectionDescription = filterSubSection
+    ? "Управление доступом пользователей и отделов"
+    : "Управление доступом пользователей и отделов к разделам портала";
+
   if (loading) {
     return (
       <div className="rounded-2xl border border-border/60 bg-card p-6 space-y-4">
@@ -120,7 +137,7 @@ export function ContentAccessSection() {
   }
 
   return (
-    <div className="animate-fade-in-up stagger-3 rounded-2xl border border-border/60 bg-card overflow-hidden">
+    <div className="rounded-2xl border border-border/60 bg-card overflow-hidden">
       {/* Header */}
       <div className="flex items-center gap-3 p-6 pb-0">
         <div className="h-9 w-9 rounded-xl bg-violet-500/10 flex items-center justify-center">
@@ -128,10 +145,10 @@ export function ContentAccessSection() {
         </div>
         <div className="flex-1">
           <h2 className="font-heading font-semibold text-base">
-            Доступ к разделам
+            {sectionTitle}
           </h2>
           <p className="text-xs text-muted-foreground">
-            Управление доступом пользователей и отделов к разделам портала
+            {sectionDescription}
           </p>
         </div>
         <Button
@@ -145,7 +162,7 @@ export function ContentAccessSection() {
       </div>
 
       <div className="p-6">
-        {grants.length === 0 ? (
+        {filteredGrants.length === 0 ? (
           <div className="text-center py-8 text-sm text-muted-foreground">
             <Shield className="h-8 w-8 mx-auto mb-2 opacity-30" />
             <p>Доступ никому не выдан</p>
@@ -158,9 +175,11 @@ export function ContentAccessSection() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border/60 bg-muted/30">
-                  <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wider">
-                    Раздел
-                  </th>
+                  {!filterSubSection && (
+                    <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wider">
+                      Раздел
+                    </th>
+                  )}
                   <th className="text-left px-4 py-3 font-medium text-muted-foreground text-xs uppercase tracking-wider">
                     Кому
                   </th>
@@ -171,17 +190,19 @@ export function ContentAccessSection() {
                 </tr>
               </thead>
               <tbody>
-                {grants.map((grant) => (
+                {filteredGrants.map((grant) => (
                   <tr
                     key={grant.id}
                     className="border-b border-border/40 last:border-b-0"
                   >
-                    <td className="px-4 py-3">
-                      <span className="text-sm">
-                        {SUB_SECTION_LABELS[grant.sub_section] ||
-                          grant.sub_section}
-                      </span>
-                    </td>
+                    {!filterSubSection && (
+                      <td className="px-4 py-3">
+                        <span className="text-sm">
+                          {SUB_SECTION_LABELS[grant.sub_section] ||
+                            grant.sub_section}
+                        </span>
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         {grant.member_id ? (
@@ -234,6 +255,7 @@ export function ContentAccessSection() {
         onOpenChange={setShowAddDialog}
         members={members}
         departments={departments}
+        fixedSubSection={filterSubSection}
         onGranted={(grant) => {
           setGrants((prev) => [...prev, grant]);
           setShowAddDialog(false);
@@ -262,16 +284,20 @@ function AddAccessDialog({
   onOpenChange,
   members,
   departments,
+  fixedSubSection,
   onGranted,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   members: { id: string; full_name: string; avatar_url: string | null }[];
   departments: { id: string; name: string }[];
+  fixedSubSection?: ContentSubSection;
   onGranted: (grant: ContentAccess) => void;
 }) {
   const { toastSuccess, toastError } = useToast();
-  const [subSection, setSubSection] = useState<ContentSubSection>("telegram_analysis");
+  const [subSection, setSubSection] = useState<ContentSubSection>(
+    fixedSubSection || "telegram_analysis"
+  );
   const [targetType, setTargetType] = useState<"member" | "department">("member");
   const [targetId, setTargetId] = useState("");
   const [role, setRole] = useState<ContentRole>("operator");
@@ -280,12 +306,13 @@ function AddAccessDialog({
   // Reset on open
   useEffect(() => {
     if (open) {
-      setSubSection("telegram_analysis");
+      setSubSection(fixedSubSection || "telegram_analysis");
       setTargetType("member");
       setTargetId("");
-      setRole("operator");
+      const defaultRoles = ROLES_BY_SECTION[fixedSubSection || "telegram_analysis"] || [];
+      setRole(defaultRoles[0]?.value || "operator");
     }
-  }, [open]);
+  }, [open, fixedSubSection]);
 
   const handleSave = async () => {
     if (!targetId) {
@@ -318,30 +345,32 @@ function AddAccessDialog({
 
         <div className="space-y-4 pt-2">
           {/* Sub-section */}
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium">Раздел</Label>
-            <Select
-              value={subSection}
-              onValueChange={(v) => {
-                const newSection = v as ContentSubSection;
-                setSubSection(newSection);
-                const availableRoles = ROLES_BY_SECTION[newSection] || [];
-                setRole(availableRoles[0]?.value || "operator");
-              }}
-            >
-              <SelectTrigger className="rounded-xl">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="telegram_analysis">
-                  Telegram-анализ
-                </SelectItem>
-                <SelectItem value="reports">
-                  Отчёты
-                </SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {!fixedSubSection && (
+            <div className="space-y-1.5">
+              <Label className="text-xs font-medium">Раздел</Label>
+              <Select
+                value={subSection}
+                onValueChange={(v) => {
+                  const newSection = v as ContentSubSection;
+                  setSubSection(newSection);
+                  const availableRoles = ROLES_BY_SECTION[newSection] || [];
+                  setRole(availableRoles[0]?.value || "operator");
+                }}
+              >
+                <SelectTrigger className="rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="telegram_analysis">
+                    Telegram-анализ
+                  </SelectItem>
+                  <SelectItem value="reports">
+                    Отчёты
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Target type */}
           <div className="space-y-1.5">

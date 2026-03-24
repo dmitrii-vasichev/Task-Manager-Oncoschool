@@ -1,7 +1,7 @@
 """Tests for ContentCleanupService — scheduler configuration."""
 
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 from app.services.content_cleanup_service import ContentCleanupService, DEFAULT_RETENTION_DAYS
 

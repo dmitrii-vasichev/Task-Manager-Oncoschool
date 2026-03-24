@@ -1,7 +1,7 @@
 """Tests for reports module — Phase R1 + Phase R2."""
 
 import unittest
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -20,12 +20,10 @@ from app.db.schemas import (
     ReportScheduleResponse,
     GetCourseCredentialsResponse,
     BackfillRequest,
-    BackfillResponse,
 )
 from app.services.getcourse_service import GetCourseService
 from app.services.report_scheduler_service import (
     ReportSchedulerService,
-    REPORT_SCHEDULE_KEY,
     CLEANUP_RETENTION_DAYS,
     BACKFILL_RESTART_ERROR,
 )
@@ -248,7 +246,7 @@ class TestPydanticSchemas(unittest.TestCase):
         self.assertTrue(r.enabled)
 
     def test_getcourse_credentials_response_no_key(self) -> None:
-        r = GetCourseCredentialsResponse(configured=True, base_url="https://example.com")
+        GetCourseCredentialsResponse(configured=True, base_url="https://example.com")
         # Ensure no api_key field in response
         self.assertNotIn("api_key", GetCourseCredentialsResponse.model_fields)
 
@@ -450,8 +448,11 @@ class TestReportMessageFormatting(unittest.TestCase):
         )
 
         self.assertIn("19.03.2026", text)
-        self.assertIn("120", text)
+        self.assertIn("<b>120</b>", text)
         self.assertIn("\u2191", text)  # up arrow for users
+        # Payments and orders on separate lines
+        self.assertIn("\U0001f4b3", text)  # payments count line
+        self.assertIn("\U0001f4e6", text)  # orders count line
 
     def test_format_no_previous_no_deltas(self) -> None:
         metric = self._make_metric()
@@ -461,7 +462,7 @@ class TestReportMessageFormatting(unittest.TestCase):
         )
 
         self.assertIn("19.03.2026", text)
-        self.assertIn("100", text)
+        self.assertIn("<b>100</b>", text)
         self.assertNotIn("\u2191", text)
         self.assertNotIn("\u2193", text)
 
@@ -474,6 +475,7 @@ class TestReportMessageFormatting(unittest.TestCase):
         )
 
         self.assertIn("\u2193", text)  # down arrow
+        self.assertIn("(\u2193 20)", text)  # delta value in parens
 
     def test_format_zero_delta_shows_right_arrow(self) -> None:
         metric = self._make_metric(users_count=100)
@@ -484,6 +486,18 @@ class TestReportMessageFormatting(unittest.TestCase):
         )
 
         self.assertIn("\u2192", text)  # right arrow
+        self.assertIn("(\u2192 0)", text)
+
+    def test_format_money_delta_with_currency(self) -> None:
+        metric = self._make_metric(payments_sum=Decimal("84800"))
+        prev = self._make_metric(payments_sum=Decimal("95050"))
+
+        text = ReportSchedulerService._format_report_message(
+            metric, prev, date(2026, 3, 19)
+        )
+
+        self.assertIn("<b>84 800\u20bd</b>", text)
+        self.assertIn("(\u2193 10 250\u20bd)", text)
 
 
 class TestBackfillLogic(unittest.IsolatedAsyncioTestCase):

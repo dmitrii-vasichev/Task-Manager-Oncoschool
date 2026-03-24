@@ -137,7 +137,7 @@ async def collect(
     session: AsyncSession = Depends(get_session),
 ):
     """Manually trigger data collection for a specific date."""
-    existing = await _metrics_repo.get_by_date(session, "getcourse", data.date)
+    await _metrics_repo.get_by_date(session, "getcourse", data.date)
 
     # Collect (or recollect)
     pause_seconds = max(data.pause_minutes, 5) * 60
@@ -148,6 +148,24 @@ async def collect(
         )
         status = "completed"
         return CollectResponse(status=status, metric=DailyMetricResponse.model_validate(metric))
+    except RuntimeError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/send-now")
+async def send_now(
+    request: Request,
+    _member: TeamMember = Depends(require_admin),
+):
+    """Manually send report notification to Telegram for yesterday."""
+    scheduler = _get_report_scheduler(request)
+    try:
+        sent_date = await scheduler.send_now()
+        return {
+            "status": "sent",
+            "date": sent_date.isoformat(),
+            "message": f"Отчёт за {sent_date.strftime('%d.%m.%Y')} отправлен в Telegram",
+        }
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
@@ -227,12 +245,26 @@ async def backfill_status(
     session: AsyncSession = Depends(get_session),
     member: TeamMember = Depends(_require_reports_viewer),
 ):
-    """Get current backfill status from app_settings (with stale detection)."""
+    """Get current backfill status from app_settings (with stale detection).
+
+    If a stale backfill is detected, persist the 'failed' status to DB
+    so that subsequent polls don't recalculate an ever-growing age.
+    """
     repo = AppSettingsRepository()
     setting = await repo.get(session, "backfill_progress")
     if not setting or not isinstance(setting.value, dict):
         return {"status": "idle"}
-    return _detect_stale_backfill(setting.value)
+
+    result = _detect_stale_backfill(setting.value)
+
+    # Persist stale detection to DB (one-time write, idempotent)
+    if result.get("status") == "failed" and setting.value.get("status") == "running":
+        result["detected_stale_at"] = datetime.now(timezone.utc).isoformat()
+        await repo.set(session, "backfill_progress", result)
+        await session.commit()
+        logger.info("Backfill marked as failed due to stale heartbeat (age=%ss)", result.get("error", ""))
+
+    return result
 
 
 @router.post("/backfill/cancel")

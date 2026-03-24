@@ -8,7 +8,7 @@ from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, LoginUrl
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
@@ -230,63 +230,98 @@ class ReportSchedulerService:
             logger.error("ReportScheduler: send failed: %s", e)
 
     async def _send_report_notification(
-        self, metric, target_date: date
-    ) -> None:
-        """Format and send Telegram notification with metrics and deltas."""
-        try:
-            # Get previous day metric for delta
-            prev_date = target_date - timedelta(days=1)
-            prev_metric = None
-            async with self.session_maker() as session:
-                prev_metric = await self._metrics_repo.get_by_date(
-                    session, "getcourse", prev_date
-                )
+        self, metric, target_date: date, *, raise_on_failure: bool = False
+    ) -> int:
+        """Format and send Telegram notification with metrics and deltas.
 
-            text = self._format_report_message(metric, prev_metric, target_date)
+        Returns the number of successfully sent messages.
+        When *raise_on_failure* is True, raises RuntimeError instead of
+        silently swallowing errors (used by send_now).
+        """
+        # Get previous day metric for delta
+        prev_date = target_date - timedelta(days=1)
+        prev_metric = None
+        async with self.session_maker() as session:
+            prev_metric = await self._metrics_repo.get_by_date(
+                session, "getcourse", prev_date
+            )
+
+        text = self._format_report_message(metric, prev_metric, target_date)
+        frontend_url = settings.NEXT_PUBLIC_FRONTEND_URL
+        if frontend_url.startswith("https://"):
             markup = InlineKeyboardMarkup(inline_keyboard=[[
                 InlineKeyboardButton(
                     text="\U0001f4ca Открыть дашборд",
-                    url=f"{settings.NEXT_PUBLIC_FRONTEND_URL}/reports",
+                    login_url=LoginUrl(url=f"{frontend_url}/reports"),
+                )
+            ]])
+        else:
+            markup = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(
+                    text="\U0001f4ca Открыть дашборд",
+                    url=f"{frontend_url}/reports",
                 )
             ]])
 
-            async with self.session_maker() as session:
-                targets = await self._target_repo.get_active_by_type(
-                    session, "report:getcourse"
+        async with self.session_maker() as session:
+            targets = await self._target_repo.get_active_by_type(
+                session, "report:getcourse"
+            )
+
+        if not targets:
+            msg = (
+                "Нет активных Telegram-целей с типом «Отчёты». "
+                "Добавьте цель в Настройки → Telegram-цели."
+            )
+            if raise_on_failure:
+                raise RuntimeError(msg)
+            logger.warning("ReportScheduler: %s", msg)
+            return 0
+
+        sent = 0
+        errors: list[str] = []
+        for target in targets:
+            try:
+                await self.bot.send_message(
+                    chat_id=target.chat_id,
+                    text=text,
+                    parse_mode="HTML",
+                    reply_markup=markup,
+                    message_thread_id=target.thread_id,
                 )
+                sent += 1
+            except Exception as e:
+                logger.warning(
+                    "Failed to send report to chat %s: %s", target.chat_id, e
+                )
+                errors.append(f"chat {target.chat_id}: {e}")
 
-            for target in targets:
-                try:
-                    await self.bot.send_message(
-                        chat_id=target.chat_id,
-                        text=text,
-                        reply_markup=markup,
-                        message_thread_id=target.thread_id,
-                    )
-                except Exception as e:
-                    logger.warning(
-                        "Failed to send report to chat %s: %s", target.chat_id, e
-                    )
+        if sent == 0 and raise_on_failure:
+            raise RuntimeError(
+                f"Не удалось отправить ни в один чат. Ошибки: {'; '.join(errors)}"
+            )
 
-        except Exception as e:
-            logger.error("Failed to send report notification: %s", e)
+        return sent
 
     @staticmethod
     def _format_report_message(metric, prev_metric, target_date: date) -> str:
-        """Format the report notification message."""
+        """Format the report notification message (HTML)."""
 
-        def delta_arrow(current: int | Decimal, previous: int | Decimal | None) -> str:
+        def money_fmt(value: Decimal) -> str:
+            return f"{value:,.0f}\u20bd".replace(",", " ")
+
+        def delta_str(current: int | Decimal, previous: int | Decimal | None, is_money: bool = False) -> str:
             if previous is None:
                 return ""
             diff = current - previous
             if diff > 0:
-                return f" \u2191{diff}"
+                val = money_fmt(diff) if is_money else str(diff)
+                return f"  (\u2191 {val})"
             elif diff < 0:
-                return f" \u2193{abs(diff)}"
-            return " \u2192"
-
-        def money_fmt(value: Decimal) -> str:
-            return f"{value:,.0f}\u20bd".replace(",", " ")
+                val = money_fmt(abs(diff)) if is_money else str(abs(diff))
+                return f"  (\u2193 {val})"
+            val = money_fmt(Decimal(0)) if is_money else "0"
+            return f"  (\u2192 {val})"
 
         date_str = target_date.strftime("%d.%m.%Y")
         prev = prev_metric
@@ -294,12 +329,45 @@ class ReportSchedulerService:
         lines = [
             f"\U0001f4ca \u041e\u0442\u0447\u0451\u0442 GetCourse \u0437\u0430 {date_str}",
             "",
-            f"\U0001f464 \u041d\u043e\u0432\u044b\u0435 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0438: {metric.users_count}{delta_arrow(metric.users_count, prev.users_count if prev else None)}",
-            f"\U0001f4b3 \u041f\u043b\u0430\u0442\u0435\u0436\u0438: {metric.payments_count} \u043d\u0430 {money_fmt(metric.payments_sum)}{delta_arrow(metric.payments_sum, prev.payments_sum if prev else None)}",
-            f"\U0001f4e6 \u0417\u0430\u043a\u0430\u0437\u044b: {metric.orders_count} \u043d\u0430 {money_fmt(metric.orders_sum)}{delta_arrow(metric.orders_sum, prev.orders_sum if prev else None)}",
+            f"\U0001f464 \u041d\u043e\u0432\u044b\u0435 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0438 \u2014 <b>{metric.users_count}</b>{delta_str(metric.users_count, prev.users_count if prev else None)}",
+            f"\U0001f4b3 \u041f\u043b\u0430\u0442\u0435\u0436\u0435\u0439 \u2014 <b>{metric.payments_count}</b>{delta_str(metric.payments_count, prev.payments_count if prev else None)}",
+            f"\U0001f4b0 \u0421\u0443\u043c\u043c\u0430 \u2014 <b>{money_fmt(metric.payments_sum)}</b>{delta_str(metric.payments_sum, prev.payments_sum if prev else None, is_money=True)}",
+            f"\U0001f4e6 \u0417\u0430\u043a\u0430\u0437\u043e\u0432 \u2014 <b>{metric.orders_count}</b>{delta_str(metric.orders_count, prev.orders_count if prev else None)}",
+            f"\U0001f4b0 \u0421\u0443\u043c\u043c\u0430 \u2014 <b>{money_fmt(metric.orders_sum)}</b>{delta_str(metric.orders_sum, prev.orders_sum if prev else None, is_money=True)}",
         ]
 
         return "\n".join(lines)
+
+    async def send_now(self) -> date:
+        """Manually send report for yesterday. Returns the date that was sent.
+
+        Raises RuntimeError if no metric data is available for yesterday.
+        """
+        schedule = await self._get_schedule()
+        tz_name = schedule.get("timezone", "Europe/Moscow")
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception:
+            tz = ZoneInfo("Europe/Moscow")
+
+        yesterday = datetime.now(tz).date() - timedelta(days=1)
+
+        async with self.session_maker() as session:
+            metric = await self._metrics_repo.get_by_date(
+                session, "getcourse", yesterday
+            )
+
+        if metric is None:
+            raise RuntimeError(
+                f"Данные за {yesterday.strftime('%d.%m.%Y')} не найдены. "
+                "Сначала соберите данные на вкладке Отчёты."
+            )
+
+        sent = await self._send_report_notification(
+            metric, yesterday, raise_on_failure=True
+        )
+        logger.info("Manual send_now completed for %s — sent to %d chats", yesterday, sent)
+        return yesterday
 
     async def _cleanup_old_metrics(self) -> None:
         """Delete metrics older than retention period."""

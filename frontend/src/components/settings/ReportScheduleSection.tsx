@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Clock, Loader2, Save, Info, AlertTriangle } from "lucide-react";
+import { Clock, Loader2, Save, Send, Info, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -27,6 +27,7 @@ export function ReportScheduleSection() {
   const [schedule, setSchedule] = useState<ReportSchedule | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [sending, setSending] = useState(false);
   const [collectionTime, setCollectionTime] = useState("05:45");
   const [sendTime, setSendTime] = useState("06:30");
   const [enabled, setEnabled] = useState(true);
@@ -86,6 +87,18 @@ export function ReportScheduleSection() {
       toastError(e instanceof Error ? e.message : "Ошибка сохранения");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSendNow = async () => {
+    setSending(true);
+    try {
+      const result = await api.sendReportNow();
+      toastSuccess(result.message);
+    } catch (e) {
+      toastError(e instanceof Error ? e.message : "Ошибка отправки");
+    } finally {
+      setSending(false);
     }
   };
 
@@ -185,18 +198,33 @@ export function ReportScheduleSection() {
           </span>
         </div>
 
-        <Button
-          onClick={handleSave}
-          disabled={saving || !isGapValid}
-          className="rounded-lg gap-1.5"
-        >
-          {saving ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="h-4 w-4" />
-          )}
-          Сохранить
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button
+            onClick={handleSave}
+            disabled={saving || !isGapValid}
+            className="rounded-lg gap-1.5"
+          >
+            {saving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            Сохранить
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleSendNow}
+            disabled={sending}
+            className="rounded-lg gap-1.5"
+          >
+            {sending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+            Отправить сейчас
+          </Button>
+        </div>
       </div>
     </div>
   );

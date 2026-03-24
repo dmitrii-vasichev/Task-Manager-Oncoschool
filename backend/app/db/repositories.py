@@ -1,5 +1,6 @@
 import logging
 import uuid
+from datetime import date, datetime
 
 import sqlalchemy as sa
 from sqlalchemy import select, update, delete, func, or_, and_, cast
@@ -7,10 +8,6 @@ from sqlalchemy.dialects.postgresql import INTERVAL
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-
-logger = logging.getLogger(__name__)
-
-from datetime import date, datetime
 
 from app.db.models import (
     AIFeatureConfig,
@@ -39,6 +36,8 @@ from app.db.models import (
     TelegramNotificationTarget,
     TelegramSession,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TeamMemberRepository:
@@ -473,7 +472,7 @@ class TelegramTargetRepository:
             select(TelegramNotificationTarget)
             .where(
                 TelegramNotificationTarget.is_active.is_(True),
-                TelegramNotificationTarget.type == target_type,
+                TelegramNotificationTarget.types.any(target_type),
             )
             .order_by(TelegramNotificationTarget.created_at)
         )

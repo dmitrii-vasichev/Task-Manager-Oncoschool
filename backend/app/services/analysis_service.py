@@ -160,7 +160,6 @@ class AnalysisService:
                 # Determine AI config
                 config = await self._config_repo.get_with_default_fallback(session, FEATURE_KEY)
                 provider_name = config.provider if config else None
-                ai_provider = config.provider if config else None
                 ai_model = config.model if config else None
 
                 # Store provider info in run

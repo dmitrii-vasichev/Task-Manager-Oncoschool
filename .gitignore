@@ -12,6 +12,33 @@ node_modules/
 .env.local
 *.db
 .DS_Store
-.claude/settings.local.json
 .vercel
 .env*.local
+
+# Claude Code / AI tooling
+.claude/
+.agents/
+skills/
+skills-lock.json
+.workflow-state.json
+CLAUDE.md
+
+# Internal tooling (change fragments)
+.changes/
+CHANGELOG.md
+Makefile
+scripts/change_add.py
+scripts/change_build.py
+
+# QA artifacts
+frontend/qa/
+frontend/scripts/
+
+# Internal docs
+docs/audit-actions.md
+docs/DOCS_POLICY.md
+docs/README.md
+docs/ai/
+docs/plans/
+docs/runbooks/
+docs/prd-content-telegram-analysis.md

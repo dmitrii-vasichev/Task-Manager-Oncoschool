@@ -12,8 +12,8 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DatePicker } from "@/components/shared/DatePicker";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -314,14 +314,14 @@ export function AnalysisTab() {
               <Calendar className="h-3 w-3" />
               От
             </Label>
-            <Input
-              type="date"
+            <DatePicker
               value={dateFrom}
-              onChange={(e) => {
-                setDateFrom(e.target.value);
+              onChange={(v) => {
+                setDateFrom(v);
                 setPrepareSummary(null);
               }}
-              className="rounded-xl"
+              placeholder="Дата начала"
+              className="rounded-xl w-full"
             />
           </div>
           <div className="space-y-1.5">
@@ -329,14 +329,14 @@ export function AnalysisTab() {
               <Calendar className="h-3 w-3" />
               До
             </Label>
-            <Input
-              type="date"
+            <DatePicker
               value={dateTo}
-              onChange={(e) => {
-                setDateTo(e.target.value);
+              onChange={(v) => {
+                setDateTo(v);
                 setPrepareSummary(null);
               }}
-              className="rounded-xl"
+              placeholder="Дата конца"
+              className="rounded-xl w-full"
             />
           </div>
         </div>

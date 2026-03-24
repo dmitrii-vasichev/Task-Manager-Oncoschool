@@ -821,7 +821,7 @@ async def get_zoom_status(
             ]
             if play_files:
                 response.recording_url = play_files[0]["play_url"]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Failed to get Zoom recording status: %s", e)
 
     return response

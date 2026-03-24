@@ -472,7 +472,7 @@ class ApiClient {
     chat_id: number;
     thread_id?: number | null;
     label?: string | null;
-    type?: string | null;
+    types?: string[];
     allow_incoming_tasks?: boolean;
   }): Promise<TelegramNotificationTarget> {
     return this.request<TelegramNotificationTarget>("/api/telegram-targets", {
@@ -485,7 +485,7 @@ class ApiClient {
     chat_id?: number;
     thread_id?: number | null;
     label?: string | null;
-    type?: string | null;
+    types?: string[];
     allow_incoming_tasks?: boolean;
   }): Promise<TelegramNotificationTarget> {
     return this.request<TelegramNotificationTarget>(`/api/telegram-targets/${id}`, {
@@ -1164,6 +1164,10 @@ class ApiClient {
       method: "PUT",
       body: JSON.stringify(data),
     });
+  }
+
+  async sendReportNow(): Promise<{ status: string; date: string; message: string }> {
+    return this.request("/api/reports/getcourse/send-now", { method: "POST" });
   }
 
   // ==================== Admin: AI Feature Config ====================

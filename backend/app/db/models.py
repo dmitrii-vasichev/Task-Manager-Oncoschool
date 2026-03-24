@@ -567,8 +567,8 @@ class TelegramNotificationTarget(Base):
     chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     thread_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     label: Mapped[str | None] = mapped_column(String(200), nullable=True)
-    type: Mapped[str | None] = mapped_column(
-        String(50), nullable=True, default="meeting", server_default="meeting"
+    types: Mapped[list[str]] = mapped_column(
+        ARRAY(String(50)), nullable=False, default=list, server_default="{}"
     )
     allow_incoming_tasks: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"

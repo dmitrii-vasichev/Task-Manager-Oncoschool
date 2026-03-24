@@ -2,7 +2,7 @@ import logging
 import uuid
 from datetime import time
 
-from aiogram import Bot, F, Router
+from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -115,7 +115,6 @@ async def cmd_reminders(
     member: TeamMember,
     session_maker: async_sessionmaker,
 ) -> None:
-    member_repo = TeamMemberRepository()
     async with session_maker() as session:
         stmt = (
             select(TeamMember)
@@ -146,7 +145,6 @@ async def cb_reminders_page(
         await callback.answer("Только для модераторов", show_alert=True)
         return
     page = int(callback.data.split(":")[1])
-    member_repo = TeamMemberRepository()
 
     async with session_maker() as session:
         stmt = (
@@ -540,7 +538,6 @@ async def cmd_aimodel(
     session_maker: async_sessionmaker,
 ) -> None:
     ai_service = AIService()
-    settings_repo = AppSettingsRepository()
 
     async with session_maker() as session:
         info = await ai_service.get_current_provider_info(session)

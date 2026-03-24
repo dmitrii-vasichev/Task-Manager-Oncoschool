@@ -12,9 +12,6 @@ from app.services.getcourse_service import (
     GetCourseService,
     FETCH_MAX_ATTEMPTS,
     FETCH_RETRY_DELAY,
-    RATE_LIMIT_BASE_DELAY,
-    RATE_LIMIT_MAX_DELAY,
-    MAX_RATE_LIMIT_RETRIES,
     EXPORT_PAUSE,
 )
 

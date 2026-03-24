@@ -12,6 +12,8 @@ import {
   Send,
   XCircle,
   ArrowLeft,
+  Github,
+  Linkedin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -57,6 +59,56 @@ function PulsingDots() {
         className="h-2 w-2 rounded-full bg-primary animate-pulse"
         style={{ animationDelay: "0.4s" }}
       />
+    </div>
+  );
+}
+
+/* ─── Developer contacts ─── */
+const DEV_LINKS = {
+  portfolio: "https://dmitrii-vasichev.com",
+  github: "https://github.com/dmitrii-vasichev",
+  linkedin: "https://www.linkedin.com/in/dmitrii-vasichev",
+  telegram: "https://t.me/dmitrii_vasichev",
+} as const;
+
+function DeveloperFooter({ variant }: { variant: "desktop" | "mobile" }) {
+  const isDesktop = variant === "desktop";
+
+  const iconClass = isDesktop
+    ? "h-4 w-4 text-white/40 hover:text-white/80 transition-colors"
+    : "h-3.5 w-3.5 text-muted-foreground/50 hover:text-muted-foreground transition-colors";
+
+  return (
+    <div className={isDesktop ? "text-center" : "text-center"}>
+      <p className={isDesktop ? "text-sm text-white/40" : "text-xs text-muted-foreground/40"}>
+        Built by{" "}
+        <a
+          href={DEV_LINKS.portfolio}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={
+            isDesktop
+              ? "font-medium text-white/70 hover:text-white transition-colors"
+              : "font-medium text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+          }
+        >
+          Dmitrii Vasichev
+        </a>
+      </p>
+      <p className={isDesktop ? "mt-1 text-xs text-white/25" : "mt-0.5 text-[10px] text-muted-foreground/30"}>
+        Next.js &middot; FastAPI &middot; PostgreSQL
+      </p>
+      <div className={isDesktop ? "mt-3 flex items-center justify-center gap-4" : "mt-1.5 flex items-center justify-center gap-3"}>
+        <a href={DEV_LINKS.github} target="_blank" rel="noopener noreferrer" aria-label="GitHub">
+          <Github className={iconClass} />
+        </a>
+        <a href={DEV_LINKS.linkedin} target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
+          <Linkedin className={iconClass} />
+        </a>
+        <a href={DEV_LINKS.telegram} target="_blank" rel="noopener noreferrer" aria-label="Telegram">
+          <Send className={iconClass} />
+        </a>
+      </div>
     </div>
   );
 }
@@ -345,12 +397,17 @@ export default function LoginPage() {
             style={{ animationDelay: "0.4s" }}
           >
             <p className="text-lg xl:text-xl font-medium text-white/90 tracking-wide">
-              Управление задачами команды
+              Портал команды
             </p>
             <p className="mt-2 text-sm text-white/50">
-              Telegram-бот &middot; Веб-интерфейс &middot; AI-парсинг
+              Задачи &middot; Встречи &middot; Аналитика &middot; AI
             </p>
           </div>
+        </div>
+
+        {/* Developer contacts (desktop) */}
+        <div className="absolute bottom-6 z-10 animate-login-fade-in" style={{ animationDelay: "0.6s" }}>
+          <DeveloperFooter variant="desktop" />
         </div>
       </div>
 
@@ -376,7 +433,7 @@ export default function LoginPage() {
             />
           </div>
           <p className="mt-3 text-center text-sm text-muted-foreground">
-            Управление задачами команды
+            Портал команды
           </p>
         </div>
 
@@ -565,10 +622,15 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Footer */}
-        <p className="mt-auto pt-8 text-center text-xs text-muted-foreground/50">
-          Онкошкола &middot; Портал
-        </p>
+        {/* Footer — developer contacts on mobile, branding on desktop */}
+        <div className="mt-auto pt-8">
+          <div className="lg:hidden">
+            <DeveloperFooter variant="mobile" />
+          </div>
+          <p className="hidden lg:block text-center text-xs text-muted-foreground/50">
+            Онкошкола &middot; Портал
+          </p>
+        </div>
       </div>
     </div>
   );

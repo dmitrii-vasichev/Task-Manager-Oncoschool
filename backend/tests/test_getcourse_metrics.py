@@ -157,6 +157,14 @@ class TestParseDecimal(unittest.TestCase):
     def test_trailing_text(self):
         self.assertEqual(GetCourseService._parse_decimal("2500.00 руб."), Decimal("2500.00"))
 
+    def test_thin_space_separator(self):
+        """Thin space U+2009 — used by some GetCourse locales."""
+        self.assertEqual(GetCourseService._parse_decimal("5\u2009000"), Decimal("5000"))
+
+    def test_narrow_nbsp_separator(self):
+        """Narrow no-break space U+202F."""
+        self.assertEqual(GetCourseService._parse_decimal("12\u202f500,50"), Decimal("12500.50"))
+
 
 class TestExtractDateFromRow(unittest.TestCase):
     """Date extraction from array rows for range backfill grouping."""

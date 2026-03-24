@@ -12,12 +12,12 @@ from typing import Any
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-# Progress callback type: async fn(stage, detail_dict)
-ProgressCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
-
 from app.db.models import DailyMetric, GetCourseCredentials
 from app.db.repositories import DailyMetricRepository, GetCourseCredentialsRepository
 from app.utils.encryption import decrypt
+
+# Progress callback type: async fn(stage, detail_dict)
+ProgressCallback = Callable[[str, dict[str, Any]], Awaitable[None]]
 
 logger = logging.getLogger(__name__)
 
@@ -307,7 +307,18 @@ class GetCourseService:
                     "Export %d fetch attempt %d/%d: status=%s, retrying in %ds",
                     export_id, attempt, FETCH_MAX_ATTEMPTS, status, FETCH_RETRY_DELAY,
                 )
-                await asyncio.sleep(FETCH_RETRY_DELAY)
+                await self._sleep_with_heartbeat(
+                    FETCH_RETRY_DELAY,
+                    on_progress,
+                    cancel_flag,
+                    {
+                        "detail": "fetch_retry",
+                        "export_type": export_type,
+                        "step": step,
+                        "poll_count": attempt,
+                        "wait_seconds": FETCH_RETRY_DELAY,
+                    },
+                )
                 continue
 
             raise RuntimeError(
@@ -329,7 +340,8 @@ class GetCourseService:
         """
         if not raw:
             return Decimal("0")
-        clean = str(raw).replace("\xa0", "").replace(" ", "").replace(",", ".")
+        # Strip ALL whitespace (matches JS /\s/g) and normalize comma → dot
+        clean = re.sub(r"\s+", "", str(raw)).replace(",", ".")
         try:
             return Decimal(clean)
         except Exception:

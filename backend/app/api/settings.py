@@ -9,7 +9,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user, require_admin, require_moderator
-from app.db.repositories import GetCourseCredentialsRepository
+from app.db.database import get_session
+from app.db.models import TeamMember
+from app.db.repositories import (
+    AppSettingsRepository,
+    GetCourseCredentialsRepository,
+    NotificationSubscriptionRepository,
+    ReminderSettingsRepository,
+    TelegramTargetRepository,
+)
 from app.db.schemas import (
     AIProviderUpdate,
     GetCourseCredentialsResponse,
@@ -19,6 +27,19 @@ from app.db.schemas import (
     ReportScheduleResponse,
     ReportScheduleUpdate,
 )
+from app.services.ai_config_service import AIFeatureConfigService
+from app.services.ai_service import AIService
+from app.services.reminder_service import (
+    ALLOWED_TASK_OVERDUE_INTERVAL_HOURS,
+    DEFAULT_TASK_OVERDUE_DAILY_TIME_MSK,
+    DEFAULT_TASK_OVERDUE_INTERVAL_HOURS,
+    TASK_OVERDUE_NOTIFICATIONS_KEY,
+    ReminderService,
+    normalize_digest_sections_order,
+    normalize_task_line_fields_order,
+    normalize_upcoming_days,
+)
+from app.utils.encryption import encrypt
 
 logger = logging.getLogger(__name__)
 
@@ -34,27 +55,6 @@ DEFAULT_MEETING_WEEKLY_DIGEST_DAY = 7
 DEFAULT_MEETING_WEEKLY_DIGEST_TIME = "21:00"
 DEFAULT_MEETING_WEEKLY_DIGEST_TEMPLATE = (
     "Наши встречи с {week_start} по {week_end}:\n\n{meetings}"
-)
-from app.db.database import get_session
-from app.db.models import TeamMember
-from app.db.repositories import (
-    AppSettingsRepository,
-    NotificationSubscriptionRepository,
-    ReminderSettingsRepository,
-    TelegramTargetRepository,
-)
-from app.utils.encryption import encrypt
-from app.services.ai_config_service import AIFeatureConfigService
-from app.services.ai_service import AIService
-from app.services.reminder_service import (
-    ALLOWED_TASK_OVERDUE_INTERVAL_HOURS,
-    DEFAULT_TASK_OVERDUE_DAILY_TIME_MSK,
-    DEFAULT_TASK_OVERDUE_INTERVAL_HOURS,
-    TASK_OVERDUE_NOTIFICATIONS_KEY,
-    ReminderService,
-    normalize_digest_sections_order,
-    normalize_task_line_fields_order,
-    normalize_upcoming_days,
 )
 
 router = APIRouter(prefix="/settings", tags=["settings"])

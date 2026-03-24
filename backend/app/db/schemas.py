@@ -320,7 +320,7 @@ class TelegramTargetCreate(BaseModel):
     chat_id: int
     thread_id: int | None = None
     label: str | None = None
-    type: str | None = "meeting"
+    types: list[str] = ["meeting"]
     allow_incoming_tasks: bool = False
 
 
@@ -331,7 +331,7 @@ class TelegramTargetResponse(BaseModel):
     chat_id: int
     thread_id: int | None
     label: str | None
-    type: str | None
+    types: list[str]
     allow_incoming_tasks: bool
     is_active: bool
     created_at: datetime

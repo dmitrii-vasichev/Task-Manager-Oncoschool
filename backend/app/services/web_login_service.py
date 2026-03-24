@@ -5,7 +5,7 @@ Requests live max 5 minutes and are never persisted to DB.
 
 import secrets
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 

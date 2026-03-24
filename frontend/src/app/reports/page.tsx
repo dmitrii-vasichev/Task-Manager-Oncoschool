@@ -14,6 +14,12 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/shared/Toast";
 import { DatePicker } from "@/components/shared/DatePicker";
+import {
+  Tooltip as UITooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useReports } from "@/hooks/useReports";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { api } from "@/lib/api";
@@ -70,27 +76,64 @@ function formatShortMoney(value: number): string {
   return String(value);
 }
 
-function DeltaBadge({ value }: { value: number | null }) {
+function prevDateStr(dateStr: string): string {
+  const match = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return "";
+  const d = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  d.setDate(d.getDate() - 1);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function buildDeltaTooltip(metricDate: string, currentValue: number, delta: number, isMoney?: boolean): string {
+  const prevValue = currentValue - delta;
+  const curDate = formatDateOnly(metricDate);
+  const pDate = formatDateOnly(prevDateStr(metricDate));
+  const fmt = (v: number) => isMoney ? formatMoney(v) : v.toLocaleString("ru-RU");
+  return `${pDate}: ${fmt(prevValue)} → ${curDate}: ${fmt(currentValue)}`;
+}
+
+function DeltaBadge({ value, tooltipText }: { value: number | null; tooltipText?: string }) {
   if (value === null || value === undefined) return null;
 
+  const formatted = typeof value === "number" && value % 1 !== 0 ? Number(value).toFixed(0) : value;
+
+  let badge: React.ReactNode;
   if (value > 0) {
-    return (
+    badge = (
       <span className="inline-flex items-center gap-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400">
-        <TrendingUp className="h-3 w-3" />+{typeof value === "number" && value % 1 !== 0 ? Number(value).toFixed(0) : value}
+        <TrendingUp className="h-3 w-3" />+{formatted}
       </span>
     );
-  }
-  if (value < 0) {
-    return (
+  } else if (value < 0) {
+    badge = (
       <span className="inline-flex items-center gap-0.5 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-400">
-        <TrendingDown className="h-3 w-3" />{typeof value === "number" && value % 1 !== 0 ? Number(value).toFixed(0) : value}
+        <TrendingDown className="h-3 w-3" />{formatted}
+      </span>
+    );
+  } else {
+    badge = (
+      <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+        <Minus className="h-3 w-3" />0
       </span>
     );
   }
+
+  if (!tooltipText) return <>{badge}</>;
+
   return (
-    <span className="inline-flex items-center gap-0.5 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-      <Minus className="h-3 w-3" />0
-    </span>
+    <TooltipProvider delayDuration={200}>
+      <UITooltip>
+        <TooltipTrigger asChild>
+          <span className="cursor-default">{badge}</span>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" className="text-xs">
+          {tooltipText}
+        </TooltipContent>
+      </UITooltip>
+    </TooltipProvider>
   );
 }
 
@@ -98,6 +141,7 @@ function KPICard({
   label,
   value,
   delta,
+  deltaTooltip,
   icon: Icon,
   accentColor,
   isMoney,
@@ -105,6 +149,7 @@ function KPICard({
   label: string;
   value: number;
   delta: number | null;
+  deltaTooltip?: string;
   icon: React.ElementType;
   accentColor: string;
   isMoney?: boolean;
@@ -115,22 +160,22 @@ function KPICard({
         className="absolute inset-x-0 top-0 h-1 opacity-80 group-hover:opacity-100"
         style={{ backgroundColor: accentColor }}
       />
-      <div className="flex items-start justify-between">
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-muted-foreground">{label}</p>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold font-heading tracking-tight">
-              {isMoney ? formatMoney(value) : value.toLocaleString("ru-RU")}
-            </span>
-          </div>
-          <DeltaBadge value={delta} />
-        </div>
+      <div className="flex items-center justify-between min-h-[40px] mb-2">
+        <p className="text-sm font-medium text-muted-foreground">{label}</p>
         <div
           className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl opacity-70 group-hover:opacity-100"
           style={{ backgroundColor: `${accentColor}18` }}
         >
           <Icon className="h-5 w-5" style={{ color: accentColor }} />
         </div>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <span className="text-2xl font-bold font-heading tracking-tight">
+          {isMoney ? formatMoney(value) : value.toLocaleString("ru-RU")}
+        </span>
+      </div>
+      <div className="mt-2">
+        <DeltaBadge value={delta} tooltipText={deltaTooltip} />
       </div>
     </div>
   );
@@ -246,6 +291,13 @@ export default function ReportsPage() {
   const fetchBackfillStatus = useCallback(async () => {
     try {
       const status = await api.getBackfillStatus();
+      // Skip if user already dismissed this terminal backfill
+      if (status.status !== "running" && status.status !== "idle") {
+        const key = `backfill-dismissed:${status.date_from ?? ""}:${status.date_to ?? ""}`;
+        try {
+          if (localStorage.getItem(key)) return;
+        } catch { /* SSR/quota */ }
+      }
       setBackfillStatus(status);
       // When backfill completes, refetch reports data
       if (status.status === "completed") {
@@ -323,9 +375,13 @@ export default function ReportsPage() {
     const dateFrom = backfillStatus.date_from;
     const dateTo = backfillStatus.date_to;
     if (!dateFrom || !dateTo) return;
+    // Use pause from the original backfill if available, otherwise default
+    const originalPauseMin = backfillStatus.pause_seconds
+      ? Math.round(backfillStatus.pause_seconds / 60)
+      : backfillPauseMinutes;
     try {
       await api.resetBackfillStatus();
-      await api.backfillReports(dateFrom, dateTo, Math.max(backfillPauseMinutes, 5));
+      await api.backfillReports(dateFrom, dateTo, Math.max(originalPauseMin, 5));
       toastSuccess("Повторная загрузка запущена");
       await fetchBackfillStatus();
     } catch (e) {
@@ -435,6 +491,11 @@ export default function ReportsPage() {
   };
 
   const dismissBackfillStatus = () => {
+    // Persist dismiss for completed/failed/cancelled so it survives page reload
+    if (backfillStatus && backfillStatus.status !== "running" && backfillStatus.status !== "idle") {
+      const key = `backfill-dismissed:${backfillStatus.date_from ?? ""}:${backfillStatus.date_to ?? ""}`;
+      try { localStorage.setItem(key, "1"); } catch { /* SSR/quota */ }
+    }
     setBackfillStatus(null);
   };
 
@@ -770,11 +831,17 @@ export default function ReportsPage() {
       {backfillBanner}
 
       {/* KPI Cards */}
+      {today && (
+        <p className="text-xs text-muted-foreground">
+          Данные за {formatDateOnly(today.metric_date, { includeYear: true })}
+        </p>
+      )}
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <KPICard
           label="Новые пользователи"
           value={today?.users_count ?? 0}
           delta={today?.delta_users ?? null}
+          deltaTooltip={today?.delta_users != null ? buildDeltaTooltip(today.metric_date, today.users_count, today.delta_users) : undefined}
           icon={Users}
           accentColor={CHART_TEAL}
         />
@@ -782,6 +849,7 @@ export default function ReportsPage() {
           label="Кол-во платежей"
           value={today?.payments_count ?? 0}
           delta={today?.delta_payments_count ?? null}
+          deltaTooltip={today?.delta_payments_count != null ? buildDeltaTooltip(today.metric_date, today.payments_count, today.delta_payments_count) : undefined}
           icon={CreditCard}
           accentColor={CHART_BLUE}
         />
@@ -789,6 +857,7 @@ export default function ReportsPage() {
           label="Сумма платежей"
           value={Number(today?.payments_sum ?? 0)}
           delta={today?.delta_payments_sum ? Number(today.delta_payments_sum) : null}
+          deltaTooltip={today?.delta_payments_sum != null ? buildDeltaTooltip(today.metric_date, Number(today.payments_sum), Number(today.delta_payments_sum), true) : undefined}
           icon={Banknote}
           accentColor="hsl(152, 55%, 35%)"
           isMoney
@@ -797,6 +866,7 @@ export default function ReportsPage() {
           label="Кол-во заказов"
           value={today?.orders_count ?? 0}
           delta={today?.delta_orders_count ?? null}
+          deltaTooltip={today?.delta_orders_count != null ? buildDeltaTooltip(today.metric_date, today.orders_count, today.delta_orders_count) : undefined}
           icon={Package}
           accentColor={CHART_VIOLET}
         />
@@ -804,6 +874,7 @@ export default function ReportsPage() {
           label="Сумма заказов"
           value={Number(today?.orders_sum ?? 0)}
           delta={today?.delta_orders_sum ? Number(today.delta_orders_sum) : null}
+          deltaTooltip={today?.delta_orders_sum != null ? buildDeltaTooltip(today.metric_date, Number(today.orders_sum), Number(today.delta_orders_sum), true) : undefined}
           icon={ShoppingCart}
           accentColor={CHART_AMBER}
           isMoney

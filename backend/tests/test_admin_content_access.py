@@ -11,13 +11,8 @@ import unittest
 from sqlalchemy import Enum as SAEnum
 from app.db.models import (
     ContentAccess,
-    ContentRole,
-    ContentSubSection,
     TelegramContent,
-    ContentType,
     AnalysisRun,
-    AnalysisContentType,
-    AnalysisStatus,
 )
 
 

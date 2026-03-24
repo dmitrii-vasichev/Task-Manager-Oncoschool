@@ -186,7 +186,7 @@ class TelegramConnectionService:
                     _mask_phone(phone),
                     (self._pending_phone_code_hash or "")[:8],
                 )
-                signed_in = await client.sign_in(
+                await client.sign_in(
                     phone_number=phone,
                     phone_code_hash=self._pending_phone_code_hash,
                     phone_code=code,
@@ -198,7 +198,7 @@ class TelegramConnectionService:
                 # Handle 2FA
                 if "SessionPasswordNeeded" in error_name or "password" in error_str.lower():
                     if password:
-                        signed_in = await client.check_password(password)
+                        await client.check_password(password)
                     else:
                         return {"status": "password_required"}
 

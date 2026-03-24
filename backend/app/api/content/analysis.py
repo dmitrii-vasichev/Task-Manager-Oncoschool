@@ -5,7 +5,7 @@ import json
 import logging
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -139,7 +139,7 @@ async def run_analysis(
     run_id = run.id
 
     # Create SSE queue
-    queue = _get_or_create_queue(run_id)
+    _get_or_create_queue(run_id)
 
     # Launch background task
     background_tasks.add_task(

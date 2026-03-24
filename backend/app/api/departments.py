@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import get_current_user, require_moderator
 from app.db.database import get_session
-from app.db.models import Department, TeamMember
+from app.db.models import TeamMember
 from app.db.repositories import DepartmentRepository
 from app.db.schemas import DepartmentCreate, DepartmentResponse, DepartmentUpdate
 

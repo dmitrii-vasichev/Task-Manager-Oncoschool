@@ -10,7 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.api.auth import get_current_user, require_moderator
 from app.db.database import get_session
-from app.db.models import Task, TaskUpdate, TeamMember
+from app.db.models import Task, TeamMember
 from app.db.schemas import TaskCreate, TaskEdit, TaskResponse
 from app.services.in_app_notification_service import InAppNotificationService
 from app.services.notification_service import NotificationService

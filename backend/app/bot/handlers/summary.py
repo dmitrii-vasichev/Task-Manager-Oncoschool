@@ -40,7 +40,7 @@ PRIORITY_EMOJI = {
 def _format_preview(parsed, provider_info: dict) -> str:
     """Format parsed meeting for preview message."""
     lines = [
-        f"<b>📋 Результат парсинга</b>",
+        "<b>📋 Результат парсинга</b>",
         f"<i>Обработано через: {provider_info['provider']} ({provider_info['model']})</i>\n",
         f"<b>📌 {parsed.title}</b>\n",
         f"<b>📝 Резюме:</b>\n{parsed.summary}\n",

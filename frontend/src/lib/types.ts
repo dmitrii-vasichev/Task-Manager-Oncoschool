@@ -166,7 +166,7 @@ export interface TelegramNotificationTarget {
   chat_id: number;
   thread_id: number | null;
   label: string | null;
-  type: string | null;
+  types: string[];
   allow_incoming_tasks: boolean;
   is_active: boolean;
   created_at: string;
@@ -533,6 +533,7 @@ export interface BackfillStatus {
   rate_limit_count?: number;
   wait_seconds?: number;
   rows_count?: number;
+  pause_seconds?: number;
 }
 
 export interface ReportSchedule {

@@ -16,7 +16,6 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 from app.services.getcourse_service import (
     GetCourseService,
-    FETCH_MAX_ATTEMPTS,
 )
 
 

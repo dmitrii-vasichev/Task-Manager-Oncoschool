@@ -9,7 +9,7 @@ import anthropic
 import openai
 from google import genai
 from google.genai import types as genai_types
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings

@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, useCallback, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useTelegramLoginUrl } from "@/hooks/useTelegramLoginUrl";
 import { Sidebar, SidebarContext } from "./Sidebar";
 import { Header } from "./Header";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,9 +11,15 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { GraduationCap } from "lucide-react";
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { user, loading } = useCurrentUser();
+  const { user, loading, refreshUser } = useCurrentUser();
   const pathname = usePathname();
   const router = useRouter();
+
+  // Handle Telegram LoginUrl callback (from inline buttons in chats)
+  const onTelegramLogin = useCallback(() => {
+    refreshUser();
+  }, [refreshUser]);
+  useTelegramLoginUrl(onTelegramLogin);
 
   // Sidebar state
   const [collapsed, setCollapsed] = useState(false);
