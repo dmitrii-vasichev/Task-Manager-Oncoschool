@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -5,7 +7,7 @@ from app.api.auth import get_current_user
 from app.db.database import get_session
 from app.db.models import TeamMember
 from app.db.repositories import TaskLabelRepository
-from app.db.schemas import TaskLabelCreate, TaskLabelResponse
+from app.db.schemas import TaskLabelCreate, TaskLabelResponse, TaskLabelUpdate
 from app.services.permission_service import PermissionService
 from app.services.task_visibility_service import resolve_visible_department_ids
 
@@ -39,6 +41,28 @@ async def _label_response(
     )
 
 
+async def _ensure_can_manage_label(
+    session: AsyncSession,
+    label,
+    member: TeamMember,
+    *,
+    restore: bool = False,
+) -> None:
+    if PermissionService.is_moderator(member):
+        return
+    if restore:
+        raise HTTPException(status_code=403, detail="Доступ только для модераторов")
+    if label.is_archived:
+        raise HTTPException(status_code=403, detail="Архивную метку может восстановить модератор")
+    if label.created_by_id != member.id:
+        raise HTTPException(status_code=403, detail="Можно менять только свои метки")
+    if await label_repo.is_shared_for_member(session, label.id, member.id):
+        raise HTTPException(
+            status_code=403,
+            detail="Эта метка уже используется в чужих задачах. Изменить её может только модератор",
+        )
+
+
 @router.get("", response_model=list[TaskLabelResponse])
 async def list_task_labels(
     search: str | None = Query(None),
@@ -50,6 +74,8 @@ async def list_task_labels(
     normalized_search = search.strip() if search is not None else None
     if normalized_search == "":
         normalized_search = None
+    if include_archived and not PermissionService.is_moderator(member):
+        raise HTTPException(status_code=403, detail="Архивные метки доступны только модераторам")
     visible_department_ids = await resolve_visible_department_ids(session, member)
     labels = await label_repo.search(
         session,
@@ -76,8 +102,76 @@ async def create_task_label(
             session,
             name=data.name,
             created_by_id=member.id,
+            color=data.color,
         )
         await session.commit()
         return await _label_response(session, label, 0, member)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        message = str(exc)
+        if message == "Archived task label already exists":
+            raise HTTPException(
+                status_code=409,
+                detail="Метка с таким названием находится в архиве. Модератор может восстановить её.",
+            )
+        if message == "Unknown task label color":
+            raise HTTPException(status_code=400, detail="Выберите один из доступных цветов метки")
+        raise HTTPException(status_code=400, detail=message)
+
+
+@router.patch("/{label_id}", response_model=TaskLabelResponse)
+async def update_task_label(
+    label_id: uuid.UUID,
+    data: TaskLabelUpdate,
+    member: TeamMember = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    label = await label_repo.get_by_id(session, label_id)
+    if not label:
+        raise HTTPException(status_code=404, detail="Метка не найдена")
+    await _ensure_can_manage_label(session, label, member)
+    try:
+        updated = await label_repo.update(
+            session,
+            label_id,
+            name=data.name,
+            color=data.color,
+        )
+    except ValueError as exc:
+        message = str(exc)
+        if message == "Task label name already exists":
+            raise HTTPException(status_code=409, detail="Метка с таким названием уже существует")
+        if message == "Unknown task label color":
+            raise HTTPException(status_code=400, detail="Выберите один из доступных цветов метки")
+        raise HTTPException(status_code=400, detail=message)
+    await session.commit()
+    return await _label_response(session, updated, member=member)
+
+
+@router.delete("/{label_id}", response_model=TaskLabelResponse)
+async def archive_task_label(
+    label_id: uuid.UUID,
+    member: TeamMember = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    label = await label_repo.get_by_id(session, label_id)
+    if not label:
+        raise HTTPException(status_code=404, detail="Метка не найдена")
+    await _ensure_can_manage_label(session, label, member)
+    archived = await label_repo.archive(session, label_id)
+    await session.commit()
+    return await _label_response(session, archived, member=member)
+
+
+@router.post("/{label_id}/restore", response_model=TaskLabelResponse)
+async def restore_task_label(
+    label_id: uuid.UUID,
+    member: TeamMember = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    if not PermissionService.is_moderator(member):
+        raise HTTPException(status_code=403, detail="Доступ только для модераторов")
+    restored = await label_repo.restore(session, label_id)
+    if not restored:
+        raise HTTPException(status_code=404, detail="Метка не найдена")
+    await session.commit()
+    return await _label_response(session, restored, member=member)
