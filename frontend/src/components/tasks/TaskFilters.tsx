@@ -19,6 +19,7 @@ import { UserAvatar } from "@/components/shared/UserAvatar";
 import type { TaskPriority, TaskSource } from "@/lib/types";
 import { TASK_PRIORITY_LABELS, TASK_SOURCE_LABELS } from "@/lib/types";
 import type { Department, TaskLabel, TeamMember } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 export interface TaskFilterValues {
   search: string;
@@ -54,6 +55,15 @@ const SOURCE_ICONS: Record<string, string> = {
   web: "🌐",
 };
 
+const FILTER_CONTROL_CLASS =
+  "h-9 w-full rounded-lg border-border/70 bg-background/80 shadow-none hover:border-primary/30 data-[state=open]:border-primary/40 data-[state=open]:shadow-none";
+
+const FILTER_GRID_WITH_DEPARTMENT =
+  "min-[1680px]:grid-cols-[minmax(240px,1fr)_minmax(142px,0.58fr)_minmax(142px,0.58fr)_minmax(164px,0.68fr)_minmax(150px,0.6fr)_minmax(170px,0.74fr)]";
+
+const FILTER_GRID_WITHOUT_DEPARTMENT =
+  "min-[1500px]:grid-cols-[minmax(260px,1fr)_minmax(150px,0.65fr)_minmax(150px,0.65fr)_minmax(170px,0.72fr)_minmax(180px,0.78fr)]";
+
 interface ActiveFilter {
   key: keyof TaskFilterValues;
   label: string;
@@ -74,7 +84,10 @@ export function TaskFilters({
   departments,
   showDepartmentFilter = true,
 }: TaskFiltersProps) {
-  const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const desktopGridClass = showDepartmentFilter
+    ? FILTER_GRID_WITH_DEPARTMENT
+    : FILTER_GRID_WITHOUT_DEPARTMENT;
   const memberOptions = useMemo(
     () =>
       filters.department_id
@@ -181,11 +194,14 @@ export function TaskFilters({
   }
 
   return (
-    <div className="flex-1 space-y-3">
-      {/* Main filter row */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
-        {/* Search */}
-        <div className="relative group w-full lg:w-[220px] lg:shrink-0">
+    <div className="flex-1 rounded-xl border border-border/70 bg-card/90 p-2.5 shadow-sm shadow-slate-200/50 dark:shadow-none">
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3",
+          desktopGridClass
+        )}
+      >
+        <div className="relative group sm:col-span-2 lg:col-span-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary" />
           <Input
             placeholder="Найти задачу..."
@@ -193,10 +209,12 @@ export function TaskFilters({
             onChange={(e) =>
               onFiltersChange({ ...filters, search: e.target.value })
             }
-            className="h-10 w-full bg-card pl-9 shadow-sm focus:border-primary/40 focus:shadow-md"
+            className="h-9 w-full rounded-lg border-border/70 bg-background/80 pl-9 shadow-none focus:border-primary/40"
           />
           {filters.search && (
             <button
+              type="button"
+              aria-label="Очистить поиск"
               onClick={() => onFiltersChange({ ...filters, search: "" })}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground rounded-full p-0.5"
             >
@@ -205,12 +223,11 @@ export function TaskFilters({
           )}
         </div>
 
-        {/* Toggle filters button (mobile-friendly) */}
         <Button
           variant="outline"
           size="sm"
           onClick={() => setFiltersExpanded(!filtersExpanded)}
-          className="h-10 w-full rounded-xl gap-1.5 border-border/60 shadow-sm sm:w-auto lg:hidden"
+          className="h-9 rounded-lg gap-1.5 border-border/70 bg-background/80 shadow-none sm:col-span-2 lg:hidden"
         >
           <SlidersHorizontal className="h-4 w-4" />
           Фильтры
@@ -219,23 +236,19 @@ export function TaskFilters({
           />
         </Button>
 
-        {/* Desktop filters — always visible */}
         <div
-          className={`
-            w-full flex-col gap-2
-            sm:w-auto sm:flex-row sm:flex-wrap sm:items-center
-            lg:flex-1 lg:min-w-0 lg:w-auto lg:flex-wrap
-            ${filtersExpanded ? "flex" : "hidden lg:flex"}
-          `}
+          className={cn(
+            "gap-2 sm:col-span-2 sm:grid-cols-2 lg:contents",
+            filtersExpanded ? "grid lg:contents" : "hidden lg:contents"
+          )}
         >
-          {/* Priority */}
           <Select
             value={filters.priority || "all"}
             onValueChange={(v) =>
               onFiltersChange({ ...filters, priority: v === "all" ? "" : v })
             }
           >
-            <SelectTrigger className="h-10 w-full shrink-0 bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md sm:w-[156px] lg:w-[156px]">
+            <SelectTrigger className={FILTER_CONTROL_CLASS}>
               <SelectValue placeholder="Приоритет" />
             </SelectTrigger>
             <SelectContent>
@@ -262,7 +275,7 @@ export function TaskFilters({
               onFiltersChange({ ...filters, source: v === "all" ? "" : v })
             }
           >
-            <SelectTrigger className="h-10 w-full shrink-0 bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md sm:w-[156px] lg:w-[156px]">
+            <SelectTrigger className={FILTER_CONTROL_CLASS}>
               <SelectValue placeholder="Источник" />
             </SelectTrigger>
             <SelectContent>
@@ -278,16 +291,17 @@ export function TaskFilters({
             </SelectContent>
           </Select>
 
-          <div className="w-full shrink-0 sm:w-[190px] lg:w-[190px]">
+          <div className="min-w-0">
             <TaskLabelPicker
               value={filters.labels}
               onChange={(labels) => onFiltersChange({ ...filters, labels })}
               maxVisible={1}
               placeholder="Все метки"
+              displayMode="summary"
+              triggerClassName={FILTER_CONTROL_CLASS}
             />
           </div>
 
-          {/* Department */}
           {showDepartmentFilter && (
             <Select
               value={filters.department_id || "all"}
@@ -319,7 +333,7 @@ export function TaskFilters({
                 });
               }}
             >
-              <SelectTrigger className="h-10 w-full shrink-0 bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md sm:w-[170px] lg:w-[160px]">
+              <SelectTrigger className={FILTER_CONTROL_CLASS}>
                 <SelectValue placeholder="Отдел" />
               </SelectTrigger>
               <SelectContent>
@@ -333,12 +347,11 @@ export function TaskFilters({
             </Select>
           )}
 
-          {/* Member filter (assignee + author in one dropdown) */}
           <Select
             value={selectedMemberFilterValue}
             onValueChange={handleMemberValueChange}
           >
-            <SelectTrigger className="h-10 w-full shrink-0 bg-card border-border/60 shadow-sm data-[state=open]:border-primary/40 data-[state=open]:shadow-md sm:w-[190px] lg:w-[180px]">
+            <SelectTrigger className={FILTER_CONTROL_CLASS}>
               <SelectValue placeholder="Участник" />
             </SelectTrigger>
             <SelectContent>
@@ -378,27 +391,31 @@ export function TaskFilters({
         </div>
       </div>
 
-      {/* Active filter pills */}
       {activeFilters.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap animate-in fade-in slide-in-from-top-1 duration-200">
-          <span className="text-xs text-muted-foreground">Фильтры:</span>
+        <div className="mt-2 flex items-center gap-1.5 flex-wrap border-t border-border/60 pt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+          <SlidersHorizontal className="h-3.5 w-3.5 text-muted-foreground" />
           {activeFilters.map((f) => (
             <button
               key={f.key}
+              type="button"
               onClick={() => removeFilter(f.key)}
-              className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-medium hover:bg-primary/20 group"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 text-primary px-2.5 py-1 text-xs font-medium hover:bg-primary/20 group"
             >
-              {f.label}
+              <span className="truncate">{f.label}</span>
               <X className="h-3 w-3 opacity-60 group-hover:opacity-100" />
             </button>
           ))}
           {activeFilters.length > 0 && (
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
               onClick={() => onFiltersChange(EMPTY_FILTERS)}
-              className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+              className="h-7 rounded-full px-2 text-xs text-muted-foreground hover:text-foreground"
             >
-              Сбросить все
-            </button>
+              <X className="h-3.5 w-3.5" />
+              Сбросить
+            </Button>
           )}
         </div>
       )}

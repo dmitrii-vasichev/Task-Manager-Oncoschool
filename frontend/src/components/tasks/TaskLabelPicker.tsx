@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { TaskLabelChips } from "./TaskLabelChips";
 
 type TaskLabelPickerVariant = "default" | "compact";
+type TaskLabelPickerDisplayMode = "chips" | "summary";
 
 export function TaskLabelPicker({
   value,
@@ -25,6 +26,8 @@ export function TaskLabelPicker({
   maxVisible = 3,
   placeholder = "Метки",
   variant = "default",
+  displayMode = "chips",
+  triggerClassName,
 }: {
   value: TaskLabel[];
   onChange: (labels: TaskLabel[]) => void;
@@ -32,6 +35,8 @@ export function TaskLabelPicker({
   maxVisible?: number;
   placeholder?: string;
   variant?: TaskLabelPickerVariant;
+  displayMode?: TaskLabelPickerDisplayMode;
+  triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -128,10 +133,17 @@ export function TaskLabelPicker({
             "h-auto justify-start gap-2",
             variant === "compact"
               ? "min-h-6 w-auto max-w-full rounded-full px-2.5 py-0.5 text-xs font-medium leading-none"
-              : "min-h-10 w-full px-3 py-2"
+              : "min-h-10 w-full px-3 py-2",
+            triggerClassName
           )}
         >
-          {value.length ? (
+          {value.length && displayMode === "summary" ? (
+            <span className="min-w-0 truncate text-foreground">
+              {value.length === 1
+                ? `Метка: ${value[0].name}`
+                : `Метки: ${value.length}`}
+            </span>
+          ) : value.length ? (
             <TaskLabelChips
               labels={value}
               maxVisible={maxVisible}
