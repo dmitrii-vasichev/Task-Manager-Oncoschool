@@ -2,7 +2,7 @@ import unittest
 import uuid
 from datetime import date, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import HTTPException
 
@@ -431,6 +431,71 @@ class TaskUpdatePermissionsTests(unittest.IsolatedAsyncioTestCase):
             session, task, member, new_assignee_id
         )
         session.commit.assert_awaited_once()
+
+    async def test_invalid_labels_fail_before_reassignment_side_effects(self) -> None:
+        author_id = uuid.uuid4()
+        old_assignee_id = uuid.uuid4()
+        new_assignee_id = uuid.uuid4()
+        label_ids = [uuid.uuid4()]
+        task = SimpleNamespace(
+            id=uuid.uuid4(),
+            assignee_id=old_assignee_id,
+            created_by_id=author_id,
+            status="new",
+            assignee=None,
+            labels=[],
+        )
+        reassigned_task = SimpleNamespace(
+            id=task.id,
+            assignee_id=new_assignee_id,
+            assignee=SimpleNamespace(id=new_assignee_id),
+            labels=[],
+        )
+        member = SimpleNamespace(id=author_id, role="member")
+        session = SimpleNamespace(commit=AsyncMock())
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(bot=object())))
+        notification_service = MagicMock()
+        notification_service.notify_task_assigned = AsyncMock()
+
+        with patch.object(
+            tasks_api.task_service,
+            "get_task_by_short_id",
+            AsyncMock(return_value=task),
+        ), patch.object(
+            tasks_api,
+            "can_access_task",
+            AsyncMock(return_value=True),
+        ), patch.object(
+            tasks_api.label_repo,
+            "replace_task_labels",
+            AsyncMock(side_effect=ValueError("Одна или несколько меток не найдены")),
+        ) as replace_mock, patch.object(
+            tasks_api.task_service,
+            "assign_task",
+            AsyncMock(return_value=reassigned_task),
+        ) as assign_mock, patch.object(
+            tasks_api,
+            "NotificationService",
+            MagicMock(return_value=notification_service),
+        ):
+            with self.assertRaises(HTTPException) as ctx:
+                await tasks_api.update_task(
+                    request=request,
+                    short_id=101,
+                    data=tasks_api.TaskEdit(
+                        assignee_id=new_assignee_id,
+                        label_ids=label_ids,
+                    ),
+                    member=member,
+                    session=session,
+                )
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("меток", str(ctx.exception.detail))
+        replace_mock.assert_awaited_once_with(session, task, label_ids)
+        assign_mock.assert_not_awaited()
+        notification_service.notify_task_assigned.assert_not_awaited()
+        session.commit.assert_not_awaited()
 
     async def test_member_author_can_unassign(self) -> None:
         author_id = uuid.uuid4()

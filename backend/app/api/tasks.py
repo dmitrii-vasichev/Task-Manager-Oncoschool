@@ -360,6 +360,14 @@ async def update_task(
         assignee_present = "assignee_id" in update_fields
         new_assignee_id = update_fields.pop("assignee_id", None) if assignee_present else None
 
+        payload = data.model_dump(exclude_unset=True)
+        if "label_ids" in payload:
+            task = await label_repo.replace_task_labels(
+                session,
+                task,
+                data.label_ids or [],
+            )
+
         if assignee_present:
             if new_assignee_id is None:
                 if not (is_moderator or is_author):
@@ -396,14 +404,6 @@ async def update_task(
             from app.db.repositories import TaskRepository
             task_repo = TaskRepository()
             task = await task_repo.update(session, task.id, **update_fields)
-
-        payload = data.model_dump(exclude_unset=True)
-        if "label_ids" in payload:
-            task = await label_repo.replace_task_labels(
-                session,
-                task,
-                data.label_ids or [],
-            )
 
         await session.commit()
         return task
