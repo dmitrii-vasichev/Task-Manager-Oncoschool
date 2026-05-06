@@ -95,6 +95,7 @@ export interface Task {
   title: string;
   description: string | null;
   checklist: TaskChecklistItem[];
+  labels: TaskLabel[];
   status: TaskStatus;
   priority: TaskPriority;
   assignee_id: string | null;
@@ -110,6 +111,18 @@ export interface Task {
   updated_at: string;
   assignee: TeamMember | null;
   created_by: TeamMember | null;
+}
+
+export interface TaskLabel {
+  id: string;
+  name: string;
+  slug: string;
+  color: string;
+  created_by_id: string | null;
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+  usage_count: number;
 }
 
 export interface TaskUpdate {
@@ -574,6 +587,7 @@ export interface TaskCreateRequest {
   title: string;
   description?: string | null;
   checklist?: TaskChecklistItem[];
+  label_ids?: string[];
   priority?: TaskPriority;
   assignee_id?: string | null;
   meeting_id?: string | null;
@@ -585,12 +599,17 @@ export interface TaskEditRequest {
   title?: string;
   description?: string | null;
   checklist?: TaskChecklistItem[];
+  label_ids?: string[];
   status?: TaskStatus;
   priority?: TaskPriority;
   assignee_id?: string | null;
   deadline?: string | null;
   reminder_at?: string | null;
   reminder_comment?: string | null;
+}
+
+export interface TaskLabelCreateRequest {
+  name: string;
 }
 
 export interface TaskUpdateCreateRequest {

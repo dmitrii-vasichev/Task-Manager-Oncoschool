@@ -4,6 +4,8 @@ import type {
   TelegramAuthData,
   LoginResponse,
   Task,
+  TaskLabel,
+  TaskLabelCreateRequest,
   TaskCreateRequest,
   TaskEditRequest,
   TaskUpdate,
@@ -293,6 +295,24 @@ class ApiClient {
   async deleteTask(shortId: number): Promise<void> {
     return this.request<void>(`/api/tasks/${shortId}`, {
       method: "DELETE",
+    });
+  }
+
+  async getTaskLabels(params?: {
+    search?: string;
+    limit?: number;
+  }): Promise<TaskLabel[]> {
+    const searchParams = new URLSearchParams();
+    if (params?.search) searchParams.set("search", params.search);
+    if (params?.limit) searchParams.set("limit", String(params.limit));
+    const query = searchParams.toString() ? `?${searchParams.toString()}` : "";
+    return this.request<TaskLabel[]>(`/api/task-labels${query}`);
+  }
+
+  async createTaskLabel(data: TaskLabelCreateRequest): Promise<TaskLabel> {
+    return this.request<TaskLabel>("/api/task-labels", {
+      method: "POST",
+      body: JSON.stringify(data),
     });
   }
 
