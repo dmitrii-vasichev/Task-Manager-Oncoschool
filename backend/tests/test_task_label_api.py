@@ -49,6 +49,31 @@ class TaskLabelApiTests(unittest.IsolatedAsyncioTestCase):
             limit=20,
         )
 
+    async def test_list_task_labels_treats_whitespace_search_as_no_search(self) -> None:
+        member = SimpleNamespace(id=uuid.uuid4(), role="member", is_active=True)
+        session = SimpleNamespace()
+
+        with patch.object(
+            labels_api.label_repo,
+            "search",
+            AsyncMock(return_value=[]),
+        ) as search_mock:
+            response = await labels_api.list_task_labels(
+                search="   ",
+                limit=20,
+                include_archived=False,
+                member=member,
+                session=session,
+            )
+
+        self.assertEqual(response, [])
+        search_mock.assert_awaited_once_with(
+            session,
+            search=None,
+            include_archived=False,
+            limit=20,
+        )
+
     async def test_create_task_label_commits_and_returns_label(self) -> None:
         label = make_label("Partners", usage_count=0)
         member = SimpleNamespace(id=uuid.uuid4(), role="member", is_active=True)

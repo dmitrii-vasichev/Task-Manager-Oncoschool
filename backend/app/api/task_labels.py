@@ -25,9 +25,12 @@ async def list_task_labels(
     member: TeamMember = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
+    normalized_search = search.strip() if search is not None else None
+    if normalized_search == "":
+        normalized_search = None
     labels = await label_repo.search(
         session,
-        search=search,
+        search=normalized_search,
         include_archived=include_archived,
         limit=limit,
     )
