@@ -16,7 +16,17 @@ class TaskPermissionServiceTests(unittest.TestCase):
 
         allowed = PermissionService.allowed_task_edit_fields(member, task)
 
-        self.assertEqual(allowed, {"status", "checklist", "title", "reminder_at", "reminder_comment"})
+        self.assertEqual(
+            allowed,
+            {
+                "status",
+                "checklist",
+                "title",
+                "label_ids",
+                "reminder_at",
+                "reminder_comment",
+            },
+        )
         self.assertTrue(PermissionService.can_create_task_for_others(member))
         self.assertTrue(PermissionService.can_edit_task(member, task))
         self.assertFalse(PermissionService.can_assign_task(member, task))
@@ -36,7 +46,16 @@ class TaskPermissionServiceTests(unittest.TestCase):
 
         self.assertEqual(
             allowed,
-            {"status", "checklist", "title", "description", "priority", "deadline", "assignee_id"},
+            {
+                "status",
+                "checklist",
+                "title",
+                "label_ids",
+                "description",
+                "priority",
+                "deadline",
+                "assignee_id",
+            },
         )
         self.assertTrue(PermissionService.can_edit_task(member, task))
         self.assertTrue(PermissionService.can_assign_task(member, task))
@@ -60,6 +79,7 @@ class TaskPermissionServiceTests(unittest.TestCase):
                 "status",
                 "checklist",
                 "title",
+                "label_ids",
                 "description",
                 "priority",
                 "deadline",

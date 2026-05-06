@@ -10,7 +10,8 @@ from sqlalchemy.orm import selectinload
 
 from app.api.auth import get_current_user, require_moderator
 from app.db.database import get_session
-from app.db.models import Task, TeamMember
+from app.db.models import Task, TaskLabel, TeamMember
+from app.db.repositories import TaskLabelRepository
 from app.db.schemas import TaskCreate, TaskEdit, TaskResponse
 from app.services.in_app_notification_service import InAppNotificationService
 from app.services.notification_service import NotificationService
@@ -23,6 +24,7 @@ from app.services.task_visibility_service import (
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 task_service = TaskService()
+label_repo = TaskLabelRepository()
 in_app_notification_service = InAppNotificationService()
 
 
@@ -112,6 +114,24 @@ def _prepare_task_reminder_update(
     return updates
 
 
+def _parse_label_ids_filter(raw_value: str | None) -> list[uuid.UUID]:
+    if not raw_value:
+        return []
+    parsed: list[uuid.UUID] = []
+    for raw_part in raw_value.split(","):
+        value = raw_part.strip()
+        if not value:
+            continue
+        parsed.append(uuid.UUID(value))
+    return parsed
+
+
+def _apply_label_filter(stmt, label_ids: list[uuid.UUID]):
+    if not label_ids:
+        return stmt
+    return stmt.join(Task.labels).where(TaskLabel.id.in_(label_ids)).distinct()
+
+
 @router.get("", response_model=PaginatedTasksResponse)
 async def list_tasks(
     assignee_id: uuid.UUID | None = Query(None),
@@ -122,6 +142,7 @@ async def list_tasks(
     meeting_id: uuid.UUID | None = Query(None),
     source: str | None = Query(None),
     search: str | None = Query(None),
+    label_ids: str | None = Query(None),
     has_overdue: bool | None = Query(None),
     sort: str = Query("created_at_desc"),
     page: int = Query(1, ge=1),
@@ -175,6 +196,11 @@ async def list_tasks(
         )
     if has_overdue:
         base_stmt = base_stmt.where(Task.deadline < date.today(), Task.status.notin_(["done", "cancelled"]))
+    try:
+        parsed_label_ids = _parse_label_ids_filter(label_ids)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Некорректный идентификатор метки")
+    base_stmt = _apply_label_filter(base_stmt, parsed_label_ids)
 
     # Total count (before pagination)
     count_stmt = select(func.count()).select_from(base_stmt.subquery())
@@ -194,7 +220,11 @@ async def list_tasks(
 
     items_stmt = (
         base_stmt
-        .options(selectinload(Task.assignee), selectinload(Task.created_by))
+        .options(
+            selectinload(Task.assignee),
+            selectinload(Task.created_by),
+            selectinload(Task.labels),
+        )
         .order_by(order)
         .offset((page - 1) * per_page)
         .limit(per_page)
@@ -250,6 +280,7 @@ async def create_task(
             deadline=data.deadline,
             source=data.source or "web",
             meeting_id=data.meeting_id,
+            label_ids=data.label_ids,
         )
         bot = getattr(request.app.state, "bot", None)
         if bot:
@@ -314,7 +345,7 @@ async def update_task(
         # Handle other field updates
         update_fields = data.model_dump(
             exclude_unset=True,
-            exclude={"status", "reminder_at", "reminder_comment"},
+            exclude={"status", "reminder_at", "reminder_comment", "label_ids"},
         )
         update_fields.update(reminder_update_fields)
         if "title" in update_fields:
@@ -365,6 +396,14 @@ async def update_task(
             from app.db.repositories import TaskRepository
             task_repo = TaskRepository()
             task = await task_repo.update(session, task.id, **update_fields)
+
+        payload = data.model_dump(exclude_unset=True)
+        if "label_ids" in payload:
+            task = await label_repo.replace_task_labels(
+                session,
+                task,
+                data.label_ids or [],
+            )
 
         await session.commit()
         return task

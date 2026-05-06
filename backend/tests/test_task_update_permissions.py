@@ -93,6 +93,87 @@ class TaskUpdatePermissionsTests(unittest.IsolatedAsyncioTestCase):
         repo_update_mock.assert_not_awaited()
         session.commit.assert_not_awaited()
 
+    async def test_member_assignee_can_update_labels(self) -> None:
+        member_id = uuid.uuid4()
+        label_ids = [uuid.uuid4(), uuid.uuid4()]
+        task = SimpleNamespace(
+            id=uuid.uuid4(),
+            assignee_id=member_id,
+            created_by_id=uuid.uuid4(),
+            status="new",
+            assignee=None,
+            labels=[],
+        )
+        updated_task = SimpleNamespace(id=task.id, labels=[])
+        member = SimpleNamespace(id=member_id, role="member")
+        session = SimpleNamespace(commit=AsyncMock())
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(bot=None)))
+
+        with patch.object(
+            tasks_api.task_service,
+            "get_task_by_short_id",
+            AsyncMock(return_value=task),
+        ), patch.object(
+            tasks_api,
+            "can_access_task",
+            AsyncMock(return_value=True),
+        ), patch.object(
+            tasks_api.label_repo,
+            "replace_task_labels",
+            AsyncMock(return_value=updated_task),
+        ) as replace_mock:
+            response = await tasks_api.update_task(
+                request=request,
+                short_id=101,
+                data=tasks_api.TaskEdit(label_ids=label_ids),
+                member=member,
+                session=session,
+            )
+
+        self.assertIs(response, updated_task)
+        replace_mock.assert_awaited_once_with(session, task, label_ids)
+        session.commit.assert_awaited_once()
+
+    async def test_unrelated_member_cannot_update_labels(self) -> None:
+        task = SimpleNamespace(
+            id=uuid.uuid4(),
+            assignee_id=uuid.uuid4(),
+            created_by_id=uuid.uuid4(),
+            status="new",
+            assignee=None,
+            labels=[],
+        )
+        member = SimpleNamespace(id=uuid.uuid4(), role="member")
+        session = SimpleNamespace(commit=AsyncMock())
+        request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(bot=None)))
+
+        with patch.object(
+            tasks_api.task_service,
+            "get_task_by_short_id",
+            AsyncMock(return_value=task),
+        ), patch.object(
+            tasks_api,
+            "can_access_task",
+            AsyncMock(return_value=True),
+        ), patch.object(
+            tasks_api.label_repo,
+            "replace_task_labels",
+            AsyncMock(),
+        ) as replace_mock:
+            with self.assertRaises(HTTPException) as ctx:
+                await tasks_api.update_task(
+                    request=request,
+                    short_id=101,
+                    data=tasks_api.TaskEdit(label_ids=[uuid.uuid4()]),
+                    member=member,
+                    session=session,
+                )
+
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertIn("Нет прав", str(ctx.exception.detail))
+        replace_mock.assert_not_awaited()
+        session.commit.assert_not_awaited()
+
     async def test_member_assignee_cannot_reassign_without_author_rights(self) -> None:
         member_id = uuid.uuid4()
         task = SimpleNamespace(

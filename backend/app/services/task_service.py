@@ -34,6 +34,7 @@ class TaskService:
         reminder_comment: str | None = None,
         source: str = "text",
         meeting_id: uuid.UUID | None = None,
+        label_ids: list[uuid.UUID] | None = None,
     ) -> Task:
         """
         Create a task.
@@ -75,6 +76,14 @@ class TaskService:
             reminder_sent_at=None,
             meeting_id=meeting_id,
         )
+        if label_ids:
+            from app.db.repositories import TaskLabelRepository
+
+            task = await TaskLabelRepository().replace_task_labels(
+                session,
+                task,
+                label_ids,
+            )
         if task.assignee_id and task.assignee_id != creator.id:
             await self.in_app_notifications.notify_task_assigned(session, task, creator)
         elif task.assignee_id is None:
@@ -110,7 +119,11 @@ class TaskService:
         if visible_department_ids:
             stmt = (
                 select(Task)
-                .options(selectinload(Task.assignee), selectinload(Task.created_by))
+                .options(
+                    selectinload(Task.assignee),
+                    selectinload(Task.created_by),
+                    selectinload(Task.labels),
+                )
                 .join(Task.assignee)
                 .where(
                     TeamMember.department_id.in_(visible_department_ids),

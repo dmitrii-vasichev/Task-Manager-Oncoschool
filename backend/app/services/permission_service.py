@@ -2,7 +2,7 @@ from app.db.models import Task, TeamMember
 
 
 class PermissionService:
-    TASK_EDIT_BASE_FIELDS = {"status", "checklist", "title"}
+    TASK_EDIT_BASE_FIELDS = {"status", "checklist", "title", "label_ids"}
     TASK_EDIT_AUTHOR_EXTRA_FIELDS = {"description", "priority", "deadline", "assignee_id"}
     TASK_EDIT_REMINDER_FIELDS = {"reminder_at", "reminder_comment"}
     TASK_EDIT_MODERATOR_FIELDS = (
