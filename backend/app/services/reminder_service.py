@@ -28,6 +28,7 @@ from app.db.repositories import (
     TaskRepository,
 )
 from app.services.in_app_notification_service import InAppNotificationService
+from app.services.task_urgency import is_task_urgent
 
 logger = logging.getLogger(__name__)
 
@@ -660,7 +661,8 @@ class ReminderService:
                 deadline_value = task.deadline.strftime("%d.%m")
                 parts.append(f"{deadline_icon} {deadline_value}")
             elif field_key == "priority":
-                parts.append(f"⚡ {task.priority}")
+                if is_task_urgent(task.priority):
+                    parts.append("Срочно")
 
         if not parts:
             parts.append(task.title)

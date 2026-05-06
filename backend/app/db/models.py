@@ -384,7 +384,7 @@ class Task(Base):
         String(50), default="new", server_default="new"
     )
     priority: Mapped[str] = mapped_column(
-        String(20), default="medium", server_default="medium"
+        String(20), default="normal", server_default="normal"
     )
     assignee_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("team_members.id"), nullable=True

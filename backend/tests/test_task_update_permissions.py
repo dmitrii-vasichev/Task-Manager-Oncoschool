@@ -383,7 +383,7 @@ class TaskUpdatePermissionsTests(unittest.IsolatedAsyncioTestCase):
             session,
             task.id,
             description="Описание",
-            priority="high",
+            priority="urgent",
             deadline=date(2026, 3, 10),
         )
         session.commit.assert_awaited_once()
