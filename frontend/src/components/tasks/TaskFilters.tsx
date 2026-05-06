@@ -220,6 +220,11 @@ export function TaskFilters({
             <button
               key={chip.key}
               type="button"
+              aria-label={
+                chip.type === "label-overflow"
+                  ? "Открыть все выбранные метки"
+                  : `Удалить фильтр ${chip.label}`
+              }
               onClick={() => handleActiveChipClick(chip)}
               className={cn(
                 "inline-flex max-w-full items-center gap-1.5 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/20",
@@ -239,8 +244,10 @@ export function TaskFilters({
         <SheetContent
           side={sheetSide}
           className={cn(
-            "flex max-h-[85dvh] flex-col gap-0 overflow-hidden p-0",
-            isDesktopSheet ? "h-full w-full sm:max-w-md" : "rounded-t-2xl",
+            "flex flex-col gap-0 overflow-hidden p-0",
+            isDesktopSheet
+              ? "h-full w-full max-h-none sm:max-w-md"
+              : "max-h-[85dvh] rounded-t-2xl",
           )}
         >
           <SheetHeader className="border-b border-border/70 px-5 py-4 pr-12 text-left">
