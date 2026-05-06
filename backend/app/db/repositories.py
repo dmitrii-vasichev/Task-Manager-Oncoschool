@@ -1,4 +1,5 @@
 import logging
+import re
 import uuid
 from datetime import date, datetime
 
@@ -27,6 +28,8 @@ from app.db.models import (
     NotificationSubscription,
     ReminderSettings,
     Task,
+    TaskLabel,
+    TaskLabelLink,
     TaskUpdate,
     TeamMember,
     TelegramBroadcast,
@@ -38,6 +41,35 @@ from app.db.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+LABEL_COLOR_PALETTE = (
+    "teal",
+    "coral",
+    "blue",
+    "purple",
+    "gold",
+    "green",
+    "slate",
+)
+
+
+def normalize_task_label_name(raw_name: str) -> str:
+    normalized = re.sub(r"\s+", " ", raw_name or "").strip()
+    if not normalized:
+        raise ValueError("Название метки не может быть пустым")
+    if len(normalized) > 80:
+        raise ValueError("Название метки не может быть длиннее 80 символов")
+    return normalized
+
+
+def slugify_task_label(raw_name: str) -> str:
+    return normalize_task_label_name(raw_name).casefold()
+
+
+def pick_task_label_color(slug: str) -> str:
+    index = sum(ord(char) for char in slug) % len(LABEL_COLOR_PALETTE)
+    return LABEL_COLOR_PALETTE[index]
 
 
 class TeamMemberRepository:
@@ -155,11 +187,95 @@ class DepartmentRepository:
         return True
 
 
+class TaskLabelRepository:
+    async def get_by_slug(self, session: AsyncSession, slug: str) -> TaskLabel | None:
+        stmt = select(TaskLabel).where(TaskLabel.slug == slug)
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def get_by_ids(
+        self, session: AsyncSession, label_ids: list[uuid.UUID]
+    ) -> list[TaskLabel]:
+        if not label_ids:
+            return []
+        stmt = select(TaskLabel).where(TaskLabel.id.in_(label_ids))
+        result = await session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def search(
+        self,
+        session: AsyncSession,
+        search: str | None = None,
+        include_archived: bool = False,
+        limit: int = 20,
+    ) -> list[tuple[TaskLabel, int]]:
+        usage_count = func.count(TaskLabelLink.task_id).label("usage_count")
+        stmt = (
+            select(TaskLabel, usage_count)
+            .outerjoin(TaskLabelLink, TaskLabelLink.label_id == TaskLabel.id)
+            .group_by(TaskLabel.id)
+            .order_by(usage_count.desc(), TaskLabel.name.asc())
+            .limit(limit)
+        )
+        if not include_archived:
+            stmt = stmt.where(TaskLabel.is_archived.is_(False))
+        if search:
+            normalized = normalize_task_label_name(search)
+            stmt = stmt.where(TaskLabel.name.ilike(f"%{normalized}%"))
+        result = await session.execute(stmt)
+        return [(row[0], int(row[1] or 0)) for row in result.all()]
+
+    async def create_or_reactivate(
+        self,
+        session: AsyncSession,
+        *,
+        name: str,
+        created_by_id: uuid.UUID | None,
+    ) -> TaskLabel:
+        normalized = normalize_task_label_name(name)
+        slug = slugify_task_label(normalized)
+        existing = await self.get_by_slug(session, slug)
+        if existing:
+            if existing.is_archived:
+                existing.is_archived = False
+                existing.name = normalized
+                await session.flush()
+            return existing
+        label = TaskLabel(
+            name=normalized,
+            slug=slug,
+            color=pick_task_label_color(slug),
+            created_by_id=created_by_id,
+        )
+        session.add(label)
+        await session.flush()
+        return label
+
+    async def replace_task_labels(
+        self,
+        session: AsyncSession,
+        task: Task,
+        label_ids: list[uuid.UUID],
+    ) -> Task:
+        labels = await self.get_by_ids(session, label_ids)
+        found_ids = {label.id for label in labels}
+        missing_ids = [label_id for label_id in label_ids if label_id not in found_ids]
+        if missing_ids:
+            raise ValueError("Одна или несколько меток не найдены")
+        task.labels = labels
+        await session.flush()
+        return task
+
+
 class TaskRepository:
     async def get_by_id(self, session: AsyncSession, task_id: uuid.UUID) -> Task | None:
         stmt = (
             select(Task)
-            .options(selectinload(Task.assignee), selectinload(Task.created_by))
+            .options(
+                selectinload(Task.assignee),
+                selectinload(Task.created_by),
+                selectinload(Task.labels),
+            )
             .where(Task.id == task_id)
         )
         result = await session.execute(stmt)
@@ -168,7 +284,11 @@ class TaskRepository:
     async def get_by_short_id(self, session: AsyncSession, short_id: int) -> Task | None:
         stmt = (
             select(Task)
-            .options(selectinload(Task.assignee), selectinload(Task.created_by))
+            .options(
+                selectinload(Task.assignee),
+                selectinload(Task.created_by),
+                selectinload(Task.labels),
+            )
             .where(Task.short_id == short_id)
         )
         result = await session.execute(stmt)
@@ -177,7 +297,11 @@ class TaskRepository:
     async def get_by_assignee(self, session: AsyncSession, assignee_id: uuid.UUID) -> list[Task]:
         stmt = (
             select(Task)
-            .options(selectinload(Task.assignee), selectinload(Task.created_by))
+            .options(
+                selectinload(Task.assignee),
+                selectinload(Task.created_by),
+                selectinload(Task.labels),
+            )
             .where(Task.assignee_id == assignee_id)
             .order_by(Task.created_at.desc())
         )
@@ -187,7 +311,11 @@ class TaskRepository:
     async def get_all_active(self, session: AsyncSession) -> list[Task]:
         stmt = (
             select(Task)
-            .options(selectinload(Task.assignee), selectinload(Task.created_by))
+            .options(
+                selectinload(Task.assignee),
+                selectinload(Task.created_by),
+                selectinload(Task.labels),
+            )
             .where(Task.status.notin_(["done", "cancelled"]))
             .order_by(Task.created_at.desc())
         )

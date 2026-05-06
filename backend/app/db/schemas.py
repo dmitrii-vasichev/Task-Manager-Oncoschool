@@ -115,6 +115,24 @@ class TaskChecklistItem(BaseModel):
     is_completed: bool = False
 
 
+class TaskLabelCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class TaskLabelResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    color: str
+    created_by_id: uuid.UUID | None
+    is_archived: bool
+    created_at: datetime
+    updated_at: datetime
+    usage_count: int = 0
+
+
 class TaskCreate(BaseModel):
     title: str
     description: str | None = None
@@ -124,6 +142,7 @@ class TaskCreate(BaseModel):
     meeting_id: uuid.UUID | None = None
     source: TaskSourceType = "text"
     deadline: date | None = None
+    label_ids: list[uuid.UUID] = Field(default_factory=list)
 
 
 class TaskEdit(BaseModel):
@@ -136,6 +155,7 @@ class TaskEdit(BaseModel):
     deadline: date | None = None
     reminder_at: datetime | None = None
     reminder_comment: str | None = None
+    label_ids: list[uuid.UUID] | None = None
 
 class TaskResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -160,6 +180,7 @@ class TaskResponse(BaseModel):
     updated_at: datetime
     assignee: TeamMemberResponse | None = None
     created_by: TeamMemberResponse | None = None
+    labels: list[TaskLabelResponse] = Field(default_factory=list)
 
 
 # ── TaskUpdate ──

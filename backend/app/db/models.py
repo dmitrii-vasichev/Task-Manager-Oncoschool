@@ -316,6 +316,53 @@ class Meeting(Base):
     )
 
 
+class TaskLabel(Base):
+    __tablename__ = "task_labels"
+    __table_args__ = (
+        UniqueConstraint("slug", name="uq_task_labels_slug"),
+        Index("idx_task_labels_is_archived", "is_archived"),
+        Index("idx_task_labels_created_at", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False)
+    color: Mapped[str] = mapped_column(String(30), nullable=False)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_members.id", ondelete="SET NULL"), nullable=True
+    )
+    is_archived: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
+
+    tasks: Mapped[list["Task"]] = relationship(
+        secondary="task_label_links",
+        back_populates="labels",
+    )
+
+
+class TaskLabelLink(Base):
+    __tablename__ = "task_label_links"
+    __table_args__ = (
+        Index("idx_task_label_links_label_id", "label_id"),
+        Index("idx_task_label_links_task_id", "task_id"),
+    )
+
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+    label_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("task_labels.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
@@ -373,6 +420,10 @@ class Task(Base):
     meeting: Mapped["Meeting | None"] = relationship(back_populates="tasks")
     updates: Mapped[list["TaskUpdate"]] = relationship(
         back_populates="task", cascade="all, delete-orphan"
+    )
+    labels: Mapped[list["TaskLabel"]] = relationship(
+        secondary="task_label_links",
+        back_populates="tasks",
     )
 
 
