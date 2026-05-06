@@ -67,12 +67,13 @@ class TestGetCourseCredentialsModel(unittest.TestCase):
         self.assertEqual(GetCourseCredentials.__tablename__, "getcourse_credentials")
 
 
-class TestTelegramNotificationTargetType(unittest.TestCase):
-    """R1.5 — type column on TelegramNotificationTarget."""
+class TestTelegramNotificationTargetTypes(unittest.TestCase):
+    """R1.5 — types column on TelegramNotificationTarget."""
 
-    def test_type_column_exists(self) -> None:
+    def test_types_column_exists(self) -> None:
         columns = {c.name for c in TelegramNotificationTarget.__table__.columns}
-        self.assertIn("type", columns)
+        self.assertIn("types", columns)
+        self.assertNotIn("type", columns)
 
 
 class TestGetCourseServiceAggregation(unittest.TestCase):
