@@ -291,6 +291,92 @@ class TaskLabelApiTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(ctx.exception.status_code, 403)
 
+    async def test_update_task_label_missing_after_permission_check_returns_404(self) -> None:
+        member_id = uuid.uuid4()
+        label = make_label("Conference")
+        label.created_by_id = member_id
+        member = SimpleNamespace(id=member_id, role="member", is_active=True)
+        session = SimpleNamespace(commit=AsyncMock())
+
+        with patch.object(labels_api.label_repo, "get_by_id", AsyncMock(return_value=label)), \
+            patch.object(labels_api.label_repo, "is_shared_for_member", AsyncMock(return_value=False)), \
+            patch.object(labels_api.label_repo, "update", AsyncMock(return_value=None)):
+            with self.assertRaises(labels_api.HTTPException) as ctx:
+                await labels_api.update_task_label(
+                    label_id=label.id,
+                    data=labels_api.TaskLabelUpdate(name="Conference 2026"),
+                    member=member,
+                    session=session,
+                )
+
+        self.assertEqual(ctx.exception.status_code, 404)
+        session.commit.assert_not_awaited()
+
+    async def test_member_archives_owned_non_shared_label(self) -> None:
+        member_id = uuid.uuid4()
+        label = make_label("Conference")
+        label.created_by_id = member_id
+        archived_label = make_label("Conference")
+        archived_label.id = label.id
+        archived_label.created_by_id = member_id
+        archived_label.is_archived = True
+        member = SimpleNamespace(id=member_id, role="member", is_active=True)
+        session = SimpleNamespace(commit=AsyncMock())
+
+        with patch.object(labels_api.label_repo, "get_by_id", AsyncMock(return_value=label)), \
+            patch.object(labels_api.label_repo, "is_shared_for_member", AsyncMock(return_value=False)), \
+            patch.object(labels_api.label_repo, "archive", AsyncMock(return_value=archived_label)) as archive_mock:
+            response = await labels_api.archive_task_label(
+                label_id=label.id,
+                member=member,
+                session=session,
+            )
+
+        self.assertTrue(response.is_archived)
+        archive_mock.assert_awaited_once_with(session, label.id)
+        session.commit.assert_awaited_once()
+
+    async def test_member_cannot_archive_shared_label(self) -> None:
+        member_id = uuid.uuid4()
+        label = make_label("Conference")
+        label.created_by_id = member_id
+        member = SimpleNamespace(id=member_id, role="member", is_active=True)
+        session = SimpleNamespace(commit=AsyncMock())
+
+        with patch.object(labels_api.label_repo, "get_by_id", AsyncMock(return_value=label)), \
+            patch.object(labels_api.label_repo, "is_shared_for_member", AsyncMock(return_value=True)), \
+            patch.object(labels_api.label_repo, "archive", AsyncMock()) as archive_mock:
+            with self.assertRaises(labels_api.HTTPException) as ctx:
+                await labels_api.archive_task_label(
+                    label_id=label.id,
+                    member=member,
+                    session=session,
+                )
+
+        self.assertEqual(ctx.exception.status_code, 403)
+        archive_mock.assert_not_awaited()
+        session.commit.assert_not_awaited()
+
+    async def test_archive_task_label_missing_after_permission_check_returns_404(self) -> None:
+        member_id = uuid.uuid4()
+        label = make_label("Conference")
+        label.created_by_id = member_id
+        member = SimpleNamespace(id=member_id, role="member", is_active=True)
+        session = SimpleNamespace(commit=AsyncMock())
+
+        with patch.object(labels_api.label_repo, "get_by_id", AsyncMock(return_value=label)), \
+            patch.object(labels_api.label_repo, "is_shared_for_member", AsyncMock(return_value=False)), \
+            patch.object(labels_api.label_repo, "archive", AsyncMock(return_value=None)):
+            with self.assertRaises(labels_api.HTTPException) as ctx:
+                await labels_api.archive_task_label(
+                    label_id=label.id,
+                    member=member,
+                    session=session,
+                )
+
+        self.assertEqual(ctx.exception.status_code, 404)
+        session.commit.assert_not_awaited()
+
     async def test_moderator_restores_archived_label(self) -> None:
         label = make_label("Conference")
         label.is_archived = True

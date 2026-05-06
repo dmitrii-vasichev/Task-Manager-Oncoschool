@@ -45,13 +45,9 @@ async def _ensure_can_manage_label(
     session: AsyncSession,
     label,
     member: TeamMember,
-    *,
-    restore: bool = False,
 ) -> None:
     if PermissionService.is_moderator(member):
         return
-    if restore:
-        raise HTTPException(status_code=403, detail="Доступ только для модераторов")
     if label.is_archived:
         raise HTTPException(status_code=403, detail="Архивную метку может восстановить модератор")
     if label.created_by_id != member.id:
@@ -143,6 +139,8 @@ async def update_task_label(
         if message == "Unknown task label color":
             raise HTTPException(status_code=400, detail="Выберите один из доступных цветов метки")
         raise HTTPException(status_code=400, detail=message)
+    if not updated:
+        raise HTTPException(status_code=404, detail="Метка не найдена")
     await session.commit()
     return await _label_response(session, updated, member=member)
 
@@ -158,6 +156,8 @@ async def archive_task_label(
         raise HTTPException(status_code=404, detail="Метка не найдена")
     await _ensure_can_manage_label(session, label, member)
     archived = await label_repo.archive(session, label_id)
+    if not archived:
+        raise HTTPException(status_code=404, detail="Метка не найдена")
     await session.commit()
     return await _label_response(session, archived, member=member)
 
