@@ -10,6 +10,7 @@ from app.db.models import Task, TaskUpdate, TeamMember
 from app.db.repositories import TaskRepository, TaskUpdateRepository, TeamMemberRepository
 from app.services.in_app_notification_service import InAppNotificationService
 from app.services.permission_service import PermissionService
+from app.services.task_urgency import normalize_task_urgency
 from app.services.task_visibility_service import resolve_visible_department_ids
 
 
@@ -28,7 +29,7 @@ class TaskService:
         assignee_id: uuid.UUID | None = None,
         description: str | None = None,
         checklist: list[dict] | None = None,
-        priority: str = "medium",
+        priority: str = "normal",
         deadline: date | None = None,
         reminder_at: datetime | None = None,
         reminder_comment: str | None = None,
@@ -66,7 +67,7 @@ class TaskService:
             title=title,
             description=description,
             checklist=checklist or [],
-            priority=priority,
+            priority=normalize_task_urgency(priority),
             assignee_id=assignee_id,
             created_by_id=creator.id,
             source=source,
@@ -312,19 +313,19 @@ class TaskService:
     @staticmethod
     def parse_task_text(text: str) -> dict:
         """
-        Parse task text for priority and deadline markers.
-        !urgent, !high, !low -> priority
+        Parse task text for urgency and deadline markers.
+        !urgent and !high -> urgent, !medium and !low -> normal
         @DD.MM or @DD.MM.YYYY -> deadline
         """
-        priority = "medium"
+        priority = "normal"
         deadline = None
 
         # Priority markers
         priority_map = {
             "!urgent": "urgent",
-            "!high": "high",
-            "!low": "low",
-            "!medium": "medium",
+            "!high": "urgent",
+            "!low": "normal",
+            "!medium": "normal",
         }
         for marker, prio in priority_map.items():
             if marker in text.lower():

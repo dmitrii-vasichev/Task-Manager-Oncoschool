@@ -3,11 +3,13 @@ from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.services.task_urgency import normalize_task_urgency
 
 # Domain value types
 TaskStatusType = Literal["new", "in_progress", "review", "done", "cancelled"]
-TaskPriorityType = Literal["low", "medium", "high", "urgent"]
+TaskPriorityType = Literal["normal", "urgent"]
 TaskSourceType = Literal["text", "voice", "summary", "web"]
 MemberRoleType = Literal["admin", "moderator", "member"]
 MemberDeactivationStrategyType = Literal["unassign", "reassign"]
@@ -147,12 +149,17 @@ class TaskCreate(BaseModel):
     title: str
     description: str | None = None
     checklist: list[TaskChecklistItem] = Field(default_factory=list)
-    priority: TaskPriorityType = "medium"
+    priority: TaskPriorityType = "normal"
     assignee_id: uuid.UUID | None = None
     meeting_id: uuid.UUID | None = None
     source: TaskSourceType = "text"
     deadline: date | None = None
     label_ids: list[uuid.UUID] = Field(default_factory=list)
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def normalize_priority(cls, value: str | None) -> str:
+        return normalize_task_urgency(value)
 
 
 class TaskEdit(BaseModel):
@@ -166,6 +173,13 @@ class TaskEdit(BaseModel):
     reminder_at: datetime | None = None
     reminder_comment: str | None = None
     label_ids: list[uuid.UUID] | None = None
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def normalize_priority(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return normalize_task_urgency(value)
 
 class TaskResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

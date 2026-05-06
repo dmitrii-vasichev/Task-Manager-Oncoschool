@@ -4,7 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -16,6 +16,7 @@ from app.db.schemas import TaskCreate, TaskEdit, TaskResponse
 from app.services.in_app_notification_service import InAppNotificationService
 from app.services.notification_service import NotificationService
 from app.services.permission_service import PermissionService
+from app.services.task_urgency import normalize_task_urgency
 from app.services.task_service import TaskService
 from app.services.task_visibility_service import (
     can_access_task,
@@ -185,7 +186,7 @@ async def list_tasks(
         statuses = [s.strip() for s in status_filter.split(",")]
         base_stmt = base_stmt.where(Task.status.in_(statuses))
     if priority:
-        base_stmt = base_stmt.where(Task.priority == priority)
+        base_stmt = base_stmt.where(Task.priority == normalize_task_urgency(priority))
     if meeting_id:
         base_stmt = base_stmt.where(Task.meeting_id == meeting_id)
     if source:
@@ -212,7 +213,7 @@ async def list_tasks(
         "created_at_asc": Task.created_at.asc(),
         "deadline_asc": Task.deadline.asc().nullslast(),
         "deadline_desc": Task.deadline.desc().nullsfirst(),
-        "priority_desc": Task.priority.desc(),
+        "priority_desc": case((Task.priority == "urgent", 1), else_=0).desc(),
         "short_id_desc": Task.short_id.desc(),
         "short_id_asc": Task.short_id.asc(),
     }
