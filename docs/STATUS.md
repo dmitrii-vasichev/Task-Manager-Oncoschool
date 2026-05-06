@@ -12,3 +12,11 @@
   - Frontend TypeScript check passes.
   - Frontend Node test script passes after fixing its direct TypeScript import resolution.
   - Frontend dev server smoke-tested on `http://127.0.0.1:3001/login`.
+
+## Task Filter Sheet
+
+- Current phase: implementation plan ready for review
+- Spec: `docs/superpowers/specs/2026-05-06-task-filter-sheet-design.md`
+- Plan: `docs/PLAN.md`
+- Scope: frontend task board filter layout only
+- Next action: execute the plan task-by-task, then validate desktop and mobile filter sheet behavior.
