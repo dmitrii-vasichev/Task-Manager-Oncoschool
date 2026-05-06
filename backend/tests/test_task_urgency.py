@@ -103,3 +103,20 @@ class TaskUrgencyTests(unittest.IsolatedAsyncioTestCase):
             )
 
         normalize_mock.assert_called_once_with("high")
+
+    def test_ai_priority_normalizer_maps_legacy_values_to_binary_urgency(self) -> None:
+        from app.bot.handlers.tasks import _normalize_ai_priority
+
+        self.assertEqual(_normalize_ai_priority("high"), "urgent")
+        self.assertEqual(_normalize_ai_priority("urgent"), "urgent")
+        self.assertEqual(_normalize_ai_priority("medium"), "normal")
+        self.assertEqual(_normalize_ai_priority("low"), "normal")
+        self.assertEqual(_normalize_ai_priority("unexpected"), "normal")
+
+    def test_bot_priority_input_accepts_binary_and_legacy_aliases(self) -> None:
+        from app.bot.handlers.tasks import _normalize_priority_input
+
+        self.assertEqual(_normalize_priority_input("срочно"), "urgent")
+        self.assertEqual(_normalize_priority_input("high"), "urgent")
+        self.assertEqual(_normalize_priority_input("обычная"), "normal")
+        self.assertEqual(_normalize_priority_input("low"), "normal")

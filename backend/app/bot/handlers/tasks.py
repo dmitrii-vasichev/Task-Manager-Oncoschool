@@ -41,6 +41,7 @@ from app.services.notification_service import NotificationService
 from app.services.permission_service import PermissionService
 from app.services.telegram_target_access_service import is_chat_allowed_for_incoming_tasks
 from app.services.task_service import TaskService
+from app.services.task_urgency import is_task_urgent, normalize_task_urgency
 from app.services.task_visibility_service import (
     can_access_task,
     get_default_department_id,
@@ -65,13 +66,6 @@ LEGACY_TASK_FILTER_ALIASES = {
 
 TaskListContext = tuple[TaskListScope, TaskListFilter, int, str]
 
-PRIORITY_EMOJI = {
-    "urgent": "🔴",
-    "high": "⚡",
-    "medium": "🔵",
-    "low": "⚪",
-}
-
 STATUS_EMOJI = {
     "new": "🆕",
     "in_progress": "▶️",
@@ -89,10 +83,8 @@ STATUS_LABELS = {
 }
 
 PRIORITY_LABELS = {
-    "urgent": "Urgent",
-    "high": "High",
-    "medium": "Medium",
-    "low": "Low",
+    "urgent": "Срочно",
+    "normal": "Обычная",
 }
 
 TASK_LIST_TITLE_LIMIT = 64
@@ -114,7 +106,7 @@ TASK_EDIT_USAGE_TEXT = (
 TASK_EDIT_FIELD_LABELS = {
     "title": "📌 Название",
     "description": "📝 Описание",
-    "priority": "⚡ Приоритет",
+    "priority": "Срочность",
     "deadline": "📅 Дедлайн",
     "assignee": "👤 Исполнитель",
 }
@@ -122,16 +114,21 @@ TASK_EDIT_FIELD_LABELS = {
 TASK_EDIT_CLEAR_VALUES = {"-", "none", "null", "clear", "нет", "очистить"}
 TASK_REMINDER_CLEAR_VALUES = TASK_EDIT_CLEAR_VALUES
 TASK_PRIORITY_ALIASES = {
-    "low": "low",
-    "medium": "medium",
-    "high": "high",
+    "normal": "normal",
+    "low": "normal",
+    "medium": "normal",
+    "обычная": "normal",
+    "обычный": "normal",
+    "не срочно": "normal",
+    "низкий": "normal",
+    "средний": "normal",
+    "high": "urgent",
     "urgent": "urgent",
-    "низкий": "low",
-    "средний": "medium",
-    "высокий": "high",
+    "срочно": "urgent",
     "срочный": "urgent",
+    "важно": "urgent",
+    "высокий": "urgent",
 }
-AI_PRIORITY_VALUES = {"low", "medium", "high", "urgent"}
 INLINE_REMINDER_PATTERN = re.compile(
     r"\bнапомни(?:ть)?\b[,:\s]*"
     r"(?P<date>сегодня|завтра|послезавтра|\d{1,2}\.\d{1,2}(?:\.\d{2,4})?)"
@@ -171,7 +168,7 @@ class TaskReminderFSM(StatesGroup):
 
 NEW_TASK_PROMPT_TEXT = (
     "📝 Введите задачу обычным текстом — выделю заголовок, дедлайн и напоминание.\n"
-    "Можно использовать модификаторы: !urgent !high !low @ДД.ММ\n"
+    "Можно использовать модификаторы: !urgent или legacy !high, дедлайн @ДД.ММ\n"
     "Для отмены отправьте /cancel"
 )
 
@@ -335,10 +332,7 @@ def _task_edit_prompt_text(field: str) -> str:
             "📝 Введите новое описание.\n"
             "Чтобы очистить описание: <code>-</code>, <code>none</code> или <code>нет</code>."
         ),
-        "priority": (
-            "⚡ Введите приоритет: <code>low</code>, <code>medium</code>, "
-            "<code>high</code>, <code>urgent</code>."
-        ),
+        "priority": "Срочная задача? Введите <code>urgent</code>/<code>normal</code>, <code>срочно</code>/<code>обычная</code>.",
         "deadline": (
             "📅 Введите дедлайн: <code>ДД.ММ</code> или <code>ДД.ММ.ГГГГ</code>.\n"
             "Чтобы снять дедлайн: <code>-</code>, <code>none</code> или <code>нет</code>."
@@ -558,11 +552,8 @@ def _resolve_group_task_assignee(
     return creator.id, creator_full_name, None
 
 
-def _normalize_ai_priority(raw_value: str | None) -> str | None:
-    if not raw_value:
-        return None
-    normalized = raw_value.strip().lower()
-    return normalized if normalized in AI_PRIORITY_VALUES else None
+def _normalize_ai_priority(raw_value: str | None) -> str:
+    return normalize_task_urgency(raw_value)
 
 
 def _parse_iso_deadline(raw_value: str | None) -> date | None:
@@ -656,7 +647,7 @@ async def _parse_task_creation_payload(
         "title": (fallback.get("title") or "").strip(),
         "description": None,
         "assignee_name": None,
-        "priority": fallback.get("priority") or "medium",
+        "priority": normalize_task_urgency(fallback.get("priority")),
         "deadline": fallback.get("deadline"),
         "reminder_at": inline_reminder_at,
         "reminder_comment": None,
@@ -834,18 +825,21 @@ async def _create_task_for_member(
             await notification_service.notify_task_created(session, task, member)
 
     is_mod = PermissionService.is_moderator(member)
-    prio = PRIORITY_EMOJI.get(task.priority, "")
-    deadline_str = f"\n📅 Дедлайн: {task.deadline.strftime('%d.%m.%Y')}" if task.deadline else ""
-    reminder_str = (
-        f"\n⏰ Напоминание: {_format_task_reminder_datetime(task.reminder_at)}"
-        if task.reminder_at
-        else ""
-    )
+    detail_lines = []
+    if is_task_urgent(task.priority):
+        detail_lines.append("Срочно")
+    if task.deadline:
+        detail_lines.append(f"📅 Дедлайн: {task.deadline.strftime('%d.%m.%Y')}")
+    if task.reminder_at:
+        detail_lines.append(f"⏰ Напоминание: {_format_task_reminder_datetime(task.reminder_at)}")
 
-    response_text = (
-        "✅ Задача создана:\n\n"
-        f"#{task.short_id} · {task.title}\n"
-        f"{prio} {task.priority}{deadline_str}{reminder_str}"
+    response_text = "\n".join(
+        [
+            "✅ Задача создана:",
+            "",
+            f"#{task.short_id} · {task.title}",
+            *detail_lines,
+        ]
     )
 
     if _is_group_chat(message):
@@ -948,7 +942,6 @@ async def _update_task_status(
 
 def _format_task_detail(task) -> str:
     """Format task details."""
-    prio = PRIORITY_EMOJI.get(task.priority, "")
     status_em = STATUS_EMOJI.get(task.status, "")
     source_icon = "🎤 " if task.source == "voice" else ""
     assignee_name = task.assignee.full_name if task.assignee else "—"
@@ -959,7 +952,7 @@ def _format_task_detail(task) -> str:
     text = (
         f"{source_icon}<b>#{task.short_id} · {task.title}</b>\n\n"
         f"{status_em} Статус: {task.status}\n"
-        f"{prio} Приоритет: {task.priority}\n"
+        f"Срочность: {PRIORITY_LABELS.get(normalize_task_urgency(task.priority), 'Обычная')}\n"
         f"👤 Исполнитель: {assignee_name}\n"
         f"📝 Создал: {creator_name}\n"
         f"📅 Дедлайн: {deadline_str}\n"
@@ -1043,12 +1036,11 @@ def _format_task_list_item(task) -> str:
     title = escape(_truncate_text(task.title, TASK_LIST_TITLE_LIMIT) or "Без названия")
     status_icon = STATUS_EMOJI.get(task.status, "•")
     status_label = STATUS_LABELS.get(task.status, task.status.replace("_", " ").title())
-    priority_icon = PRIORITY_EMOJI.get(task.priority, "•")
-    priority_label = PRIORITY_LABELS.get(task.priority, task.priority.title())
+    urgency_part = " · Срочно" if is_task_urgent(task.priority) else ""
     deadline_str = task.deadline.strftime("%d.%m") if task.deadline else "—"
     return (
         f"• <b>#{task.short_id}</b> {title}\n"
-        f"  {status_icon} {status_label} · {priority_icon} {priority_label} · 📅 {deadline_str}"
+        f"  {status_icon} {status_label}{urgency_part} · 📅 {deadline_str}"
     )
 
 
@@ -1875,19 +1867,19 @@ async def handle_group_task_by_mention(
                 await notification_service.notify_task_created(session, task, member)
 
     is_mod = PermissionService.is_moderator(member)
-    prio = PRIORITY_EMOJI.get(task.priority, "")
-    deadline_str = f"\n📅 Дедлайн: {task.deadline.strftime('%d.%m.%Y')}" if task.deadline else ""
-    reminder_str = (
-        f"\n⏰ Напоминание: {_format_task_reminder_datetime(task.reminder_at)}"
-        if task.reminder_at
-        else ""
-    )
+    detail_lines = []
+    if is_task_urgent(task.priority):
+        detail_lines.append("Срочно")
+    if task.deadline:
+        detail_lines.append(f"📅 Дедлайн: {task.deadline.strftime('%d.%m.%Y')}")
+    if task.reminder_at:
+        detail_lines.append(f"⏰ Напоминание: {_format_task_reminder_datetime(task.reminder_at)}")
 
     response_lines = [
         "✅ Задача создана:",
         f"#{task.short_id} · {task.title}",
         f"👤 Исполнитель: {assignee_name}",
-        f"{prio} {task.priority}{deadline_str}{reminder_str}",
+        *detail_lines,
     ]
     if assignee_note:
         response_lines.append(f"ℹ️ {assignee_note}")
@@ -1969,19 +1961,24 @@ async def cmd_assign(message: Message, member: TeamMember, session_maker: async_
             notification_service = NotificationService(bot)
             await notification_service.notify_task_created(session, task, member)
 
-    prio = PRIORITY_EMOJI.get(task.priority, "")
-    deadline_str = f"\n📅 Дедлайн: {task.deadline.strftime('%d.%m.%Y')}" if task.deadline else ""
-    reminder_str = (
-        f"\n⏰ Напоминание: {_format_task_reminder_datetime(task.reminder_at)}"
-        if task.reminder_at
-        else ""
-    )
+    detail_lines = []
+    if is_task_urgent(task.priority):
+        detail_lines.append("Срочно")
+    if task.deadline:
+        detail_lines.append(f"📅 Дедлайн: {task.deadline.strftime('%d.%m.%Y')}")
+    if task.reminder_at:
+        detail_lines.append(f"⏰ Напоминание: {_format_task_reminder_datetime(task.reminder_at)}")
 
     await message.answer(
-        f"✅ Задача назначена:\n\n"
-        f"#{task.short_id} · {task.title}\n"
-        f"👤 Исполнитель: {assignee.full_name}\n"
-        f"{prio} {task.priority}{deadline_str}{reminder_str}",
+        "\n".join(
+            [
+                "✅ Задача назначена:",
+                "",
+                f"#{task.short_id} · {task.title}",
+                f"👤 Исполнитель: {assignee.full_name}",
+                *detail_lines,
+            ]
+        ),
         reply_markup=task_actions_keyboard(
             task.short_id,
             PermissionService.is_moderator(member),
@@ -2275,7 +2272,7 @@ async def cb_task_edit_fields(
 @router.callback_query(F.data.startswith("task_edit_help:"))
 async def cb_task_edit_help(callback: CallbackQuery) -> None:
     await callback.answer(
-        "Приоритет: low/medium/high/urgent. "
+        "Срочность: urgent/normal, срочно/обычная. "
         "Дедлайн: ДД.ММ или ДД.ММ.ГГГГ. "
         "Очистка: '-', none, нет.",
         show_alert=True,
@@ -2517,11 +2514,11 @@ async def fsm_task_edit_value(
                 priority = _normalize_priority_input(raw_value)
                 if not priority:
                     await message.answer(
-                        "❌ Неверный приоритет. Доступные: low, medium, high, urgent"
+                        "❌ Неверная срочность. Доступные: urgent/normal, срочно/обычная"
                     )
                     return
                 updated_task = await task_repo.update(session, task.id, priority=priority)
-                success_text = f"✅ Приоритет обновлён: {priority}"
+                success_text = f"✅ Срочность обновлена: {PRIORITY_LABELS.get(priority, priority)}"
             elif field == "deadline":
                 deadline, ok = _parse_deadline_input(raw_value)
                 if not ok:

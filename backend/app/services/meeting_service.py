@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import Meeting, Task, TeamMember
 from app.db.repositories import MeetingRepository, TeamMemberRepository
 from app.services.permission_service import PermissionService
+from app.services.task_urgency import normalize_task_urgency
 from app.services.task_service import TaskService
 from app.services.zoom_service import extract_zoom_join_url
 
@@ -113,7 +114,7 @@ class MeetingService:
                 creator=creator,
                 assignee_id=assignee_id,
                 description=pt.get("description"),
-                priority=pt.get("priority", "medium"),
+                priority=normalize_task_urgency(pt.get("priority")),
                 deadline=deadline,
                 source="summary",
                 meeting_id=meeting.id,

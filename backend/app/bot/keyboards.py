@@ -394,7 +394,7 @@ def voice_edit_fields_keyboard(*, can_assign_to_others: bool) -> InlineKeyboardM
     rows = [
         [
             InlineKeyboardButton(text="📌 Название", callback_data="voice_field:title"),
-            InlineKeyboardButton(text="⚡ Приоритет", callback_data="voice_field:priority"),
+            InlineKeyboardButton(text="Срочность", callback_data="voice_field:priority"),
         ],
     ]
     if can_assign_to_others:

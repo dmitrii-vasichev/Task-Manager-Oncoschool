@@ -24,6 +24,7 @@ from app.services.notification_service import NotificationService
 from app.services.permission_service import PermissionService
 from app.services.telegram_target_access_service import is_chat_allowed_for_incoming_tasks
 from app.services.task_service import TaskService
+from app.services.task_urgency import is_task_urgent, normalize_task_urgency
 from app.services.voice_service import VoiceService
 
 logger = logging.getLogger(__name__)
@@ -34,14 +35,6 @@ voice_service = VoiceService()
 ai_service = AIService()
 task_service = TaskService()
 member_repo = TeamMemberRepository()
-
-PRIORITY_EMOJI = {
-    "urgent": "🔴",
-    "high": "⚡",
-    "medium": "🔵",
-    "low": "⚪",
-}
-
 
 class VoiceTaskFSM(StatesGroup):
     preview = State()
@@ -88,7 +81,6 @@ def _format_task_reminder_datetime(raw_value: str | None) -> str:
 
 def _format_voice_preview(data: dict) -> str:
     """Format parsed voice task for preview message."""
-    prio_emoji = PRIORITY_EMOJI.get(data.get("priority", "medium"), "🔵")
     assignee_name = data.get("assignee_display_name") or "Ты"
     deadline_str = data.get("deadline") or "—"
     reminder_str = _format_task_reminder_datetime(data.get("reminder_at"))
@@ -102,7 +94,7 @@ def _format_voice_preview(data: dict) -> str:
         f"📌 {data['title']}\n"
         f"📝 {description}\n"
         f"👤 Исполнитель: {assignee_name}\n"
-        f"{prio_emoji} Приоритет: {data.get('priority', 'medium')}\n"
+        f"Срочность: {'Срочно' if is_task_urgent(data.get('priority')) else 'Обычная'}\n"
         f"📅 Дедлайн: {deadline_str}\n"
         f"⏰ Напоминание: {reminder_str}\n"
         f"💬 Комментарий к напоминанию: {reminder_comment}"
@@ -306,7 +298,7 @@ async def cb_voice_create(
                     creator=member,
                     assignee_id=assignee_uuid,
                     description=description,
-                    priority=data.get("priority", "medium"),
+                    priority=normalize_task_urgency(data.get("priority")),
                     deadline=deadline,
                     reminder_at=reminder_at,
                     reminder_comment=reminder_comment,
@@ -326,25 +318,29 @@ async def cb_voice_create(
     await state.clear()
 
     assignee_name = task.assignee.full_name if task.assignee else "—"
-    prio = PRIORITY_EMOJI.get(task.priority, "🔵")
-    deadline_str = (
-        f"\n📅 Дедлайн: {task.deadline.strftime('%d.%m.%Y')}" if task.deadline else ""
-    )
+    detail_lines = []
+    if is_task_urgent(task.priority):
+        detail_lines.append("Срочно")
+    if task.deadline:
+        detail_lines.append(f"📅 Дедлайн: {task.deadline.strftime('%d.%m.%Y')}")
     if task.reminder_at:
         try:
             tz = ZoneInfo(settings.TIMEZONE)
         except Exception:
             tz = ZoneInfo("Europe/Moscow")
         reminder_local = task.reminder_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
-        reminder_str = f"\n⏰ Напоминание: {reminder_local.strftime('%d.%m.%Y %H:%M')}"
-    else:
-        reminder_str = ""
+        detail_lines.append(f"⏰ Напоминание: {reminder_local.strftime('%d.%m.%Y %H:%M')}")
 
     await callback.message.answer(
-        f"✅ Задача #{task.short_id} создана из голосового!\n\n"
-        f"📌 {task.title}\n"
-        f"👤 Исполнитель: {assignee_name}\n"
-        f"{prio} {task.priority}{deadline_str}{reminder_str}",
+        "\n".join(
+            [
+                f"✅ Задача #{task.short_id} создана из голосового!",
+                "",
+                f"📌 {task.title}",
+                f"👤 Исполнитель: {assignee_name}",
+                *detail_lines,
+            ]
+        ),
     )
 
 
@@ -402,7 +398,7 @@ async def cb_voice_select_field(
 
     field_labels = {
         "title": "📌 Введи новое название задачи:",
-        "priority": "⚡ Введи приоритет (low, medium, high, urgent):",
+        "priority": "Срочная задача? Введи urgent/normal, срочно/обычная:",
         "deadline": "📅 Введи дедлайн (ДД.ММ.ГГГГ или ДД.ММ):",
         "description": "📝 Введи описание задачи:",
     }
@@ -518,11 +514,10 @@ async def fsm_voice_edit_value(
     if field == "title":
         await state.update_data(title=value)
     elif field == "priority":
-        valid = ("low", "medium", "high", "urgent")
-        if value.lower() not in valid:
-            await message.answer(f"❌ Неверный приоритет. Доступные: {', '.join(valid)}")
+        if not value.strip():
+            await message.answer("❌ Неверная срочность. Доступные: urgent/normal, срочно/обычная")
             return
-        await state.update_data(priority=value.lower())
+        await state.update_data(priority=normalize_task_urgency(value))
     elif field == "deadline":
         match = re.match(r"(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?$", value)
         if not match:

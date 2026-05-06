@@ -149,12 +149,13 @@ class ReminderDigestSectionOrderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(service._send_safe.await_count, 1)
         sent_text = service._send_safe.await_args.args[1]
         self.assertIn("Подготовить презентацию", sent_text)
-        self.assertIn("⚡ urgent", sent_text)
+        self.assertIn("Срочно", sent_text)
+        self.assertNotIn("⚡ urgent", sent_text)
         self.assertIn("📅 27.02", sent_text)
         self.assertNotIn("#305", sent_text)
 
         title_idx = sent_text.find("Подготовить презентацию")
-        priority_idx = sent_text.find("⚡ urgent")
+        priority_idx = sent_text.find("Срочно")
         deadline_idx = sent_text.find("📅 27.02")
         self.assertLess(title_idx, priority_idx)
         self.assertLess(priority_idx, deadline_idx)
@@ -203,7 +204,7 @@ class ReminderDigestSectionOrderTests(unittest.IsolatedAsyncioTestCase):
         sent_text = service._send_safe.await_args.args[1]
         sent_kwargs = service._send_safe.await_args.kwargs
         self.assertIn(
-            "#777 · Проверить &lt;b&gt;контракт&lt;/b&gt; &amp; согласовать · 📅 26.02 · ⚡ high",
+            "#777 · Проверить &lt;b&gt;контракт&lt;/b&gt; &amp; согласовать · 📅 26.02 · Срочно",
             sent_text,
         )
         self.assertEqual(sent_kwargs.get("parse_mode"), "HTML")
@@ -253,7 +254,7 @@ class ReminderDigestSectionOrderTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("⏰ Дедлайны сегодня (1)", sent_text)
         self.assertIn("#410", sent_text)
         self.assertIn("📅 26.02", sent_text)
-        self.assertIn("⚡ high", sent_text)
+        self.assertIn("Срочно", sent_text)
         self.assertNotIn("Ближайшие по дедлайну", sent_text)
 
     async def test_send_daily_digest_today_respects_field_flags_and_order(self) -> None:

@@ -12,6 +12,7 @@ from app.bot.callbacks import (
 )
 from app.db.models import DailyMetric, Meeting, Task, TaskUpdate, TeamMember
 from app.db.repositories import NotificationSubscriptionRepository, TeamMemberRepository, TelegramTargetRepository
+from app.services.task_urgency import is_task_urgent
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +51,19 @@ class NotificationService:
             )
             if assignee and assignee.telegram_id:
                 source_icon = "🎤 " if task.source == "voice" else ""
-                deadline_str = f"\n📅 Дедлайн: {task.deadline.strftime('%d.%m.%Y')}" if task.deadline else ""
-                text = (
-                    f"📌 Тебе назначена новая задача:\n\n"
-                    f"{source_icon}#{task.short_id} · {task.title}\n"
-                    f"⚡ {task.priority}{deadline_str}\n"
-                    f"👤 От: {creator.full_name}"
+                details = []
+                if is_task_urgent(task.priority):
+                    details.append("Срочно")
+                if task.deadline:
+                    details.append(f"📅 Дедлайн: {task.deadline.strftime('%d.%m.%Y')}")
+                text = "\n".join(
+                    [
+                        "📌 Тебе назначена новая задача:",
+                        "",
+                        f"{source_icon}#{task.short_id} · {task.title}",
+                        *details,
+                        f"👤 От: {creator.full_name}",
+                    ]
                 )
                 await self._send_safe(assignee.telegram_id, text, _task_callback_markup(task))
 
@@ -153,11 +161,15 @@ class NotificationService:
     ) -> None:
         """Notify new assignee about reassignment."""
         if new_assignee.telegram_id and new_assignee.id != assigned_by.id:
-            text = (
-                f"🔄 Тебе переназначена задача:\n\n"
-                f"#{task.short_id} · {task.title}\n"
-                f"⚡ {task.priority}\n"
-                f"👤 Назначил: {assigned_by.full_name}"
+            details = ["Срочно"] if is_task_urgent(task.priority) else []
+            text = "\n".join(
+                [
+                    "🔄 Тебе переназначена задача:",
+                    "",
+                    f"#{task.short_id} · {task.title}",
+                    *details,
+                    f"👤 Назначил: {assigned_by.full_name}",
+                ]
             )
             await self._send_safe(new_assignee.telegram_id, text, _task_callback_markup(task))
 

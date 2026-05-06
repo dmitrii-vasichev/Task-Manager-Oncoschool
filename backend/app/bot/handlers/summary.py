@@ -14,6 +14,7 @@ from app.services.ai_service import AIService
 from app.services.meeting_service import MeetingService
 from app.services.in_app_notification_service import InAppNotificationService
 from app.services.notification_service import NotificationService
+from app.services.task_urgency import is_task_urgent, normalize_task_urgency
 
 logger = logging.getLogger(__name__)
 
@@ -27,14 +28,6 @@ member_repo = TeamMemberRepository()
 class SummaryFSM(StatesGroup):
     waiting_for_text = State()
     preview = State()
-
-
-PRIORITY_EMOJI = {
-    "urgent": "🔴",
-    "high": "🟠",
-    "medium": "🟡",
-    "low": "🟢",
-}
 
 
 def _format_preview(parsed, provider_info: dict) -> str:
@@ -58,11 +51,12 @@ def _format_preview(parsed, provider_info: dict) -> str:
     if parsed.tasks:
         lines.append(f"<b>📊 Задачи ({len(parsed.tasks)}):</b>")
         for i, t in enumerate(parsed.tasks, 1):
-            prio_emoji = PRIORITY_EMOJI.get(t.priority, "⚪")
+            urgency = normalize_task_urgency(t.priority)
+            urgency_label = " · Срочно" if is_task_urgent(urgency) else ""
             assignee_str = t.assignee_name or "не назначен"
             deadline_str = f" · 📅 {t.deadline}" if t.deadline else ""
             lines.append(
-                f"  {i}. {prio_emoji} {t.title}\n"
+                f"  {i}. {t.title}{urgency_label}\n"
                 f"     👤 {assignee_str}{deadline_str}"
             )
     else:

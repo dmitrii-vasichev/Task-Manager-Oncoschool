@@ -2,7 +2,7 @@
 
 ## Task Urgency and Create Checklist
 
-- Current phase: implementation planning complete
+- Current phase: backend urgency integrations implemented; frontend rollout next
 - Spec: `docs/superpowers/specs/2026-05-06-task-urgency-and-create-checklist-design.md`
 - Plan: `docs/superpowers/plans/2026-05-06-task-urgency-and-create-checklist.md`
 - Scope: binary urgency across backend, frontend, bot, AI, notifications, reminders, analytics, and create-dialog checklist
@@ -10,8 +10,11 @@
   - Approved design recorded and committed.
   - Detailed implementation plan created and linked from `docs/PLAN.md`.
   - Planned legacy mapping is `urgent/high -> urgent` and `medium/low -> normal`.
+  - Backend urgency domain, migration, schemas, service creation, API filters, AI parsing, meeting task creation, bot flows, notifications, and reminder digests now normalize to `normal` or `urgent`.
+  - Backend task defaults now use `normal`; legacy `high`, `medium`, and `low` inputs remain accepted and normalized.
 - Latest verification:
-  - Pending implementation.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_task_urgency.py tests/test_task_update_permissions.py -q` passed: 21 tests.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_task_urgency.py tests/test_reminder_digest_section_order.py tests/test_group_task_mentions.py -q` passed: 21 tests.
 
 ## Task Label Management
 
