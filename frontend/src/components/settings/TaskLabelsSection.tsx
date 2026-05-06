@@ -43,6 +43,7 @@ export function TaskLabelsSection() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [busyLabelId, setBusyLabelId] = useState<string | null>(null);
   const labelRequestSeqRef = useRef(0);
+  const debouncedSearchRef = useRef("");
 
   const memberNames = useMemo(
     () => new Map(members.map((member) => [member.id, member.full_name])),
@@ -56,7 +57,7 @@ export function TaskLabelsSection() {
       if (!options?.quiet) setLoading(true);
       try {
         const result = await api.getTaskLabels({
-          search: debouncedSearch.trim() || undefined,
+          search: debouncedSearchRef.current.trim() || undefined,
           limit: 100,
           include_archived: true,
         });
@@ -73,7 +74,7 @@ export function TaskLabelsSection() {
         }
       }
     },
-    [debouncedSearch, toastError]
+    [toastError]
   );
 
   useEffect(() => {
@@ -85,8 +86,9 @@ export function TaskLabelsSection() {
   }, [search]);
 
   useEffect(() => {
+    debouncedSearchRef.current = debouncedSearch;
     void loadLabels();
-  }, [loadLabels]);
+  }, [debouncedSearch, loadLabels]);
 
   const visibleLabels = useMemo(
     () =>
