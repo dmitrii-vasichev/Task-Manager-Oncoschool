@@ -59,7 +59,7 @@ const SOURCE_ICONS: Record<string, string> = {
 };
 
 const FILTER_CONTROL_CLASS =
-  "h-10 w-full rounded-xl border-border/70 bg-background/80 shadow-none hover:border-primary/30 data-[state=open]:border-primary/40 data-[state=open]:shadow-none";
+  "h-8 w-full rounded-xl border-border/70 bg-background/80 shadow-none hover:border-primary/30 data-[state=open]:border-primary/40 data-[state=open]:shadow-none";
 
 interface TaskFiltersProps {
   filters: TaskFilterValues;
@@ -190,7 +190,7 @@ export function TaskFilters({
             onChange={(e) =>
               onFiltersChange({ ...filters, search: e.target.value })
             }
-            className="h-10 w-full rounded-xl border-border/70 bg-background/80 pl-9 pr-9 shadow-none focus:border-primary/40"
+            className="h-8 w-full rounded-xl border-border/70 bg-background/80 pl-9 pr-9 text-xs shadow-none focus:border-primary/40"
           />
           {filters.search && (
             <button
@@ -213,7 +213,7 @@ export function TaskFilters({
               : "Открыть фильтры"
           }
           onClick={() => setFilterSheetOpen(true)}
-          className="h-10 rounded-xl gap-2 border-border/70 bg-background/80 px-4 shadow-none"
+          className="h-8 rounded-xl gap-1.5 border-border/70 bg-background/80 px-3 text-xs shadow-none"
         >
           <SlidersHorizontal className="h-4 w-4" />
           {activeFilterCount > 0 ? `Фильтры · ${activeFilterCount}` : "Фильтры"}

@@ -287,8 +287,8 @@ export default function TasksPage() {
     return (
       <div className="space-y-6 animate-in fade-in duration-300">
         <div className="flex items-center justify-between gap-4">
-          <Skeleton className="h-10 w-56 rounded-lg" />
-          <Skeleton className="h-10 w-36 rounded-lg" />
+          <Skeleton className="h-8 w-56 rounded-lg" />
+          <Skeleton className="h-8 w-36 rounded-lg" />
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {COLUMNS.map((col) => (
@@ -318,7 +318,7 @@ export default function TasksPage() {
         <Button
           size="sm"
           onClick={() => setCreateOpen(true)}
-          className="h-10 w-full rounded-xl gap-1.5 px-4 text-sm sm:w-auto xl:shrink-0"
+          className="h-8 w-full rounded-xl gap-1.5 px-3 text-xs sm:w-auto xl:shrink-0"
         >
           <Plus className="h-3.5 w-3.5" />
           Новая задача

@@ -193,7 +193,7 @@ export default function TeamPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Поиск по имени, должности, username..."
-          className="pl-9 h-10 rounded-xl bg-card border-border/60"
+          className="pl-9 h-8 rounded-xl bg-card border-border/60 text-xs"
         />
       </div>
 

@@ -235,7 +235,7 @@ export default function MeetingsPage() {
                   setPage(1);
                 }}
                 placeholder="Поиск по встречам..."
-                className="pl-9 h-10 rounded-xl bg-card border-border/60"
+                className="pl-9 h-8 rounded-xl bg-card border-border/60 text-xs"
               />
             </div>
 
