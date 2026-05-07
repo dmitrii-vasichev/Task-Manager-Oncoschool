@@ -5,6 +5,9 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+from sqlalchemy.dialects import postgresql
+
+from app.db.repositories import MeetingAIProcessingRepository
 from app.db.schemas import (
     MeetingAIProcessingResponse,
     MeetingBoardSettingsResponse,
@@ -68,11 +71,28 @@ def test_ai_processing_response_supports_openai_audio_source() -> None:
 
 
 class MeetingAIOutcomesServiceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_claim_transcription_returns_none_when_already_transcribing(self) -> None:
+        repo = MeetingAIProcessingRepository()
+        repo.get_or_create = AsyncMock()
+        result = SimpleNamespace(scalar_one_or_none=lambda: None)
+        session = SimpleNamespace(execute=AsyncMock(return_value=result))
+
+        claimed = await repo.claim_transcription(
+            session,
+            meeting_id=uuid.uuid4(),
+            model="gpt-4o-mini-transcribe",
+        )
+
+        self.assertIsNone(claimed)
+        repo.get_or_create.assert_awaited_once()
+        stmt = session.execute.await_args.args[0]
+        compiled = str(stmt.compile(dialect=postgresql.dialect()))
+        self.assertIn("meeting_ai_processing.status != %(status_1)s", compiled)
+
     async def test_transcribe_audio_rejects_second_run_while_transcribing(self) -> None:
         service = MeetingAIOutcomesService()
-        processing = SimpleNamespace(status="transcribing")
         service.processing_repo = SimpleNamespace(
-            get_or_create=AsyncMock(return_value=processing)
+            claim_transcription=AsyncMock(return_value=None)
         )
         session = SimpleNamespace(flush=AsyncMock(), commit=AsyncMock())
         zoom_service = SimpleNamespace(download_audio_recording=AsyncMock())
@@ -88,18 +108,20 @@ class MeetingAIOutcomesServiceTests(unittest.IsolatedAsyncioTestCase):
         zoom_service.download_audio_recording.assert_not_awaited()
         session.flush.assert_not_awaited()
         session.commit.assert_not_awaited()
+        service.processing_repo.claim_transcription.assert_awaited_once()
 
     async def test_transcribe_audio_commits_transcribing_before_external_io(self) -> None:
         service = MeetingAIOutcomesService()
         processing = SimpleNamespace(
-            status="idle",
-            transcript_source="zoom_api",
-            transcript_char_count=10,
-            audio_duration_seconds=30,
-            estimated_cost_usd=1,
+            status="transcribing",
+            transcript_source=None,
+            transcript_char_count=None,
+            audio_duration_seconds=None,
+            estimated_cost_usd=None,
+            transcription_model="gpt-4o-mini-transcribe",
         )
         service.processing_repo = SimpleNamespace(
-            get_or_create=AsyncMock(return_value=processing)
+            claim_transcription=AsyncMock(return_value=processing)
         )
         fd, path = tempfile.mkstemp(suffix=".m4a")
         os.close(fd)
@@ -132,6 +154,9 @@ class MeetingAIOutcomesServiceTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertIs(result, processing)
+        service.processing_repo.claim_transcription.assert_awaited_once_with(
+            session, meeting_id=meeting.id, model="gpt-4o-mini-transcribe"
+        )
         self.assertEqual(processing.status, "transcript_ready")
         self.assertEqual(processing.transcript_source, "openai_audio")
         self.assertEqual(processing.transcript_char_count, len("готовый текст"))
@@ -143,9 +168,9 @@ class MeetingAIOutcomesServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_transcribe_audio_failure_marks_failed_and_commits(self) -> None:
         service = MeetingAIOutcomesService()
-        processing = SimpleNamespace(status="idle")
+        processing = SimpleNamespace(status="transcribing")
         service.processing_repo = SimpleNamespace(
-            get_or_create=AsyncMock(return_value=processing)
+            claim_transcription=AsyncMock(return_value=processing)
         )
         session = SimpleNamespace(flush=AsyncMock(), commit=AsyncMock())
         zoom_service = SimpleNamespace(

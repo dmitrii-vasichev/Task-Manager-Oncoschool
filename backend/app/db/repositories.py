@@ -734,6 +734,36 @@ class MeetingAIProcessingRepository:
             raise
         return processing
 
+    async def claim_transcription(
+        self,
+        session: AsyncSession,
+        *,
+        meeting_id: uuid.UUID,
+        model: str,
+    ) -> MeetingAIProcessing | None:
+        await self.get_or_create(session, meeting_id)
+        stmt = (
+            update(MeetingAIProcessing)
+            .where(
+                MeetingAIProcessing.meeting_id == meeting_id,
+                MeetingAIProcessing.status != "transcribing",
+            )
+            .values(
+                status="transcribing",
+                started_at=datetime.utcnow(),
+                completed_at=None,
+                error_message=None,
+                transcript_source=None,
+                transcript_char_count=None,
+                audio_duration_seconds=None,
+                estimated_cost_usd=None,
+                transcription_model=model,
+            )
+            .returning(MeetingAIProcessing)
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
 
 class MeetingScheduleRepository:
     async def get_all_active(self, session: AsyncSession) -> list[MeetingSchedule]:

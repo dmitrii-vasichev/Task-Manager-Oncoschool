@@ -46,21 +46,13 @@ class MeetingAIOutcomesService:
         if not meeting.zoom_meeting_id or not zoom_service:
             raise ValueError("Zoom-запись недоступна")
 
-        processing = await self.processing_repo.get_or_create(session, meeting.id)
-        if processing.status == "transcribing":
+        processing = await self.processing_repo.claim_transcription(
+            session, meeting_id=meeting.id, model=model
+        )
+        if not processing:
             raise ValueError("Транскрибация уже выполняется")
 
         zoom_meeting_id = meeting.zoom_meeting_id
-        processing.status = "transcribing"
-        processing.started_at = datetime.utcnow()
-        processing.completed_at = None
-        processing.error_message = None
-        processing.transcript_source = None
-        processing.transcript_char_count = None
-        processing.audio_duration_seconds = None
-        processing.estimated_cost_usd = None
-        processing.transcription_model = model
-        await session.flush()
         await session.commit()
 
         try:
