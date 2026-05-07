@@ -23,6 +23,7 @@ from app.db.models import (
     GetCourseCredentials,
     InAppNotification,
     Meeting,
+    MeetingBoardSettings,
     MeetingParticipant,
     MeetingSchedule,
     NotificationSubscription,
@@ -650,6 +651,50 @@ class MeetingRepository:
         stmt = delete(Meeting).where(Meeting.id == meeting_id)
         result = await session.execute(stmt)
         return result.rowcount > 0
+
+
+class MeetingBoardRepository:
+    async def get_by_meeting_id(
+        self, session: AsyncSession, meeting_id: uuid.UUID
+    ) -> MeetingBoardSettings | None:
+        result = await session.execute(
+            select(MeetingBoardSettings).where(
+                MeetingBoardSettings.meeting_id == meeting_id
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_or_create(
+        self,
+        session: AsyncSession,
+        meeting_id: uuid.UUID,
+        member: TeamMember | None = None,
+    ) -> MeetingBoardSettings:
+        existing = await self.get_by_meeting_id(session, meeting_id)
+        if existing:
+            return existing
+        settings = MeetingBoardSettings(
+            meeting_id=meeting_id,
+            created_by_id=getattr(member, "id", None),
+            updated_by_id=getattr(member, "id", None),
+        )
+        session.add(settings)
+        await session.flush()
+        return settings
+
+    async def update(
+        self,
+        session: AsyncSession,
+        settings: MeetingBoardSettings,
+        *,
+        member: TeamMember,
+        **fields,
+    ) -> MeetingBoardSettings:
+        for key, value in fields.items():
+            setattr(settings, key, value)
+        settings.updated_by_id = member.id
+        await session.flush()
+        return settings
 
 
 class MeetingScheduleRepository:

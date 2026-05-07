@@ -13,10 +13,17 @@ from app.api.auth import get_current_user, require_moderator
 from app.config import settings
 from app.db.database import get_session
 from app.db.models import Meeting, MeetingSchedule, TeamMember
-from app.db.schemas import MeetingResponse, TaskResponse
+from app.db.schemas import (
+    MeetingBoardResponse,
+    MeetingBoardSettingsResponse,
+    MeetingBoardSettingsUpdate,
+    MeetingResponse,
+    TaskResponse,
+)
 from app.db.repositories import MeetingRepository, TeamMemberRepository
 from app.services.ai_service import AIService
 from app.services.in_app_notification_service import InAppNotificationService
+from app.services.meeting_board_service import MeetingBoardService
 from app.services.meeting_service import MeetingService
 from app.services.meeting_status import compute_effective_status
 from app.services.permission_service import PermissionService
@@ -31,6 +38,7 @@ member_repo = TeamMemberRepository()
 meeting_repo = MeetingRepository()
 task_service = TaskService()
 in_app_notification_service = InAppNotificationService()
+meeting_board_service = MeetingBoardService()
 
 
 # ── Request / Response models ──
@@ -664,6 +672,54 @@ async def delete_meeting(
                 member.id,
                 exc_info=True,
             )
+
+
+# ── MEETING BOARD endpoints ──
+
+
+@router.get("/{meeting_id}/board", response_model=MeetingBoardResponse)
+async def get_meeting_board(
+    meeting_id: uuid.UUID,
+    member: TeamMember = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    meeting = await meeting_service.get_meeting_by_id(session, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    settings, groups = await meeting_board_service.get_board(session, meeting, member)
+    return MeetingBoardResponse(
+        meeting=_meeting_response(meeting),
+        settings=MeetingBoardSettingsResponse.model_validate(settings),
+        urgent=groups.urgent,
+        in_progress=groups.in_progress,
+        review=groups.review,
+        done_this_week=groups.done_this_week,
+    )
+
+
+@router.patch("/{meeting_id}/board/settings", response_model=MeetingBoardSettingsResponse)
+async def update_meeting_board_settings(
+    meeting_id: uuid.UUID,
+    data: MeetingBoardSettingsUpdate,
+    member: TeamMember = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    if not PermissionService.is_moderator(member):
+        raise HTTPException(
+            status_code=403, detail="Только модератор может менять доску встречи"
+        )
+    meeting = await meeting_service.get_meeting_by_id(session, meeting_id)
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Встреча не найдена")
+    settings = await meeting_board_service.board_repo.get_or_create(
+        session, meeting_id, member
+    )
+    fields = data.model_dump(exclude_unset=True)
+    updated = await meeting_board_service.board_repo.update(
+        session, settings, member=member, **fields
+    )
+    await session.commit()
+    return MeetingBoardSettingsResponse.model_validate(updated)
 
 
 # ── TRANSCRIPT endpoints ──
