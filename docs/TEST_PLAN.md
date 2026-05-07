@@ -1,5 +1,19 @@
 # Test Plan
 
+## Task Board Visual Polish
+
+Manual/browser checks:
+
+- Open the new task dialog on desktop and confirm the create button is visible without internal dialog scrolling in the normal viewport.
+- Confirm the description row starts collapsed, expands into a textarea, accepts text, and resets after closing the dialog.
+- Confirm labels and urgency share one row on desktop and stack cleanly on narrow widths.
+- Confirm urgency is off by default and switches between `normal` and `urgent` in the create payload.
+- Confirm urgent task board cards show the red left edge and do not show the footer `Срочно` chip.
+- Confirm the assignee name has more room on urgent cards with deadlines.
+- Confirm checklist preview cards no longer show a large blank area between title and checklist.
+- Confirm empty columns show a quiet dashed drop-zone instead of the old `Нет задач` illustration and copy.
+- Drag a task over an empty column and confirm the drop-zone remains a visible target.
+
 ## Task Urgency and Create Checklist
 
 ### Automated

@@ -27,6 +27,7 @@ import { TaskLabelPicker } from "@/components/tasks/TaskLabelPicker";
 import {
   AlertTriangle,
   CalendarDays,
+  ChevronDown,
   ListChecks,
   Loader2,
   Plus,
@@ -66,6 +67,7 @@ export function CreateTaskDialog({
   const canAssignToOthers = PermissionService.canCreateTaskForOthers(currentUser);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [descriptionOpen, setDescriptionOpen] = useState(false);
   const [labels, setLabels] = useState<TaskLabel[]>([]);
   const [priority, setPriority] = useState<TaskPriority>("normal");
   const [checklist, setChecklist] = useState<TaskChecklistItem[]>([]);
@@ -80,6 +82,7 @@ export function CreateTaskDialog({
   function resetForm() {
     setTitle("");
     setDescription("");
+    setDescriptionOpen(false);
     setLabels([]);
     setPriority("normal");
     setChecklist([]);
@@ -148,7 +151,7 @@ export function CreateTaskDialog({
         onOpenChange(v);
       }}
     >
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[520px] backdrop-blur-sm">
+      <DialogContent className="max-h-[calc(100vh-1.5rem)] overflow-y-auto backdrop-blur-sm sm:max-h-none sm:max-w-[560px] sm:overflow-visible">
         <DialogHeader>
           <DialogTitle className="text-lg">Новая задача</DialogTitle>
           <DialogDescription>
@@ -156,7 +159,7 @@ export function CreateTaskDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-3.5">
           {/* Title */}
           <div className="space-y-2">
             <Label htmlFor="create-title" className="text-sm font-medium">
@@ -172,53 +175,76 @@ export function CreateTaskDialog({
             />
           </div>
 
-          {/* Description */}
           <div className="space-y-2">
-            <Label htmlFor="create-desc" className="text-sm font-medium">
-              Описание
-            </Label>
-            <Textarea
-              id="create-desc"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Подробности задачи..."
-              rows={3}
-              className="bg-muted/30 border-border/60 focus:bg-card resize-none min-h-[80px]"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label className="text-sm font-medium">Метки</Label>
-            <TaskLabelPicker
-              value={labels}
-              onChange={setLabels}
-              disabled={saving}
-              placeholder="Добавить метки"
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="create-urgent" className="text-sm font-medium">
-              Срочность
-            </Label>
-            <div
-              className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 ${
-                priority === "urgent"
-                  ? "border-priority-urgent-dot/60 bg-priority-urgent-bg text-priority-urgent-fg"
-                  : "border-border/60 bg-muted/30"
-              }`}
+            <button
+              type="button"
+              aria-expanded={descriptionOpen}
+              aria-controls="create-desc"
+              onClick={() =>
+                setDescriptionOpen((open) =>
+                  open && !description.trim() ? false : true
+                )
+              }
+              className="flex w-full items-center justify-between rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 text-left text-sm font-medium transition-colors hover:bg-muted/40"
             >
-              <span className="text-sm font-medium">
-                {priority === "urgent" ? "Срочная" : "Обычная"}
+              <span>Описание</span>
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                {descriptionOpen ? "Открыто" : "Добавить"}
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${
+                    descriptionOpen ? "rotate-180" : ""
+                  }`}
+                />
               </span>
-              <Switch
-                id="create-urgent"
-                checked={priority === "urgent"}
-                onCheckedChange={(checked) =>
-                  setPriority(checked ? "urgent" : "normal")
-                }
-                disabled={saving}
+            </button>
+
+            {descriptionOpen && (
+              <Textarea
+                id="create-desc"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Подробности задачи..."
+                rows={2}
+                className="min-h-[68px] resize-none border-border/60 bg-muted/30 focus:bg-card"
               />
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_160px]">
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Метки</Label>
+              <TaskLabelPicker
+                value={labels}
+                onChange={setLabels}
+                disabled={saving}
+                placeholder="Добавить метки"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="create-urgent" className="text-sm font-medium">
+                Срочная задача
+              </Label>
+              <div
+                className={`flex h-10 items-center justify-between gap-2 rounded-lg border px-3 ${
+                  priority === "urgent"
+                    ? "border-priority-urgent-dot/60 bg-priority-urgent-bg text-priority-urgent-fg"
+                    : "border-border/60 bg-muted/30 text-muted-foreground"
+                }`}
+              >
+                <span className="text-sm font-medium">
+                  {priority === "urgent" ? "Вкл." : "Выкл."}
+                </span>
+                <Switch
+                  id="create-urgent"
+                  checked={priority === "urgent"}
+                  onCheckedChange={(checked) =>
+                    setPriority(checked ? "urgent" : "normal")
+                  }
+                  disabled={saving}
+                  aria-label="Срочная задача"
+                />
+              </div>
             </div>
           </div>
 
@@ -268,12 +294,13 @@ export function CreateTaskDialog({
                 <Button
                   type="button"
                   variant="outline"
+                  size="icon"
                   onClick={addChecklistItem}
                   disabled={saving || !newChecklistItem.trim()}
-                  className="h-10 gap-1.5 border-border/60"
+                  className="h-10 w-10 shrink-0 border-border/60"
+                  aria-label="Добавить пункт чек-листа"
                 >
                   <Plus className="h-4 w-4" />
-                  Добавить
                 </Button>
               </div>
             </div>

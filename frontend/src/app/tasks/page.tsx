@@ -20,7 +20,6 @@ import { normalizeTaskUrgency } from "@/lib/taskUrgency";
 import type { Task, TaskStatus, TeamMember } from "@/lib/types";
 import { TASK_STATUS_LABELS } from "@/lib/types";
 import { PermissionService } from "@/lib/permissions";
-import { EmptyState } from "@/components/shared/EmptyState";
 
 const COLUMNS: TaskStatus[] = ["new", "in_progress", "review", "done"];
 
@@ -445,6 +444,22 @@ function ColumnHeader({ status, count }: { status: TaskStatus; count: number }) 
   );
 }
 
+function EmptyColumnDropZone({ active = false }: { active?: boolean }) {
+  return (
+    <div
+      aria-hidden="true"
+      className={`
+        min-h-[220px] rounded-xl border border-dashed transition-colors duration-150
+        ${
+          active
+            ? "border-primary/35 bg-primary/5"
+            : "border-border/45 bg-background/35"
+        }
+      `}
+    />
+  );
+}
+
 /* Mobile: static column without DnD */
 function StaticKanbanColumn({ status, tasks }: { status: TaskStatus; tasks: Task[] }) {
   return (
@@ -452,11 +467,9 @@ function StaticKanbanColumn({ status, tasks }: { status: TaskStatus; tasks: Task
       <ColumnHeader status={status} count={tasks.length} />
       <div className="flex flex-col gap-2.5 p-2 min-h-[80px]">
         {tasks.length === 0 ? (
-          <EmptyState variant="tasks" title="Нет задач" description="В этой колонке пока пусто" className="py-10" />
+          <EmptyColumnDropZone />
         ) : (
-          tasks.map((task) => (
-            <TaskCard key={task.id} task={task} />
-          ))
+          tasks.map((task) => <TaskCard key={task.id} task={task} />)
         )}
       </div>
     </div>
@@ -501,8 +514,8 @@ function KanbanColumn({
           ${isDragOver && draggedTaskId ? "bg-primary/5 ring-2 ring-primary/20 ring-inset" : ""}
         `}
       >
-        {tasks.length === 0 && !isDragOver ? (
-          <EmptyState variant="tasks" title="Нет задач" description="В этой колонке пока пусто" className="py-10" />
+        {tasks.length === 0 ? (
+          <EmptyColumnDropZone active={isDragOver && Boolean(draggedTaskId)} />
         ) : (
           tasks.map((task) => (
             <div

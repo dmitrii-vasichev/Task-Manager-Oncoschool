@@ -51,11 +51,27 @@ export function TaskCard({ task }: { task: Task }) {
   const cardClass = overdue
     ? "border-destructive/35 bg-destructive/[0.05] shadow-[0_0_0_1px_hsl(var(--destructive)/0.12)_inset] hover:bg-destructive/[0.08] hover:border-destructive/45"
     : "bg-card border-border/50 hover:border-primary/20";
-  const titleClass = `h-[3.75rem] overflow-hidden line-clamp-3 break-words [overflow-wrap:anywhere] text-sm leading-5 font-heading font-semibold ${
+  const titleClass = `min-h-10 overflow-hidden line-clamp-3 break-words [overflow-wrap:anywhere] text-sm leading-5 font-heading font-semibold ${
     overdue
       ? "text-destructive group-hover:text-destructive"
       : "group-hover:text-primary"
   }`;
+  const sourceIcon =
+    task.source === "voice" ? (
+      <span
+        className="inline-flex h-3.5 w-3.5 items-center justify-center rounded bg-purple-100 dark:bg-purple-900/30"
+        title="Голосовая задача"
+      >
+        <Mic className="h-2 w-2 text-purple-600 dark:text-purple-400" />
+      </span>
+    ) : task.source === "summary" ? (
+      <span
+        className="inline-flex h-3.5 w-3.5 items-center justify-center rounded bg-blue-100 dark:bg-blue-900/30"
+        title="Из встречи"
+      >
+        <FileText className="h-2 w-2 text-blue-600 dark:text-blue-400" />
+      </span>
+    ) : null;
 
   return (
     <TooltipProvider delayDuration={120}>
@@ -71,6 +87,7 @@ export function TaskCard({ task }: { task: Task }) {
         )}
         <Link
           href={`/tasks/${task.short_id}`}
+          aria-label={`${task.title}${urgent ? ", срочная задача" : ""}`}
           className="block h-full"
           draggable={false}
         >
@@ -98,24 +115,11 @@ export function TaskCard({ task }: { task: Task }) {
                   </p>
                 )}
 
-                <div className="flex h-3.5 items-center gap-1">
-                  {task.source === "voice" && (
-                    <span
-                      className="inline-flex items-center justify-center h-3.5 w-3.5 rounded bg-purple-100 dark:bg-purple-900/30"
-                      title="Голосовая задача"
-                    >
-                      <Mic className="h-2 w-2 text-purple-600 dark:text-purple-400" />
-                    </span>
-                  )}
-                  {task.source === "summary" && (
-                    <span
-                      className="inline-flex items-center justify-center h-3.5 w-3.5 rounded bg-blue-100 dark:bg-blue-900/30"
-                      title="Из встречи"
-                    >
-                      <FileText className="h-2 w-2 text-blue-600 dark:text-blue-400" />
-                    </span>
-                  )}
-                </div>
+                {sourceIcon && (
+                  <div className="flex h-3.5 items-center gap-1">
+                    {sourceIcon}
+                  </div>
+                )}
               </div>
 
             </div>
@@ -167,11 +171,6 @@ export function TaskCard({ task }: { task: Task }) {
             {/* Footer */}
             <div className="mt-auto flex min-h-6 items-center justify-between gap-2 pt-0.5">
               <div className="flex min-h-6 items-center gap-1.5">
-                {urgent && (
-                  <span className="rounded-full bg-priority-urgent-bg px-2 py-0.5 text-2xs font-medium text-priority-urgent-fg ring-1 ring-inset ring-priority-urgent-dot/35">
-                    Срочно
-                  </span>
-                )}
                 {overdue && (
                   <span className="rounded-full bg-destructive/12 px-2 py-0.5 text-2xs font-medium text-destructive">
                     Просрочено
@@ -198,7 +197,7 @@ export function TaskCard({ task }: { task: Task }) {
                     avatarUrl={task.assignee.avatar_url}
                     size="sm"
                   />
-                  <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+                  <span className="max-w-[150px] truncate text-xs text-muted-foreground">
                     {task.assignee.full_name}
                   </span>
                   {!task.assignee.is_active && (

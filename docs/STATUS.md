@@ -2,16 +2,24 @@
 
 ## Task Board Visual Polish
 
-- Current phase: implementation planned
+- Current phase: implemented, automated verification passed; authenticated browser QA pending
 - Spec: `docs/superpowers/specs/2026-05-06-task-board-visual-polish-design.md`
 - Plan: `docs/superpowers/plans/2026-05-06-task-board-visual-polish.md`
 - Scope: frontend-only visual cleanup for the new task dialog, task board cards, checklist card spacing, and empty Kanban columns
 - Latest progress:
-  - Visual options were reviewed for urgent task cards, empty columns, and the create dialog.
-  - Approved urgent card treatment: keep the red left edge and remove the footer `Срочно` badge from task board cards.
-  - Approved empty column treatment: replace the large empty-state illustration/text with a quiet dashed drop-zone surface.
-  - Approved create dialog treatment: collapse description by default, put labels and urgency on one row, and keep urgency as an off-by-default switch.
-  - Detailed implementation plan created and linked from `docs/PLAN.md`.
+  - New task dialog compact layout is implemented.
+  - Description starts collapsed and expands on demand.
+  - Labels and urgency share one row on desktop dialog widths.
+  - Urgent board cards keep the red left edge and no longer show the footer `Срочно` badge.
+  - Empty Kanban columns use a quiet dashed drop-zone instead of the old illustration and copy.
+- Latest verification:
+  - Baseline `cd frontend && npm test` passed before implementation: 18 tests.
+  - `cd frontend && npm test` passed: 18 tests.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed.
+  - `cd frontend && npm run build` passed.
+  - `git diff --check` passed.
+  - Frontend dev server started at `http://127.0.0.1:3002`; in-app browser opened `/tasks` and reached the login screen. Authenticated visual QA for the actual task board remains a manual check because no logged-in local session/backend fixture was available in this run.
 
 ## Task Urgency and Create Checklist
 
