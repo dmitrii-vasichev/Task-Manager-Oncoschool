@@ -1,4 +1,51 @@
-# Active Plan: Task Board Visual Polish
+# Active Plan: Meeting Board and AI Outcomes
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-07-meeting-board-and-ai-outcomes.md`. Keep this section as the current source-of-truth index for milestone order, definition of done, and validation commands.
+
+**Goal:** Build a shareable meeting board for live task-based calls and a manual post-meeting AI outcome review flow from Zoom audio.
+
+**Approved spec:** `docs/superpowers/specs/2026-05-07-meeting-board-and-ai-outcomes-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-07-meeting-board-and-ai-outcomes.md`
+
+**Milestones:**
+
+1. Backend board and AI processing data model.
+2. Meeting board repository, service, and API.
+3. Manual Zoom audio transcription with temporary-file cleanup.
+4. AI outcome draft generation and moderator-only publish flow.
+5. Frontend types, API client, and board route.
+6. Frontend AI outcomes panel.
+7. Documentation, full verification, and browser QA.
+
+**Definition of done:**
+
+- Meeting detail page opens a separate screen-share-friendly meeting board.
+- Board is seeded from meeting participants and supports moderator-added people, departments, pinned tasks, links, and notes.
+- Board shows urgent, in-progress, review, and done-this-week sections without copying tasks.
+- Board and pinned task visibility do not bypass existing task permissions.
+- Audio transcription is manual-only.
+- Zoom audio is downloaded only to temporary storage and deleted on success or failure.
+- Transcript source `openai_audio` and processing metadata are saved.
+- AI produces only summary, decisions, and new task candidates.
+- Moderator confirmation is required before decisions are saved or tasks are created.
+- Rejected task candidates are not created.
+
+**Validation commands:**
+
+```bash
+cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_meeting_board_service.py tests/test_meeting_board_api.py tests/test_meeting_ai_outcomes_service.py tests/test_meeting_ai_outcomes_api.py -q
+cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest -q
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+---
+
+# Previous Plan: Task Board Visual Polish
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-06-task-board-visual-polish.md`. Keep this section as the current source-of-truth index for milestone order, definition of done, and validation commands.
 

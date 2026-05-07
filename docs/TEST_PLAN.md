@@ -1,5 +1,29 @@
 # Test Plan
 
+## Meeting Board and AI Outcomes
+
+### Automated
+
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_meeting_board_service.py tests/test_meeting_board_api.py tests/test_meeting_ai_outcomes_service.py tests/test_meeting_ai_outcomes_api.py -q`
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest -q`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Open a meeting detail page and confirm `Открыть доску встречи` opens the separate board route.
+2. Confirm the board is usable for Zoom screen sharing at desktop width.
+3. Confirm urgent, in-progress, review, and done-this-week sections render from live task data.
+4. Add a member, department, pinned task, link, and board note as a moderator.
+5. Confirm regular participants cannot edit board composition or run AI processing.
+6. Run manual audio transcription on a meeting with a Zoom recording.
+7. Confirm no audio file is persisted in portal storage after success or failure.
+8. Generate an AI outcome draft and edit summary, decisions, and task candidates.
+9. Publish with one task candidate unchecked and confirm only selected tasks are created.
+
 ## Task Board Visual Polish
 
 Manual/browser checks:

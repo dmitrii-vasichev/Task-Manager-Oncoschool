@@ -1,5 +1,22 @@
 # Status
 
+## Meeting Board and AI Outcomes
+
+- Current phase: implementation plan written; awaiting execution approach selection
+- Spec: `docs/superpowers/specs/2026-05-07-meeting-board-and-ai-outcomes-design.md`
+- Plan: `docs/superpowers/plans/2026-05-07-meeting-board-and-ai-outcomes.md`
+- Scope: shareable meeting board, hybrid task context, manual Zoom audio transcription, moderator-reviewed AI outcomes
+- Latest progress:
+  - Product direction approved as `Preparation + Meeting Board + Outcomes`, not a full live workspace.
+  - Design spec was written, reviewed, and committed.
+  - Implementation plan now breaks work into backend data/API, manual audio transcription, AI draft publishing, frontend board, and frontend review panel.
+- Key approved decisions:
+  - The meeting board is a separate shareable surface from the meeting detail page.
+  - Audio transcription is manual-only in the first release.
+  - Zoom audio is not persisted in portal storage.
+  - Default transcription model is `gpt-4o-mini-transcribe`.
+  - AI creates only editable drafts; moderator confirmation is required before tasks are created.
+
 ## Task Board Visual Polish
 
 - Current phase: implemented, automated verification passed; authenticated browser QA pending
