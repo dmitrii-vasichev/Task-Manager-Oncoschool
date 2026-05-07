@@ -687,6 +687,7 @@ async def get_meeting_board(
     if not meeting:
         raise HTTPException(status_code=404, detail="Встреча не найдена")
     settings, groups = await meeting_board_service.get_board(session, meeting, member)
+    await session.commit()
     return MeetingBoardResponse(
         meeting=_meeting_response(meeting),
         settings=MeetingBoardSettingsResponse.model_validate(settings),

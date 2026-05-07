@@ -6,7 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.db.models import Meeting, Task, TeamMember
+from app.db.models import Meeting, MeetingBoardSettings, Task, TeamMember
 from app.db.repositories import MeetingBoardRepository
 from app.services.task_visibility_service import (
     can_access_task,
@@ -28,7 +28,6 @@ def group_board_tasks(
     today: date | None = None,
     now: datetime | None = None,
 ) -> BoardTaskGroups:
-    today = today or date.today()
     now = now or datetime.utcnow()
     done_cutoff = now - timedelta(days=7)
     groups = BoardTaskGroups()
@@ -60,7 +59,7 @@ class MeetingBoardService:
 
     async def get_board(
         self, session: AsyncSession, meeting: Meeting, viewer: TeamMember
-    ) -> tuple:
+    ) -> tuple[MeetingBoardSettings, BoardTaskGroups]:
         settings = await self.board_repo.get_or_create(session, meeting.id, viewer)
         tasks = await self._load_visible_tasks(session, meeting, settings, viewer)
         groups = group_board_tasks(tasks)

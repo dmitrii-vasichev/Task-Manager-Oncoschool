@@ -57,7 +57,7 @@ class MeetingBoardApiTests(unittest.IsolatedAsyncioTestCase):
             updated_at=None,
         )
         groups = SimpleNamespace(urgent=[], in_progress=[], review=[], done_this_week=[])
-        session = SimpleNamespace()
+        session = SimpleNamespace(commit=AsyncMock())
 
         with patch.object(
             meetings_api.meeting_service,
@@ -76,3 +76,57 @@ class MeetingBoardApiTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.settings.meeting_id, meeting_id)
         self.assertEqual(response.urgent, [])
+        session.commit.assert_awaited_once()
+
+    async def test_update_board_settings_persists_board_notes(self) -> None:
+        meeting_id = uuid.uuid4()
+        member = SimpleNamespace(id=uuid.uuid4(), role="moderator")
+        meeting = SimpleNamespace(id=meeting_id)
+        existing_settings = SimpleNamespace(id=uuid.uuid4(), meeting_id=meeting_id)
+        updated_settings = SimpleNamespace(
+            id=existing_settings.id,
+            meeting_id=meeting_id,
+            added_member_ids=[],
+            added_department_ids=[],
+            pinned_task_ids=[],
+            materials=[],
+            board_notes="Notes",
+            created_by_id=None,
+            updated_by_id=member.id,
+            created_at=None,
+            updated_at=None,
+        )
+        session = SimpleNamespace(commit=AsyncMock())
+
+        get_or_create = AsyncMock(return_value=existing_settings)
+        update = AsyncMock(return_value=updated_settings)
+        with patch.object(
+            meetings_api.meeting_service,
+            "get_meeting_by_id",
+            AsyncMock(return_value=meeting),
+        ), patch.object(
+            meetings_api.meeting_board_service.board_repo,
+            "get_or_create",
+            get_or_create,
+        ), patch.object(
+            meetings_api.meeting_board_service.board_repo,
+            "update",
+            update,
+        ):
+            response = await meetings_api.update_meeting_board_settings(
+                meeting_id=meeting_id,
+                data=MeetingBoardSettingsUpdate(board_notes="Notes"),
+                member=member,
+                session=session,
+            )
+
+        get_or_create.assert_awaited_once_with(session, meeting_id, member)
+        update.assert_awaited_once_with(
+            session,
+            existing_settings,
+            member=member,
+            board_notes="Notes",
+        )
+        session.commit.assert_awaited_once()
+        self.assertEqual(response.board_notes, "Notes")
+        self.assertEqual(response.updated_by_id, member.id)
