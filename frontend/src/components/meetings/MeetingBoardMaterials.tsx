@@ -2,6 +2,7 @@
 
 import { ExternalLink, FileText, StickyNote } from "lucide-react";
 import type { MeetingBoardSettings } from "@/lib/types";
+import { sanitizeMeetingBoardMaterialUrl } from "./meetingBoardPresentationUtils";
 
 interface MeetingBoardMaterialsProps {
   settings: MeetingBoardSettings;
@@ -21,14 +22,9 @@ export function MeetingBoardMaterials({ settings }: MeetingBoardMaterialsProps) 
 
       {materials.length > 0 ? (
         <div className="space-y-2">
-          {materials.map((material) => (
-            <a
-              key={material.id}
-              href={material.url}
-              target="_blank"
-              rel="noreferrer"
-              className="block rounded-lg border border-border/60 bg-background/60 p-3 transition-colors hover:border-primary/30 hover:bg-accent/40"
-            >
+          {materials.map((material) => {
+            const safeUrl = sanitizeMeetingBoardMaterialUrl(material.url);
+            const content = (
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="break-words text-sm font-medium text-foreground">
@@ -39,11 +35,41 @@ export function MeetingBoardMaterials({ settings }: MeetingBoardMaterialsProps) 
                       {material.description}
                     </p>
                   )}
+                  {!safeUrl && (
+                    <p className="mt-1 text-2xs text-destructive">
+                      Ссылка недоступна
+                    </p>
+                  )}
                 </div>
-                <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                {safeUrl && (
+                  <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                )}
               </div>
-            </a>
-          ))}
+            );
+
+            if (!safeUrl) {
+              return (
+                <div
+                  key={material.id}
+                  className="rounded-lg border border-border/60 bg-background/60 p-3"
+                >
+                  {content}
+                </div>
+              );
+            }
+
+            return (
+              <a
+                key={material.id}
+                href={safeUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="block rounded-lg border border-border/60 bg-background/60 p-3 transition-colors hover:border-primary/30 hover:bg-accent/40"
+              >
+                {content}
+              </a>
+            );
+          })}
         </div>
       ) : (
         <div className="rounded-lg border border-dashed border-border/70 bg-background/45 px-3 py-6 text-center text-xs text-muted-foreground">

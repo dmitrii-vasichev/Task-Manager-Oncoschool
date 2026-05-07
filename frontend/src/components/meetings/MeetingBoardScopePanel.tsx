@@ -3,6 +3,7 @@
 import { Building2, Pin, UserPlus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Department, MeetingBoardSettings, TeamMember } from "@/lib/types";
+import { getMeetingBoardScopeCounts } from "./meetingBoardPresentationUtils";
 
 interface MeetingBoardScopePanelProps {
   settings: MeetingBoardSettings;
@@ -13,16 +14,10 @@ interface MeetingBoardScopePanelProps {
 
 export function MeetingBoardScopePanel({
   settings,
-  members,
-  departments,
   isModerator,
 }: MeetingBoardScopePanelProps) {
-  const addedMemberCount = settings.added_member_ids.filter((id) =>
-    members.some((member) => member.id === id)
-  ).length;
-  const addedDepartmentCount = settings.added_department_ids.filter((id) =>
-    departments.some((department) => department.id === id)
-  ).length;
+  const { addedMemberCount, addedDepartmentCount, pinnedTaskCount } =
+    getMeetingBoardScopeCounts(settings);
 
   const stats = [
     {
@@ -37,7 +32,7 @@ export function MeetingBoardScopePanel({
     },
     {
       label: "Закреплено",
-      value: settings.pinned_task_ids.length,
+      value: pinnedTaskCount,
       icon: Pin,
     },
   ];
@@ -55,7 +50,14 @@ export function MeetingBoardScopePanel({
         </div>
 
         {isModerator && (
-          <Button variant="outline" size="sm" className="rounded-lg">
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-lg"
+            disabled
+            aria-label="Добавление в область доски будет добавлено позже"
+            title="Добавление в область доски будет добавлено позже"
+          >
             <UserPlus className="h-3.5 w-3.5" />
             Добавить
           </Button>

@@ -4,16 +4,16 @@ import Link from "next/link";
 import { ArrowLeft, CalendarDays, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { formatMeetingHeaderDateTime } from "@/lib/meetingDateTime";
-import type { Meeting, TeamMember } from "@/lib/types";
+import type { Meeting } from "@/lib/types";
 
 interface MeetingBoardHeaderProps {
   meeting: Meeting;
-  participants: TeamMember[];
+  participantCount: number;
 }
 
 export function MeetingBoardHeader({
   meeting,
-  participants,
+  participantCount,
 }: MeetingBoardHeaderProps) {
   return (
     <div className="space-y-3">
@@ -44,7 +44,7 @@ export function MeetingBoardHeader({
           className="w-fit shrink-0 gap-1.5 rounded-lg border-border/70 bg-card px-2.5 py-1 text-xs text-muted-foreground"
         >
           <Users className="h-3.5 w-3.5" />
-          {participants.length}
+          {participantCount}
         </Badge>
       </div>
     </div>

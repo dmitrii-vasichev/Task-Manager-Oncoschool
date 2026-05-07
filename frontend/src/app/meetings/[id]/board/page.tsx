@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, RefreshCw } from "lucide-react";
@@ -18,7 +18,7 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { useTeam } from "@/hooks/useTeam";
 import { api } from "@/lib/api";
 import { PermissionService } from "@/lib/permissions";
-import type { MeetingBoardResponse, TeamMember } from "@/lib/types";
+import type { MeetingBoardResponse } from "@/lib/types";
 
 export default function MeetingBoardPage() {
   const params = useParams();
@@ -61,18 +61,6 @@ export default function MeetingBoardPage() {
     }
     return () => setPageTitle(null);
   }, [board?.meeting.title, setPageTitle]);
-
-  const membersById = useMemo(
-    () => new Map(members.map((member) => [member.id, member])),
-    [members]
-  );
-
-  const participants = useMemo(() => {
-    if (!board?.meeting.participant_ids?.length) return [];
-    return board.meeting.participant_ids
-      .map((id) => membersById.get(id))
-      .filter((member): member is TeamMember => !!member);
-  }, [board?.meeting.participant_ids, membersById]);
 
   if (loading) {
     return (
@@ -119,7 +107,10 @@ export default function MeetingBoardPage() {
 
   return (
     <div className="max-w-7xl space-y-5 animate-in fade-in duration-300">
-      <MeetingBoardHeader meeting={board.meeting} participants={participants} />
+      <MeetingBoardHeader
+        meeting={board.meeting}
+        participantCount={board.meeting.participant_ids.length}
+      />
 
       <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
         <MeetingBoardScopePanel

@@ -24,6 +24,7 @@ test("meeting board route loads and renders board sections", () => {
   assert.match(source, /MEETING_BOARD_SECTIONS\.map/);
   assert.match(source, /MeetingBoardScopePanel/);
   assert.match(source, /MeetingBoardMaterials/);
+  assert.match(source, /participantCount=\{board\.meeting\.participant_ids\.length\}/);
   assert.match(source, /toastError/);
 });
 
@@ -42,7 +43,10 @@ test("meeting board components keep the required shareable-board affordances", (
   assert.match(section, /dashed/);
   assert.match(scopePanel, /Добавить/);
   assert.match(scopePanel, /UserPlus/);
+  assert.match(scopePanel, /disabled/);
+  assert.match(scopePanel, /getMeetingBoardScopeCounts/);
   assert.match(materials, /Материалы пока не добавлены/);
+  assert.match(materials, /sanitizeMeetingBoardMaterialUrl/);
   assert.match(materials, /rel="noreferrer"/);
   assert.match(materials, /board_notes/);
 });
