@@ -96,10 +96,18 @@ class MeetingAIOutcomesService:
             raise ValueError("Нет транскрипции для генерации итогов")
 
         processing = await self.processing_repo.get_or_create(session, meeting.id)
-        members = await self.member_repo.get_all_active(session)
-        parsed = await self.ai_service.parse_meeting_outcomes(
-            session, meeting.transcript, members
-        )
+        try:
+            members = await self.member_repo.get_all_active(session)
+            parsed = await self.ai_service.parse_meeting_outcomes(
+                session, meeting.transcript, members
+            )
+        except Exception as exc:
+            processing.status = "failed"
+            processing.error_message = str(exc)
+            processing.completed_at = datetime.utcnow()
+            await session.flush()
+            raise
+
         processing.status = "draft_ready"
         processing.draft_summary = parsed.summary
         processing.draft_decisions = parsed.decisions
@@ -129,6 +137,11 @@ class MeetingAIOutcomesService:
         draft_decisions: list[str],
         draft_tasks: list[dict],
     ) -> list:
+        if processing.status == "published":
+            raise ValueError("Итоги встречи уже опубликованы")
+
+        members = await self.member_repo.get_all_active(session)
+        members_by_id = {str(member.id): member for member in members}
         selected_tasks = []
         persisted_tasks = []
         for task in draft_tasks:
@@ -137,13 +150,19 @@ class MeetingAIOutcomesService:
             deadline = persisted_task.get("deadline")
             if hasattr(deadline, "isoformat"):
                 persisted_task["deadline"] = deadline.isoformat()
+            assignee_id = persisted_task.get("assignee_id")
+            if assignee_id:
+                persisted_task["assignee_id"] = str(assignee_id)
             persisted_tasks.append(persisted_task)
 
             if not task_data.get("selected", True):
                 continue
-            selected_tasks.append(persisted_task)
+            selected_task = dict(persisted_task)
+            assignee = members_by_id.get(str(selected_task.get("assignee_id")))
+            if assignee:
+                selected_task["assignee_name"] = assignee.full_name
+            selected_tasks.append(selected_task)
 
-        members = await self.member_repo.get_all_active(session)
         meeting.parsed_summary = draft_summary
         meeting.decisions = draft_decisions
         if meeting.status != "completed":

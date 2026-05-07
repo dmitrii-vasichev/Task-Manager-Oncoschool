@@ -264,6 +264,102 @@ class MeetingAIOutcomesServiceTests(unittest.IsolatedAsyncioTestCase):
         args = service.meeting_service.create_tasks_from_parsed.await_args.args
         assert args[2] == [{"title": "Selected", "priority": "normal", "selected": True}]
 
+    async def test_publish_preserves_assignee_id_as_string_and_resolves_name(self) -> None:
+        service = MeetingAIOutcomesService()
+        meeting = SimpleNamespace(
+            id=uuid.uuid4(),
+            parsed_summary=None,
+            decisions=[],
+            status="scheduled",
+        )
+        moderator = SimpleNamespace(id=uuid.uuid4(), role="moderator")
+        assignee_id = uuid.uuid4()
+        assignee = SimpleNamespace(id=assignee_id, full_name="Мария Иванова")
+        service.meeting_service = SimpleNamespace(
+            create_tasks_from_parsed=AsyncMock(return_value=[])
+        )
+        service.member_repo = SimpleNamespace(
+            get_all_active=AsyncMock(return_value=[assignee])
+        )
+        session = SimpleNamespace(flush=AsyncMock())
+        processing = SimpleNamespace(
+            status="draft_ready",
+            draft_summary=None,
+            draft_decisions=[],
+            draft_tasks=[],
+            published_at=None,
+            published_by_id=None,
+        )
+        draft_task = MeetingBoardTaskDraft(
+            title="Prepare agenda",
+            priority="normal",
+            selected=True,
+            assignee_id=assignee_id,
+        )
+
+        await service.publish_outcomes(
+            session,
+            meeting=meeting,
+            processing=processing,
+            moderator=moderator,
+            draft_summary="Final summary",
+            draft_decisions=[],
+            draft_tasks=[draft_task],
+        )
+
+        assert processing.draft_tasks[0]["assignee_id"] == str(assignee_id)
+        service.meeting_service.create_tasks_from_parsed.assert_awaited_once()
+        selected_tasks = service.meeting_service.create_tasks_from_parsed.await_args.args[
+            2
+        ]
+        assert selected_tasks[0]["assignee_name"] == "Мария Иванова"
+
+    async def test_publish_rejects_already_published_without_creating_tasks(self) -> None:
+        service = MeetingAIOutcomesService()
+        service.meeting_service = SimpleNamespace(
+            create_tasks_from_parsed=AsyncMock(return_value=[])
+        )
+        service.member_repo = SimpleNamespace(get_all_active=AsyncMock(return_value=[]))
+        session = SimpleNamespace(flush=AsyncMock())
+        processing = SimpleNamespace(status="published")
+
+        with self.assertRaisesRegex(ValueError, "Итоги встречи уже опубликованы"):
+            await service.publish_outcomes(
+                session,
+                meeting=SimpleNamespace(id=uuid.uuid4()),
+                processing=processing,
+                moderator=SimpleNamespace(id=uuid.uuid4()),
+                draft_summary="Final summary",
+                draft_decisions=[],
+                draft_tasks=[{"title": "Selected", "selected": True}],
+            )
+
+        service.member_repo.get_all_active.assert_not_awaited()
+        service.meeting_service.create_tasks_from_parsed.assert_not_awaited()
+        session.flush.assert_not_awaited()
+
+    async def test_generate_draft_failure_marks_processing_failed_and_flushes(self) -> None:
+        service = MeetingAIOutcomesService()
+        processing = SimpleNamespace(status="pending", error_message=None)
+        service.processing_repo = SimpleNamespace(
+            get_or_create=AsyncMock(return_value=processing)
+        )
+        service.member_repo = SimpleNamespace(get_all_active=AsyncMock(return_value=[]))
+        service.ai_service = SimpleNamespace(
+            parse_meeting_outcomes=AsyncMock(side_effect=RuntimeError("openai down"))
+        )
+        session = SimpleNamespace(flush=AsyncMock())
+
+        with self.assertRaisesRegex(RuntimeError, "openai down"):
+            await service.generate_draft(
+                session,
+                meeting=SimpleNamespace(id=uuid.uuid4(), transcript="Transcript"),
+            )
+
+        assert processing.status == "failed"
+        assert processing.error_message == "openai down"
+        session.flush.assert_awaited_once()
+
 
 class ZoomAudioRecordingDownloadTests(unittest.IsolatedAsyncioTestCase):
     async def test_select_audio_recording_file_prefers_m4a_over_mp4(self) -> None:

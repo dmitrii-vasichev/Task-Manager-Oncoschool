@@ -825,15 +825,18 @@ async def publish_meeting_outcomes(
     processing = await meeting_ai_outcomes_service.processing_repo.get_or_create(
         session, meeting_id
     )
-    tasks = await meeting_ai_outcomes_service.publish_outcomes(
-        session,
-        meeting=meeting,
-        processing=processing,
-        moderator=member,
-        draft_summary=data.draft_summary,
-        draft_decisions=data.draft_decisions,
-        draft_tasks=[task.model_dump() for task in data.draft_tasks],
-    )
+    try:
+        tasks = await meeting_ai_outcomes_service.publish_outcomes(
+            session,
+            meeting=meeting,
+            processing=processing,
+            moderator=member,
+            draft_summary=data.draft_summary,
+            draft_decisions=data.draft_decisions,
+            draft_tasks=[task.model_dump() for task in data.draft_tasks],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     await session.commit()
     meeting = await meeting_service.get_meeting_by_id(session, meeting_id)
     return MeetingWithTasksResponse(
