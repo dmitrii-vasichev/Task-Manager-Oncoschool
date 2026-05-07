@@ -12,6 +12,7 @@ import {
   CalendarClock,
   Repeat,
   Pencil,
+  LayoutDashboard,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -333,6 +334,15 @@ export default function MeetingDetailPage() {
           isModerator={isModerator}
           onEdit={() => setParticipantPickerOpen(true)}
         />
+      </div>
+
+      <div className="animate-fade-in-up stagger-2">
+        <Button variant="outline" size="sm" className="rounded-lg" asChild>
+          <Link href={`/meetings/${meeting.id}/board`}>
+            <LayoutDashboard className="h-3.5 w-3.5" />
+            Открыть доску встречи
+          </Link>
+        </Button>
       </div>
 
       {/* Participants picker dialog (moderator only) */}
