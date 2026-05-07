@@ -10,6 +10,18 @@ from app.db.repositories import MeetingBoardRepository
 from app.services.meeting_board_service import MeetingBoardService, group_board_tasks
 
 
+class FakeNestedTransaction:
+    def __init__(self) -> None:
+        self.entered = False
+        self.exited = False
+
+    async def __aenter__(self) -> None:
+        self.entered = True
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        self.exited = True
+
+
 def task(**overrides):
     base = {
         "id": uuid.uuid4(),
@@ -111,8 +123,10 @@ async def test_get_or_create_returns_existing_settings_after_concurrent_insert()
     meeting_id = uuid.uuid4()
     member = SimpleNamespace(id=uuid.uuid4())
     existing_settings = SimpleNamespace(id=uuid.uuid4(), meeting_id=meeting_id)
+    nested_transaction = FakeNestedTransaction()
     session = SimpleNamespace(
         add=lambda settings: None,
+        begin_nested=lambda: nested_transaction,
         flush=AsyncMock(
             side_effect=IntegrityError(
                 "INSERT INTO meeting_board_settings",
@@ -131,4 +145,6 @@ async def test_get_or_create_returns_existing_settings_after_concurrent_insert()
     repo.get_by_meeting_id.assert_any_await(session, meeting_id)
     assert repo.get_by_meeting_id.await_count == 2
     session.flush.assert_awaited_once()
-    session.rollback.assert_awaited_once()
+    assert nested_transaction.entered
+    assert nested_transaction.exited
+    session.rollback.assert_not_awaited()

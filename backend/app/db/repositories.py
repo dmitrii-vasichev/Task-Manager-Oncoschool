@@ -678,11 +678,11 @@ class MeetingBoardRepository:
             created_by_id=getattr(member, "id", None),
             updated_by_id=getattr(member, "id", None),
         )
-        session.add(settings)
         try:
-            await session.flush()
+            async with session.begin_nested():
+                session.add(settings)
+                await session.flush()
         except IntegrityError:
-            await session.rollback()
             existing = await self.get_by_meeting_id(session, meeting_id)
             if existing:
                 return existing
