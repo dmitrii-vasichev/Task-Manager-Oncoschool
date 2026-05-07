@@ -784,6 +784,7 @@ async def transcribe_meeting_audio(
             zoom_service=_get_zoom_service(request),
             moderator=member,
         )
+        await session.commit()
         return MeetingAIProcessingResponse.model_validate(processing)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))

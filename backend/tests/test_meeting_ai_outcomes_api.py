@@ -9,7 +9,7 @@ from app.db.schemas import MeetingAIPublishRequest, MeetingBoardTaskDraft
 
 
 class MeetingAIOutcomesApiTests(unittest.IsolatedAsyncioTestCase):
-    async def test_transcribe_audio_requires_moderator_dependency_contract(self) -> None:
+    async def test_transcribe_audio_commits_queued_job_before_returning(self) -> None:
         meeting_id = uuid.uuid4()
         member = SimpleNamespace(id=uuid.uuid4(), role="moderator")
         meeting = SimpleNamespace(id=meeting_id, zoom_meeting_id="123")
@@ -56,7 +56,7 @@ class MeetingAIOutcomesApiTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(response.status, "queued")
-        session.commit.assert_not_awaited()
+        session.commit.assert_awaited_once()
         session.rollback.assert_not_awaited()
 
     async def test_transcribe_audio_value_error_returns_422_without_endpoint_commit(
