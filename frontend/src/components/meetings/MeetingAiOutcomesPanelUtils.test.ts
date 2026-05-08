@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   buildMeetingOutcomePublishPayload,
   canPublishMeetingOutcomes,
+  formatTaskPublishActionCount,
+  formatTaskPublishSummaryCount,
   formatMeetingProcessingBadge,
   formatMeetingTranscriptionStatus,
   getSelectedTaskDraftsMissingAssignee,
@@ -155,6 +157,24 @@ test("canPublishMeetingOutcomes allows publishing only draft_ready outcomes when
   assert.equal(canPublishMeetingOutcomes("draft_ready", false), true);
   assert.equal(canPublishMeetingOutcomes("draft_ready", true), false);
   assert.equal(canPublishMeetingOutcomes(null, false), false);
+});
+
+test("formatTaskPublishSummaryCount uses nominative task forms", () => {
+  assert.equal(formatTaskPublishSummaryCount(1), "1 задача");
+  assert.equal(formatTaskPublishSummaryCount(2), "2 задачи");
+  assert.equal(formatTaskPublishSummaryCount(5), "5 задач");
+  assert.equal(formatTaskPublishSummaryCount(11), "11 задач");
+  assert.equal(formatTaskPublishSummaryCount(21), "21 задача");
+  assert.equal(formatTaskPublishSummaryCount(22), "22 задачи");
+  assert.equal(formatTaskPublishSummaryCount(25), "25 задач");
+});
+
+test("formatTaskPublishActionCount uses create-action task forms", () => {
+  assert.equal(formatTaskPublishActionCount(1), "1 задачу");
+  assert.equal(formatTaskPublishActionCount(2), "2 задачи");
+  assert.equal(formatTaskPublishActionCount(5), "5 задач");
+  assert.equal(formatTaskPublishActionCount(11), "11 задач");
+  assert.equal(formatTaskPublishActionCount(21), "21 задачу");
 });
 
 test("formatMeetingProcessingBadge hides idle and localizes visible statuses", () => {
