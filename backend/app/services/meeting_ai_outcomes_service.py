@@ -214,7 +214,7 @@ class MeetingAIOutcomesService:
     async def _resolve_processing_meeting(
         self, session: AsyncSession, processing: MeetingAIProcessing
     ) -> Meeting | None:
-        meeting = getattr(processing, "meeting", None)
+        meeting = getattr(processing, "__dict__", {}).get("meeting")
         if meeting is not None:
             return meeting
         return await session.get(Meeting, processing.meeting_id)

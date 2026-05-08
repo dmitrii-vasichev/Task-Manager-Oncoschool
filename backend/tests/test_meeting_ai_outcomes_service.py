@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 from sqlalchemy.dialects import postgresql
 
+from app.db.models import Meeting
 from app.db.repositories import MeetingAIProcessingRepository
 from app.db.schemas import (
     MeetingAIProcessingResponse,
@@ -486,6 +487,29 @@ class MeetingAIOutcomesServiceTests(unittest.IsolatedAsyncioTestCase):
             None, source_path=None
         )
         session.commit.assert_awaited_once()
+
+    async def test_resolve_processing_meeting_avoids_lazy_relationship_load(self) -> None:
+        service = MeetingAIOutcomesService()
+        meeting_id = uuid.uuid4()
+        expected_meeting = SimpleNamespace(id=meeting_id, zoom_meeting_id="123")
+
+        class ProcessingWithLazyMeeting:
+            def __init__(self) -> None:
+                self.meeting_id = meeting_id
+
+            @property
+            def meeting(self):
+                raise RuntimeError("lazy relationship load attempted")
+
+        session = SimpleNamespace(get=AsyncMock(return_value=expected_meeting))
+
+        resolved = await service._resolve_processing_meeting(
+            session,
+            ProcessingWithLazyMeeting(),
+        )
+
+        self.assertIs(resolved, expected_meeting)
+        session.get.assert_awaited_once_with(Meeting, meeting_id)
 
     async def test_transcribe_audio_deletes_temporary_file_on_failure(self) -> None:
         service = MeetingAIOutcomesService()
