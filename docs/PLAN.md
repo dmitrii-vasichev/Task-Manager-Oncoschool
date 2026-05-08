@@ -18,7 +18,8 @@
 
 **Implementation status:**
 
-- Planned; ready for execution.
+- Implemented; automated verification passed.
+- Frontend task ordering helpers, expandable dashboard task blocks, and dashboard source guards are implemented.
 
 **Definition of done:**
 

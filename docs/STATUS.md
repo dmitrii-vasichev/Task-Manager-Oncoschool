@@ -2,7 +2,7 @@
 
 ## Dashboard Task Block Expansion
 
-- Current phase: planned; ready for implementation
+- Current phase: implemented; automated verification passed
 - Spec: `docs/superpowers/specs/2026-05-08-dashboard-task-block-expansion-design.md`
 - Plan: `docs/superpowers/plans/2026-05-08-dashboard-task-block-expansion.md`
 - Scope: dashboard task block ordering, inline expand/collapse behavior, completed-week discoverability, source guards, and frontend verification
@@ -11,6 +11,11 @@
   - Confirmed completed-week tasks are sorted by `completed_at_desc` but currently link to a generic Kanban board.
   - Approved inline expansion inside each dashboard task block rather than a drawer.
   - Wrote the implementation plan and made it the active repo plan.
+  - Added dashboard task ordering and preview helpers.
+  - Added inline expand/collapse controls to active, overdue, and completed-week dashboard task blocks.
+  - Added honest truncation copy for incomplete loaded task pages, including derived overdue lists.
+  - Removed the misleading generic completed-week Kanban link.
+  - Updated dashboard source guards.
 - Key approved decisions:
   - Keep five tasks visible by default.
   - Use `Показать ещё N` / `Свернуть` inside each block.
@@ -18,7 +23,13 @@
   - Remove the generic completed-week `Все задачи` link in the first implementation.
   - Use existing `/api/tasks` pagination with `per_page=200` and show truncation copy if more tasks exist than were loaded.
 - Latest verification:
-  - Planning only; implementation verification pending.
+  - `cd frontend && npm test` passed: 43 tests, 0 failed. Existing Node warnings about `MODULE_TYPELESS_PACKAGE_JSON` appeared.
+  - `cd frontend && npx tsc --noEmit` passed with no output.
+  - `cd frontend && npm run lint` passed: no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed: Next production build completed.
+  - `git diff --check` passed with no output.
+  - Browser smoke: frontend dev server started at `http://127.0.0.1:3004`; the in-app browser opened `/` and reached the existing login flow at `/login`.
+  - Authenticated dashboard expansion QA remains manual because no logged-in local session/backend fixture was available.
 
 ## Meeting Board Focus
 
