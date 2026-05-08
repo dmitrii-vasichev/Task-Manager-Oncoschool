@@ -9,9 +9,7 @@ import {
   ArrowRight,
   Mic,
   FileText,
-  Clock,
   UserX,
-  AlertOctagon,
   Video,
   ExternalLink,
   CalendarDays,
@@ -81,15 +79,6 @@ function isOverdue(task: Task): boolean {
   return parseLocalDate(task.deadline) < todayStart;
 }
 
-function isStale(task: Task): boolean {
-  if (!task.updated_at) return false;
-  const threeDaysAgo = new Date();
-  threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-  const updatedAt = new Date(task.updated_at);
-  if (Number.isNaN(updatedAt.getTime())) return false;
-  return updatedAt < threeDaysAgo;
-}
-
 function normalizePersonName(
   fullName: string | null | undefined,
   fallback = "Без имени"
@@ -109,6 +98,23 @@ function firstAndLastName(fullName: string | null | undefined): string {
   const parts = safeFullName.split(/\s+/).filter(Boolean);
   if (parts.length <= 2) return parts.join(" ");
   return `${parts[0]} ${parts[1]}`;
+}
+
+function formatTaskCount(count: number): string {
+  const normalizedCount = Math.abs(count);
+  const lastTwoDigits = normalizedCount % 100;
+  const lastDigit = normalizedCount % 10;
+
+  if (lastTwoDigits >= 11 && lastTwoDigits <= 14) {
+    return `${count} задач`;
+  }
+  if (lastDigit === 1) {
+    return `${count} задача`;
+  }
+  if (lastDigit >= 2 && lastDigit <= 4) {
+    return `${count} задачи`;
+  }
+  return `${count} задач`;
 }
 
 // ────────────────────────────────────────────
@@ -171,7 +177,7 @@ function TaskListItem({
   showAssignee = false,
 }: {
   task: Task;
-  variant?: "default" | "overdue" | "unassigned" | "stale";
+  variant?: "default" | "overdue" | "unassigned";
   showAssignee?: boolean;
 }) {
   const overdue = variant === "overdue" || isOverdue(task);
@@ -180,9 +186,7 @@ function TaskListItem({
     ? "border border-destructive/35 bg-destructive/[0.06] hover:bg-destructive/[0.1] shadow-[0_0_0_1px_hsl(var(--destructive)/0.12)_inset]"
     : variant === "unassigned"
       ? "border border-dashed border-muted-foreground/20 hover:bg-secondary/50"
-      : variant === "stale"
-        ? "border border-amber-500/25 bg-amber-500/[0.03] hover:bg-amber-500/[0.07]"
-        : "border border-border/60 hover:bg-secondary/50";
+      : "border border-border/60 hover:bg-secondary/50";
 
   const sourceIcon =
     task.source === "voice" ? (
@@ -273,12 +277,6 @@ function TaskListItem({
                   size="sm"
                 />
                 {createdByName}
-              </span>
-            )}
-            {variant === "stale" && (
-              <span className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                <Clock className="h-3 w-3" />
-                Обновлено: {formatDate(task.updated_at)}
               </span>
             )}
             {showAssignee && (
@@ -719,9 +717,10 @@ export default function DashboardPage() {
   const scopedTasks = currentScope === "department" ? departmentTasks : myTasks;
   const scopedOverdueTasks =
     currentScope === "department" ? departmentOverdueTasks : myOverdueTasks;
-  const scopedStaleTasks = scopedTasks
-    .filter((task) => task.status === "in_progress" || task.status === "review")
-    .filter(isStale);
+  const completedInScopeThisWeek =
+    currentScope === "department"
+      ? (departmentMetrics?.done_week ?? 0)
+      : (myMetrics?.done_week ?? 0);
 
   const scopedMeetings = currentScope === "department" ? departmentUpcomingMeetings : myUpcomingMeetings;
 
@@ -944,44 +943,46 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* Stale Tasks */}
+          {/* Completed Tasks */}
           <div
             className={`rounded-2xl border p-4 ${
-              scopedStaleTasks.length > 0
-                ? "border-amber-500/25 bg-amber-500/[0.03]"
+              completedInScopeThisWeek > 0
+                ? "border-status-done-ring/35 bg-status-done-bg/25"
                 : "border-border/60 bg-card"
             }`}
           >
             <SectionHeader
-              title="Не обновлялись"
-              icon={AlertOctagon}
-              iconColor="hsl(38, 80%, 52%)"
-              count={scopedStaleTasks.length}
+              title="Выполнено за 7 дней"
+              icon={CheckCircle2}
+              iconColor="hsl(var(--status-done-fg))"
               linkHref="/tasks"
               linkLabel="Все задачи"
             />
-            {scopedStaleTasks.length === 0 ? (
+            {completedInScopeThisWeek === 0 ? (
               <div className="flex flex-col items-center justify-center py-8 text-center">
                 <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-status-done-bg">
                   <CheckCircle2 className="h-5 w-5 text-status-done-fg" />
                 </div>
                 <p className="mb-0.5 text-sm font-heading font-semibold text-foreground">
-                  Актуально
+                  Пока пусто
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Задач без обновлений более 3 дней нет
+                  За последнюю неделю задач не завершали
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {scopedStaleTasks.slice(0, 5).map((task) => (
-                  <TaskListItem
-                    key={task.id}
-                    task={task}
-                    variant="stale"
-                    showAssignee={currentScope === "department"}
-                  />
-                ))}
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-status-done-bg">
+                  <CheckCircle2 className="h-5 w-5 text-status-done-fg" />
+                </div>
+                <p className="mb-1 text-3xl font-heading font-bold text-status-done-fg">
+                  {formatTaskCount(completedInScopeThisWeek)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {currentScope === "department"
+                    ? "Закрыто отделом за последние 7 дней"
+                    : "Закрыто вами за последние 7 дней"}
+                </p>
               </div>
             )}
           </div>
