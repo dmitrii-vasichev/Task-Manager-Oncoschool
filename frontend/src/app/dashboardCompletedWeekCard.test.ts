@@ -13,6 +13,27 @@ function readSource(relativePath: string) {
   return readFileSync(path.join(sourceRoot, relativePath), "utf8");
 }
 
+test("dashboard task empty states use one compact icon pattern", () => {
+  const source = readSource("app/page.tsx");
+
+  assert.match(source, /function DashboardEmptyState/);
+  assert.match(source, /icon:\s*ElementType/);
+  assert.match(source, /text-sm font-heading font-semibold text-foreground/);
+  assert.match(source, /text-xs text-muted-foreground/);
+
+  const activeBlock = source.match(
+    /\{\/\* Active Tasks \*\/\}[\s\S]*?\{\/\* Overdue Tasks \*\//,
+  );
+  assert.ok(activeBlock, "active dashboard block source should exist");
+  assert.match(activeBlock[0], /icon=\{ClipboardList\}/);
+  assert.match(activeBlock[0], /<DashboardEmptyState[\s\S]*icon=\{ClipboardList\}/);
+  assert.doesNotMatch(activeBlock[0], /<EmptyState/);
+  assert.doesNotMatch(activeBlock[0], /variant="tasks"/);
+
+  const emptyStateCalls = source.match(/<DashboardEmptyState/g) ?? [];
+  assert.equal(emptyStateCalls.length, 3);
+});
+
 test("dashboard third task card shows completed tasks for the last 7 days", () => {
   const source = readSource("app/page.tsx");
 

@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { ElementType, ReactNode } from "react";
 import Link from "next/link";
 import {
-  Zap,
   CheckCircle2,
   AlertTriangle,
   ArrowRight,
+  ClipboardList,
   Mic,
   FileText,
   UserX,
@@ -382,6 +382,34 @@ function SectionHeader({
 }
 
 type DashboardTaskBlockKey = "active" | "overdue" | "completed";
+
+function DashboardEmptyState({
+  icon: Icon,
+  title,
+  description,
+  iconContainerClassName,
+  iconClassName,
+}: {
+  icon: ElementType;
+  title: string;
+  description: string;
+  iconContainerClassName: string;
+  iconClassName: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center py-8 text-center">
+      <div
+        className={`mb-3 flex h-12 w-12 items-center justify-center rounded-full ${iconContainerClassName}`}
+      >
+        <Icon className={`h-5 w-5 ${iconClassName}`} />
+      </div>
+      <p className="mb-0.5 text-sm font-heading font-semibold text-foreground">
+        {title}
+      </p>
+      <p className="text-xs text-muted-foreground">{description}</p>
+    </div>
+  );
+}
 
 function DashboardTaskBlock({
   blockKey,
@@ -1116,7 +1144,7 @@ export default function DashboardPage() {
             <DashboardTaskBlock
               blockKey="active"
               title={taskListTitle}
-              icon={Zap}
+              icon={ClipboardList}
               badges={taskBadges}
               tasks={scopedTasks}
               expanded={expandedTaskBlocks.active}
@@ -1124,11 +1152,12 @@ export default function DashboardPage() {
                 setTaskBlockExpanded("active", expanded)
               }
               emptyContent={
-                <EmptyState
-                  variant="tasks"
+                <DashboardEmptyState
+                  icon={ClipboardList}
                   title={emptyTaskTitle}
                   description={emptyTaskDescription}
-                  className="py-6"
+                  iconContainerClassName="bg-primary/10"
+                  iconClassName="text-primary"
                 />
               }
               itemVariant="default"
@@ -1161,17 +1190,13 @@ export default function DashboardPage() {
                 setTaskBlockExpanded("overdue", expanded)
               }
               emptyContent={
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-status-done-bg">
-                    <CheckCircle2 className="h-5 w-5 text-status-done-fg" />
-                  </div>
-                  <p className="mb-0.5 text-sm font-heading font-semibold text-foreground">
-                    {overdueEmptyTitle}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {overdueEmptyDescription}
-                  </p>
-                </div>
+                <DashboardEmptyState
+                  icon={CheckCircle2}
+                  title={overdueEmptyTitle}
+                  description={overdueEmptyDescription}
+                  iconContainerClassName="bg-status-done-bg"
+                  iconClassName="text-status-done-fg"
+                />
               }
               itemVariant="overdue"
               showAssignee={currentScope === "department"}
@@ -1205,17 +1230,13 @@ export default function DashboardPage() {
                 setTaskBlockExpanded("completed", expanded)
               }
               emptyContent={
-                <div className="flex flex-col items-center justify-center py-8 text-center">
-                  <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted/60">
-                    <ListChecks className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <p className="mb-0.5 text-sm font-heading font-semibold text-foreground">
-                    Пока пусто
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    За последнюю неделю задач не завершали
-                  </p>
-                </div>
+                <DashboardEmptyState
+                  icon={ListChecks}
+                  title="Пока пусто"
+                  description="За последнюю неделю задач не завершали"
+                  iconContainerClassName="bg-muted/60"
+                  iconClassName="text-muted-foreground"
+                />
               }
               itemVariant="completed"
               showAssignee={currentScope === "department"}
