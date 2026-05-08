@@ -858,6 +858,7 @@ export default function DashboardPage() {
       tasks: false,
     });
     setSelectedActivityMetric(null);
+    setDashboardActivity(null);
   }, [currentScope, selectedDepartmentId]);
 
   useEffect(() => {
@@ -909,7 +910,7 @@ export default function DashboardPage() {
                 })
                 .catch(catchLog("getDepartmentTasks"))
             : Promise.resolve(emptyTasksPage),
-          isModerator
+          isModerator && currentScope === "team"
             ? api
                 .getTasks({
                   status: openStatuses,
@@ -1050,6 +1051,31 @@ export default function DashboardPage() {
     toastError,
     userId,
   ]);
+
+  const scopedDashboardActivity = useMemo(() => {
+    if (!dashboardActivity || dashboardActivity.scope !== currentScope) {
+      return null;
+    }
+
+    if (currentScope === "department") {
+      return dashboardActivity.selected_department_id === selectedDepartmentId
+        ? dashboardActivity
+        : null;
+    }
+
+    return dashboardActivity.selected_department_id === null
+      ? dashboardActivity
+      : null;
+  }, [currentScope, dashboardActivity, selectedDepartmentId]);
+
+  useEffect(() => {
+    if (!selectedActivityMetric) return;
+
+    const metric = scopedDashboardActivity?.[selectedActivityMetric];
+    if (!metric || metric.count === 0) {
+      setSelectedActivityMetric(null);
+    }
+  }, [scopedDashboardActivity, selectedActivityMetric]);
 
   if (!user) return null;
 
@@ -1298,7 +1324,7 @@ export default function DashboardPage() {
           {/* Activity */}
           <div className="rounded-2xl border border-border/60 bg-card p-4">
             <DashboardActivityCard
-              activity={dashboardActivity}
+              activity={scopedDashboardActivity}
               selectedMetric={selectedActivityMetric}
               onSelectedMetricChange={setSelectedActivityMetric}
               showAssignee={currentScope !== "my"}
