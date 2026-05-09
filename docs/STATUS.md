@@ -1,5 +1,24 @@
 # Status
 
+## Dashboard Task Card Height Sync
+
+- Current phase: plan written; implementation not started
+- Spec: `docs/superpowers/specs/2026-05-08-dashboard-task-card-height-sync-design.md`
+- Plan: `docs/superpowers/plans/2026-05-08-dashboard-task-card-height-sync.md`
+- Scope: dashboard task-block card height synchronization between overdue and active desktop columns
+- Latest progress:
+  - Approved row-level synchronization between `Просрочено` and `Активные`.
+  - Confirmed the synchronization applies only inside the dashboard task block.
+  - Confirmed the `Активность за 7 дней` card remains independent.
+  - Wrote the implementation plan and made it the active repo plan.
+- Key approved decisions:
+  - Synchronize only task cards inside the dashboard task block.
+  - Do not assign one fixed global height to all dashboard task cards.
+  - Do not show visible empty alignment cells when one group has more tasks than the other.
+  - Keep mobile layout stacked with overdue tasks first.
+- Latest verification:
+  - Not run yet; implementation has not started.
+
 ## Dashboard Task Column Layout
 
 - Current phase: implemented; automated verification passed

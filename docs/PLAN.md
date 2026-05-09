@@ -1,4 +1,47 @@
-# Active Plan: Dashboard Task Columns
+# Active Plan: Dashboard Task Card Height Sync
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-08-dashboard-task-card-height-sync.md`. Keep this section as the current source-of-truth index for milestone order, definition of done, and validation commands.
+
+**Goal:** Synchronize paired dashboard task card heights across the `Просрочено` and `Активные` desktop columns while preserving natural stacked cards on mobile.
+
+**Approved spec:** `docs/superpowers/specs/2026-05-08-dashboard-task-card-height-sync-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-08-dashboard-task-card-height-sync.md`
+
+**Milestones:**
+
+1. Add frontend source guards for desktop row synchronization, responsive stacked fallback, and no fixed card heights.
+2. Update the dashboard task block presenter so paired overdue and active desktop cards stretch to the same row height.
+3. Run frontend verification and update status.
+
+**Implementation status:**
+
+- Planned; implementation not started.
+
+**Definition of done:**
+
+- With overdue and active tasks on desktop, paired task cards in the same visual row have matching heights.
+- Task cards are not assigned one fixed global height.
+- Extra tasks in the longer group continue in the correct column without visible empty alignment cells.
+- With zero overdue tasks, the overdue group remains hidden and no empty synchronization cells are visible.
+- On mobile, groups remain stacked with natural card heights.
+- The `Активность за 7 дней` card is not height-synchronized with the task block.
+- Existing independent expansion behavior for `Просрочено` and `Активные` still works.
+
+**Validation commands:**
+
+```bash
+cd frontend && node --test --experimental-strip-types src/app/dashboardCompletedWeekCard.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+---
+
+# Previous Plan: Dashboard Task Columns
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-08-dashboard-task-columns.md`. Keep this section as the current source-of-truth index for milestone order, definition of done, and validation commands.
 
@@ -16,7 +59,7 @@
 
 **Implementation status:**
 
-- Planned; implementation not started.
+- Implemented; automated verification passed.
 
 **Definition of done:**
 
