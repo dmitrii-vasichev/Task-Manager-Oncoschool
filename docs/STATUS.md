@@ -1,5 +1,26 @@
 # Status
 
+## Supabase RLS Security Advisory
+
+- Current phase: implemented; production migration applied and verified
+- Source: Supabase Security Advisor email received on 2026-05-13 for project `Task_Manager_Oncoschool`
+- Scope: close public Supabase API access to application tables in the `public` schema and make future public tables safe by default
+- Latest progress:
+  - Audited production Supabase/Postgres through Railway environment variables.
+  - Confirmed 15 public tables had RLS disabled: `ideas`, `idea_departments`, `idea_tasks`, `idea_comments`, `idea_events`, `projects`, `project_departments`, `project_milestones`, `project_tasks`, `project_comments`, `project_events`, `task_labels`, `task_label_links`, `meeting_board_settings`, and `meeting_ai_processing`.
+  - Confirmed `anon` and `authenticated` roles had direct table privileges on the affected tables before the fix.
+  - Added Alembic revision `038` to enable RLS on every application table, revoke direct table privileges from `anon` and `authenticated`, revoke default future table privileges for those roles, and install an event trigger that enables RLS for newly created public tables.
+  - Updated Alembic's asyncpg engine configuration for Supabase PgBouncer compatibility by using `NullPool` and unique prepared statement names.
+  - Applied `038` to production through `railway run -- bash -lc 'cd backend && PYTHONPATH=$PWD alembic upgrade head'`.
+- Latest verification:
+  - Production DB query passed: `alembic_version=038`, `rls_off_count=0`, `vulnerable_api_privileges_remaining=0`, `event_trigger_exists=True`, `event_function_exists=True`.
+  - Future-table guard probe passed: a rolled-back test table in `public` received RLS automatically and `anon` did not retain `SELECT`.
+  - Production health check passed: `curl -fsS https://distinguished-benevolence-production.up.railway.app/health` returned `{"status":"ok"}`.
+  - Focused test passed: `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_supabase_rls_migration.py -q`.
+  - Alembic current passed through Railway: `038 (head)`.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test python3 -m compileall -q alembic app/db tests/test_supabase_rls_migration.py` passed.
+  - `git diff --check` passed.
+
 ## Projects Phase 2
 
 - Current phase: implemented; automated verification passed
