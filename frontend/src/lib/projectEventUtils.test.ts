@@ -29,6 +29,32 @@ test("formatProjectEvent renders status changes with Russian status labels", () 
 });
 
 test("formatProjectEvent avoids raw event keys", () => {
-  assert.equal(formatProjectEvent(event("project_created", {})).title, "Проект создан");
-  assert.equal(formatProjectEvent(event("task_linked", {})).title, "Создана задача по проекту");
+  const cases = [
+    ["project_created", "Проект создан"],
+    ["project_updated", "Проект обновлён"],
+    ["status_changed", "Статус изменён"],
+    ["department_added", "Добавлен отдел"],
+    ["department_updated", "Отдел обновлён"],
+    ["milestone_added", "Добавлен этап"],
+    ["milestone_updated", "Этап обновлён"],
+    ["task_linked", "Создана задача по проекту"],
+    ["comment_added", "Добавлен комментарий"],
+    ["project_completed", "Проект завершён"],
+    ["project_deleted", "Проект удалён"],
+  ] as const;
+
+  for (const [eventType, title] of cases) {
+    assert.equal(formatProjectEvent(event(eventType, {})).title, title);
+  }
+});
+
+test("formatProjectEvent renders project update fields and milestone dates", () => {
+  assert.equal(
+    formatProjectEvent(event("project_updated", { fields: ["title", "owner_id"] })).detail,
+    "Изменено: название, ответственный",
+  );
+  assert.equal(
+    formatProjectEvent(event("milestone_updated", { due_date: "2026-05-13" })).detail,
+    "Дата: 13.05.2026",
+  );
 });

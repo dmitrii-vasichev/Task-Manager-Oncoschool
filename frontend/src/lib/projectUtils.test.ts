@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   PROJECT_STATUS_LABELS,
   canCompleteProject,
+  canDeleteProject,
   formatProjectDepartmentProgress,
   formatProjectMilestoneProgress,
   formatProjectTaskProgress,
@@ -18,6 +19,11 @@ test("project labels expose Russian status names", () => {
 test("project completion uses backend completion flag", () => {
   assert.equal(canCompleteProject({ can_complete: true }), true);
   assert.equal(canCompleteProject({ can_complete: false }), false);
+});
+
+test("project deletion uses backend deletion flag", () => {
+  assert.equal(canDeleteProject({ can_delete: true }), true);
+  assert.equal(canDeleteProject({ can_delete: false }), false);
 });
 
 test("project progress formatters show milestones departments and tasks", () => {

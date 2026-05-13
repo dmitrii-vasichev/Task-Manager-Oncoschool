@@ -54,6 +54,10 @@ export function canCompleteProject(project: Pick<Project, "can_complete">): bool
   return project.can_complete;
 }
 
+export function canDeleteProject(project: Pick<Project, "can_delete">): boolean {
+  return project.can_delete;
+}
+
 export function formatProjectDepartmentProgress(
   project: { departments: ProjectDepartmentProgress[] },
 ): string {
