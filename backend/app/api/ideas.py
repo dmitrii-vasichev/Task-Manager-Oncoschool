@@ -80,6 +80,13 @@ async def _ensure_active_department(
     return department
 
 
+async def _ensure_active_member(session: AsyncSession, member_id: uuid.UUID) -> TeamMember:
+    member = await session.get(TeamMember, member_id)
+    if member is None or not member.is_active:
+        raise HTTPException(status_code=404, detail="Участник не найден")
+    return member
+
+
 def _dedupe_uuids(values: list[uuid.UUID]) -> list[uuid.UUID]:
     seen = set()
     deduped = []
@@ -134,9 +141,7 @@ async def create_idea(
     member: TeamMember = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ) -> IdeaResponse:
-    review_owner = await session.get(TeamMember, data.review_owner_id)
-    if review_owner is None or not review_owner.is_active:
-        raise HTTPException(status_code=404, detail="Ответственный не найден")
+    await _ensure_active_member(session, data.review_owner_id)
 
     department_ids = _dedupe_uuids(data.department_ids)
     for department_id in department_ids:
@@ -216,6 +221,8 @@ async def update_idea(
         for key, value in data.model_dump(exclude_unset=True).items()
         if value is not None
     }
+    if "review_owner_id" in fields:
+        await _ensure_active_member(session, fields["review_owner_id"])
     if fields:
         await idea_service.repo.update(session, idea, **fields)
     await idea_service.repo.add_event(
@@ -296,6 +303,7 @@ async def add_idea_department(
             status_code=400,
             detail="Отдел можно добавить только к принятой идее или идее в задачах",
         )
+    await _ensure_active_member(session, data.owner_id)
     if not idea_service.can_add_department(member, idea, department):
         raise HTTPException(status_code=403, detail="Недостаточно прав для добавления отдела")
 
@@ -346,6 +354,8 @@ async def update_idea_department(
         raise HTTPException(status_code=403, detail="Недостаточно прав для изменения отдела")
 
     updates = data.model_dump(exclude_unset=True)
+    if updates.get("owner_id") is not None:
+        await _ensure_active_member(session, updates["owner_id"])
     if updates.get("status") == "ready" and not idea_service.can_mark_department_ready(
         idea_department
     ):
@@ -410,6 +420,7 @@ async def create_idea_department_task(
     idea = await _get_idea_or_404(session, idea_id)
     await _ensure_linkable_idea_status(idea)
     idea_department = _find_idea_department_or_404(idea, idea_department_id)
+    await _ensure_active_department(session, idea_department)
     if not idea_service.can_manage_idea_department(member, idea, idea_department):
         raise HTTPException(status_code=403, detail="Недостаточно прав для создания задачи")
 
