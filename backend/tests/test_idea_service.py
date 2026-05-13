@@ -8,7 +8,7 @@ from app.db import models
 
 class IdeaModelSmokeTests(unittest.TestCase):
     def test_idea_models_are_registered(self) -> None:
-        table_names = {table.name for table in models.Base.metadata.sorted_tables}
+        table_names = set(models.Base.metadata.tables)
 
         self.assertIn("ideas", table_names)
         self.assertIn("idea_departments", table_names)
@@ -18,6 +18,8 @@ class IdeaModelSmokeTests(unittest.TestCase):
 
     def test_idea_relationship_mappers_configure(self) -> None:
         configure_mappers()
+        self.assertTrue(models.IdeaDepartment.task_links.property.viewonly)
+        self.assertTrue(models.IdeaTask.idea_department.property.viewonly)
 
     def test_idea_task_department_link_is_scoped_to_same_idea(self) -> None:
         idea_departments = models.IdeaDepartment.__table__

@@ -563,6 +563,7 @@ class IdeaDepartment(Base):
             IdeaDepartment.idea_id == IdeaTask.idea_id,
             IdeaDepartment.id == foreign(IdeaTask.idea_department_id),
         ),
+        viewonly=True,
     )
 
 
@@ -577,7 +578,6 @@ class IdeaTask(Base):
         ),
         Index("idx_idea_tasks_idea_id", "idea_id"),
         Index("idx_idea_tasks_idea_department_id", "idea_department_id"),
-        Index("idx_idea_tasks_task_id", "task_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -604,6 +604,7 @@ class IdeaTask(Base):
             IdeaDepartment.idea_id == IdeaTask.idea_id,
             IdeaDepartment.id == foreign(IdeaTask.idea_department_id),
         ),
+        viewonly=True,
     )
     task: Mapped["Task"] = relationship()
     created_by: Mapped["TeamMember | None"] = relationship()

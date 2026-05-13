@@ -165,7 +165,6 @@ def upgrade() -> None:
         "idea_tasks",
         ["idea_department_id"],
     )
-    op.create_index("idx_idea_tasks_task_id", "idea_tasks", ["task_id"])
 
     op.create_table(
         "idea_comments",
@@ -231,7 +230,6 @@ def downgrade() -> None:
     op.drop_index("idx_idea_comments_idea_id", table_name="idea_comments")
     op.drop_table("idea_comments")
 
-    op.drop_index("idx_idea_tasks_task_id", table_name="idea_tasks")
     op.drop_index("idx_idea_tasks_idea_department_id", table_name="idea_tasks")
     op.drop_index("idx_idea_tasks_idea_id", table_name="idea_tasks")
     op.drop_table("idea_tasks")
