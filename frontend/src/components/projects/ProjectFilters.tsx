@@ -10,16 +10,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DatePicker } from "@/components/shared/DatePicker";
 import { PROJECT_STATUS_LABELS } from "@/lib/projectUtils";
 import { cn } from "@/lib/utils";
 import type { Department, ProjectStatus, TeamMember } from "@/lib/types";
+
+type ProjectSourceFilter = "all" | "idea" | "direct";
 
 export interface ProjectFilterValues {
   status: "all" | ProjectStatus;
   search: string;
   owner_id: string;
   department_id: string;
-  source_idea_id: string;
+  source: ProjectSourceFilter;
   created_from: string;
   created_to: string;
 }
@@ -29,7 +32,7 @@ export const EMPTY_PROJECT_FILTERS: ProjectFilterValues = {
   search: "",
   owner_id: "",
   department_id: "",
-  source_idea_id: "",
+  source: "all",
   created_from: "",
   created_to: "",
 };
@@ -44,6 +47,15 @@ const PROJECT_STATUS_TABS: Array<{
   { value: "paused", label: PROJECT_STATUS_LABELS.paused },
   { value: "completed", label: PROJECT_STATUS_LABELS.completed },
   { value: "cancelled", label: PROJECT_STATUS_LABELS.cancelled },
+];
+
+const PROJECT_SOURCE_OPTIONS: Array<{
+  value: ProjectSourceFilter;
+  label: string;
+}> = [
+  { value: "all", label: "Все источники" },
+  { value: "idea", label: "Из идеи" },
+  { value: "direct", label: "Без идеи" },
 ];
 
 function FilterSelect({
@@ -107,13 +119,53 @@ function FilterTextInput({
   );
 }
 
+function FilterDateRange({
+  from,
+  to,
+  onFromChange,
+  onToChange,
+}: {
+  from: string;
+  to: string;
+  onFromChange: (value: string) => void;
+  onToChange: (value: string) => void;
+}) {
+  const currentYear = new Date().getFullYear();
+
+  return (
+    <div className="min-w-0 space-y-1 sm:col-span-2 xl:col-span-1">
+      <span className="text-2xs font-medium uppercase text-muted-foreground">
+        Создан
+      </span>
+      <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+        <DatePicker
+          value={from}
+          onChange={onFromChange}
+          placeholder="С даты"
+          clearable
+          yearRange={[currentYear - 2, currentYear + 3]}
+          className="h-8 w-full border-border/70 bg-background px-2.5 text-xs shadow-sm transition-colors hover:border-primary/30 focus:border-primary/40 focus:ring-primary/20"
+        />
+        <DatePicker
+          value={to}
+          onChange={onToChange}
+          placeholder="По дату"
+          clearable
+          yearRange={[currentYear - 2, currentYear + 3]}
+          className="h-8 w-full border-border/70 bg-background px-2.5 text-xs shadow-sm transition-colors hover:border-primary/30 focus:border-primary/40 focus:ring-primary/20"
+        />
+      </div>
+    </div>
+  );
+}
+
 function hasActiveFilters(filters: ProjectFilterValues): boolean {
   return (
     filters.status !== "all" ||
     Boolean(filters.search.trim()) ||
     Boolean(filters.owner_id) ||
     Boolean(filters.department_id) ||
-    Boolean(filters.source_idea_id.trim()) ||
+    filters.source !== "all" ||
     Boolean(filters.created_from.trim()) ||
     Boolean(filters.created_to.trim())
   );
@@ -177,12 +229,12 @@ export function ProjectFilters({
         )}
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.15fr)_repeat(3,minmax(150px,0.85fr))_minmax(310px,1.1fr)]">
         <FilterTextInput
           label="Поиск"
           value={filters.search}
           onChange={(value) => onChange({ ...filters, search: value })}
-          placeholder="Название или описание"
+          placeholder="Название, описание или идея"
         />
 
         <FilterSelect
@@ -212,25 +264,22 @@ export function ProjectFilters({
           ]}
         />
 
-        <FilterTextInput
-          label="ID идеи"
-          value={filters.source_idea_id}
-          onChange={(value) => onChange({ ...filters, source_idea_id: value })}
-          placeholder="Источник"
+        <FilterSelect
+          label="Источник"
+          value={filters.source}
+          onChange={(value) =>
+            onChange({ ...filters, source: value as ProjectSourceFilter })
+          }
+          options={PROJECT_SOURCE_OPTIONS}
         />
 
-        <FilterTextInput
-          label="Создан с"
-          value={filters.created_from}
-          onChange={(value) => onChange({ ...filters, created_from: value })}
-          placeholder="YYYY-MM-DD"
-        />
-
-        <FilterTextInput
-          label="Создан до"
-          value={filters.created_to}
-          onChange={(value) => onChange({ ...filters, created_to: value })}
-          placeholder="YYYY-MM-DD"
+        <FilterDateRange
+          from={filters.created_from}
+          to={filters.created_to}
+          onFromChange={(value) =>
+            onChange({ ...filters, created_from: value })
+          }
+          onToChange={(value) => onChange({ ...filters, created_to: value })}
         />
       </div>
     </div>

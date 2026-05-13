@@ -26,6 +26,33 @@ test("projects filters expose text search and forward it to the API query", () =
   assert.match(page, /params\.search/);
 });
 
+test("projects filters use friendly source and calendar controls", () => {
+  const filters = readSource("components/projects/ProjectFilters.tsx");
+  const page = readSource("app/projects/page.tsx");
+
+  assert.doesNotMatch(filters, /ID идеи/);
+  assert.doesNotMatch(filters, /source_idea_id/);
+  assert.match(filters, /Источник/);
+  assert.match(filters, /Из идеи/);
+  assert.match(filters, /Без идеи/);
+  assert.match(filters, /DatePicker/);
+  assert.doesNotMatch(filters, /YYYY-MM-DD/);
+  assert.match(page, /params\.source/);
+  assert.doesNotMatch(page, /params\.source_idea_id/);
+});
+
+test("project register rows keep a compact metadata layout", () => {
+  const source = readSource("components/projects/ProjectRegisterRow.tsx");
+
+  assert.match(source, /py-2\.5/);
+  assert.match(source, /flex flex-wrap/);
+  assert.doesNotMatch(
+    source,
+    /xl:grid-cols-\[minmax\(0,1\.1fr\)_minmax\(280px,0\.9fr\)_auto\]/,
+  );
+  assert.doesNotMatch(source, /xl:flex-col/);
+});
+
 test("sidebar exposes projects navigation", () => {
   const source = readSource("components/layout/Sidebar.tsx");
 

@@ -32,49 +32,29 @@ function formatDate(value: string): string {
   });
 }
 
-function PersonSummary({
-  label,
-  name,
-  avatarUrl,
-}: {
-  label: string;
-  name: string;
-  avatarUrl?: string | null;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-2">
-      <UserAvatar name={name} avatarUrl={avatarUrl || null} size="sm" />
-      <div className="min-w-0">
-        <p className="text-2xs font-medium uppercase text-muted-foreground">
-          {label}
-        </p>
-        <p className="truncate text-xs text-foreground">{name}</p>
-      </div>
-    </div>
-  );
-}
-
-function TextSummary({
+function MetaPill({
   icon: Icon,
   label,
   value,
+  avatarName,
+  avatarUrl,
 }: {
-  icon: LucideIcon;
+  icon?: LucideIcon;
   label: string;
   value: string;
+  avatarName?: string;
+  avatarUrl?: string | null;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-        <Icon className="h-3.5 w-3.5" />
-      </span>
-      <div className="min-w-0">
-        <p className="text-2xs font-medium uppercase text-muted-foreground">
-          {label}
-        </p>
-        <p className="truncate text-xs text-foreground">{value}</p>
-      </div>
-    </div>
+    <span className="inline-flex h-6 min-w-0 items-center gap-1.5 rounded-md bg-muted/60 px-2 text-xs text-muted-foreground">
+      {avatarName ? (
+        <UserAvatar name={avatarName} avatarUrl={avatarUrl || null} size="sm" />
+      ) : Icon ? (
+        <Icon className="h-3.5 w-3.5 shrink-0" />
+      ) : null}
+      <span className="shrink-0 font-medium text-muted-foreground">{label}:</span>
+      <span className="truncate text-foreground">{value}</span>
+    </span>
   );
 }
 
@@ -90,7 +70,7 @@ function ProgressMetric({
   return (
     <span
       className={cn(
-        "inline-flex h-7 min-w-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium",
+        "inline-flex h-6 min-w-0 items-center gap-1.5 rounded-md px-2 text-xs font-medium",
         tone,
       )}
     >
@@ -107,39 +87,43 @@ export function ProjectRegisterRow({ project }: { project: Project }) {
   return (
     <Link
       href={`/projects/${project.id}`}
-      className="group block rounded-lg border border-border/60 bg-card px-3 py-3 shadow-sm transition-colors hover:border-primary/25 hover:bg-muted/20 sm:px-4"
+      className="group block rounded-lg border border-border/60 bg-card px-3 py-2.5 shadow-sm transition-colors hover:border-primary/25 hover:bg-muted/20 sm:px-4"
     >
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(280px,0.9fr)_auto] xl:items-center">
-        <div className="min-w-0 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <ProjectStatusBadge status={project.status} />
-            <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-              <CalendarClock className="h-3.5 w-3.5 shrink-0" />
-              <span className="truncate">
-                Создан {formatDate(project.created_at)} · обновлён{" "}
-                {formatDate(project.updated_at)}
+      <div className="flex min-w-0 flex-col gap-2">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <ProjectStatusBadge status={project.status} />
+              <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <CalendarClock className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">
+                  Создан {formatDate(project.created_at)} · обновлён{" "}
+                  {formatDate(project.updated_at)}
+                </span>
               </span>
-            </span>
+            </div>
+            <h2 className="line-clamp-2 break-words text-sm font-semibold leading-5 text-foreground group-hover:text-primary">
+              {project.title}
+            </h2>
           </div>
-          <h2 className="line-clamp-2 break-words text-sm font-semibold leading-5 text-foreground group-hover:text-primary">
-            {project.title}
-          </h2>
+
+          <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+            <ArrowRight className="h-4 w-4" />
+          </span>
         </div>
 
-        <div className="grid min-w-0 gap-2 sm:grid-cols-2">
-          <PersonSummary
+        <div className="flex flex-wrap items-center gap-1.5 border-t border-border/50 pt-2">
+          <MetaPill
             label="Владелец"
-            name={ownerName}
+            value={ownerName}
+            avatarName={ownerName}
             avatarUrl={project.owner?.avatar_url}
           />
-          <TextSummary
+          <MetaPill
             icon={Lightbulb}
             label="Источник"
             value={sourceIdeaLabel}
           />
-        </div>
-
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center xl:flex-col xl:items-end 2xl:flex-row">
           <ProgressMetric
             icon={Building2}
             label={formatProjectDepartmentProgress(project)}
@@ -155,9 +139,6 @@ export function ProjectRegisterRow({ project }: { project: Project }) {
             label={formatProjectTaskProgress(project)}
             tone="bg-muted text-muted-foreground"
           />
-          <span className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary xl:inline-flex">
-            <ArrowRight className="h-4 w-4" />
-          </span>
         </div>
       </div>
     </Link>

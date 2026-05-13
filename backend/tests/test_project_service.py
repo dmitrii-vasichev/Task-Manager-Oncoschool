@@ -180,6 +180,57 @@ class ProjectRepositoryTests(unittest.TestCase):
 
         self.assertIn("projects.deleted_at IS NULL", compiled)
 
+    def test_list_filters_by_friendly_source_kind(self) -> None:
+        from app.db.repositories import ProjectRepository
+
+        class FakeScalarResult:
+            def unique(self):
+                return self
+
+            def all(self):
+                return []
+
+        class FakeResult:
+            def scalar_one(self):
+                return 0
+
+            def scalars(self):
+                return FakeScalarResult()
+
+        class FakeSession:
+            def __init__(self) -> None:
+                self.statements = []
+
+            async def execute(self, stmt):
+                self.statements.append(stmt)
+                return FakeResult()
+
+        async def run_list(source: str) -> FakeSession:
+            session = FakeSession()
+            await ProjectRepository().list(session, source=source)
+            return session
+
+        idea_session = asyncio.run(run_list("idea"))
+        idea_stmt = idea_session.statements[1]
+        direct_session = asyncio.run(run_list("direct"))
+        direct_stmt = direct_session.statements[1]
+
+        idea_compiled = str(
+            idea_stmt.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+        direct_compiled = str(
+            direct_stmt.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+
+        self.assertIn("projects.source_idea_id IS NOT NULL", idea_compiled)
+        self.assertIn("projects.source_idea_id IS NULL", direct_compiled)
+
 
 class ProjectServiceRuleTests(unittest.TestCase):
     def setUp(self) -> None:

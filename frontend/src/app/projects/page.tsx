@@ -22,9 +22,7 @@ function buildProjectParams(filters: ProjectFilterValues): Record<string, string
   if (filters.search.trim()) params.search = filters.search.trim();
   if (filters.owner_id) params.owner_id = filters.owner_id;
   if (filters.department_id) params.department_id = filters.department_id;
-  if (filters.source_idea_id.trim()) {
-    params.source_idea_id = filters.source_idea_id.trim();
-  }
+  if (filters.source !== "all") params.source = filters.source;
   if (filters.created_from.trim()) params.created_from = filters.created_from.trim();
   if (filters.created_to.trim()) params.created_to = filters.created_to.trim();
 

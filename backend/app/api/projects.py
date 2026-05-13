@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, timezone
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.exc import IntegrityError
@@ -177,6 +178,7 @@ async def list_projects(
     search: str | None = Query(None),
     owner_id: uuid.UUID | None = Query(None),
     department_id: uuid.UUID | None = Query(None),
+    source: Literal["idea", "direct"] | None = Query(None),
     source_idea_id: uuid.UUID | None = Query(None),
     created_from: date | None = Query(None),
     created_to: date | None = Query(None),
@@ -192,6 +194,7 @@ async def list_projects(
         search=search,
         owner_id=owner_id,
         department_id=department_id,
+        source=source,
         source_idea_id=source_idea_id,
         created_from=created_from,
         created_to=created_to,

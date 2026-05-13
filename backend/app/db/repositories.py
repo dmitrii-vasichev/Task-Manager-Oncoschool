@@ -727,6 +727,7 @@ class ProjectRepository:
         search: str | None = None,
         owner_id: uuid.UUID | None = None,
         department_id: uuid.UUID | None = None,
+        source: str | None = None,
         source_idea_id: uuid.UUID | None = None,
         created_from: date | None = None,
         created_to: date | None = None,
@@ -744,6 +745,7 @@ class ProjectRepository:
                     or_(
                         Project.title.ilike(search_pattern),
                         Project.description.ilike(search_pattern),
+                        Project.source_idea.has(Idea.title.ilike(search_pattern)),
                     )
                 )
         if owner_id:
@@ -754,6 +756,10 @@ class ProjectRepository:
             )
         if source_idea_id:
             stmt = stmt.where(Project.source_idea_id == source_idea_id)
+        elif source == "idea":
+            stmt = stmt.where(Project.source_idea_id.is_not(None))
+        elif source == "direct":
+            stmt = stmt.where(Project.source_idea_id.is_(None))
         if created_from:
             stmt = stmt.where(Project.created_at >= datetime.combine(created_from, datetime.min.time()))
         if created_to:
