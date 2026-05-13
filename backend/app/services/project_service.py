@@ -18,6 +18,7 @@ from app.services.task_visibility_service import can_access_task
 
 CLOSED_TASK_STATUSES = {"done", "cancelled"}
 COMPLETED_DEPARTMENT_STATUSES = {"ready", "not_required"}
+MUTABLE_PROJECT_STATUSES = {"planned", "in_progress", "paused"}
 
 
 class ProjectService:
@@ -36,6 +37,10 @@ class ProjectService:
     def can_complete_project(self, project: Project) -> bool:
         task_links = self._all_task_links(project)
         return bool(task_links) and all(self._is_closed_task_link(link) for link in task_links)
+
+    def validate_project_accepts_work_changes(self, project: Project) -> None:
+        if getattr(project, "status", None) not in MUTABLE_PROJECT_STATUSES:
+            raise ValueError("Завершённый или отменённый проект нельзя изменять")
 
     def can_delete_project(self, member: TeamMember, project: Project) -> bool:
         if self._has_linked_tasks(project):

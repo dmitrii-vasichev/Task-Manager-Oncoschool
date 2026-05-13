@@ -20,9 +20,9 @@
 
 **Implementation status:**
 
-- Phase 2 design approved for implementation.
-- Detailed implementation plan written; awaiting execution approach selection.
-- No Phase 2 project code has been implemented yet.
+- Implemented; automated verification passed.
+- Phase 2 includes backend project persistence, schemas, repository, service rules, API routes, frontend API/types, the Projects register, project detail, idea-to-project conversion, linked task creation, comments, milestones, departments, and history.
+- Accepted ideas can be converted into linked projects, and direct `Idea -> Tasks` support remains available for small ideas.
 
 **Definition of done:**
 
@@ -52,7 +52,13 @@ git diff --check
 
 **Latest verification result:**
 
-- Not run yet for Phase 2 implementation; design-only change.
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_project_service.py tests/test_projects_api.py -q` passed: 24 tests.
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest -q` passed: 442 tests, with existing warnings.
+- `cd frontend && npm test` passed: 82 tests, with existing `MODULE_TYPELESS_PACKAGE_JSON` warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/projects`, `/projects/[id]`, `/ideas`, and `/ideas/[id]`.
+- `git diff --check` passed.
 
 ---
 

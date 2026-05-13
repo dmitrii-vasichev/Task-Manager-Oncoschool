@@ -2,7 +2,7 @@
 
 ## Projects Phase 2
 
-- Current phase: implementation plan written; awaiting execution approach selection
+- Current phase: implemented; automated verification passed
 - Base spec: `docs/superpowers/specs/2026-05-12-ideas-projects-tasks-design.md`
 - Phase 2 spec: `docs/superpowers/specs/2026-05-13-projects-phase-2-design.md`
 - Phase 2 plan: `docs/superpowers/plans/2026-05-13-projects-phase-2.md`
@@ -12,6 +12,13 @@
   - Approved the MVP direction: Projects as an organizing layer between larger ideas and tasks, while small ideas can still create tasks directly.
   - Approved the Projects Phase 2 design for implementation planning.
   - Wrote the detailed Projects Phase 2 implementation plan and made it the active repo planning item.
+  - Added Projects persistence, migration, repository methods, service rules, API schemas, and project API routes.
+  - Added the `/projects` register with search, status, owner, department, source idea, and created date filtering.
+  - Added the `/projects/[id]` detail page with status controls, departments, milestones, linked tasks, comments, and readable history.
+  - Added direct project creation for admin/moderator users.
+  - Added idea-to-project conversion from accepted or in-task ideas, including source idea linkage and existing linked-task preservation.
+  - Added linked project visibility on idea detail pages while keeping direct Idea -> Tasks available.
+  - Addressed final review findings: idea-to-project creation is limited to admin/moderator users or the source idea review owner, soft-deleted projects no longer appear as active idea project links, and closed projects reject operational task/department/milestone changes at the API layer.
 - Key approved decisions:
   - Projects have statuses `planned`, `in_progress`, `paused`, `completed`, and `cancelled`.
   - Projects can be created from accepted or in-task ideas, and can also be created directly by admin/moderator users.
@@ -20,7 +27,13 @@
   - Project deletion is soft deletion and is blocked once linked tasks exist.
   - Direct Idea -> Tasks support remains available.
 - Latest verification:
-  - Not run yet for Phase 2 implementation; planning-only change.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_project_service.py tests/test_projects_api.py -q` passed: 24 tests.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest -q` passed: 442 tests, with existing warnings.
+  - `cd frontend && npm test` passed: 82 tests, with existing `MODULE_TYPELESS_PACKAGE_JSON` warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/projects`, `/projects/[id]`, `/ideas`, and `/ideas/[id]`.
+  - `git diff --check` passed.
 
 ## Ideas Phase 1
 

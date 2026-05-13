@@ -98,6 +98,13 @@ def _find_project_milestone_or_404(
     raise HTTPException(status_code=404, detail="Этап проекта не найден")
 
 
+def _ensure_project_accepts_work_changes(project: Project) -> None:
+    try:
+        project_service.validate_project_accepts_work_changes(project)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 def _dedupe_uuids(values: list[uuid.UUID]) -> list[uuid.UUID]:
     seen = set()
     deduped = []
@@ -272,11 +279,12 @@ async def _create_project_from_idea(
             detail="Проект можно создать только из принятой идеи или идеи в задачах",
         )
     if idea.project_id is not None:
-        raise HTTPException(status_code=409, detail="По этой идее уже создан проект")
+        linked_project = getattr(idea, "project", None)
+        if linked_project is None or getattr(linked_project, "deleted_at", None) is None:
+            raise HTTPException(status_code=409, detail="По этой идее уже создан проект")
     if not (
         project_service.can_create_direct_project(member)
         or idea_service.can_manage_idea(member, idea)
-        or data.owner_id == member.id
     ):
         raise HTTPException(status_code=403, detail="Недостаточно прав для создания проекта")
 
@@ -444,6 +452,9 @@ async def delete_project(
         deleted_by_id=member.id,
         deleted_at=deleted_at,
     )
+    source_idea = getattr(project, "source_idea", None)
+    if source_idea is not None and getattr(source_idea, "project_id", None) == project.id:
+        await idea_service.repo.update(session, source_idea, project_id=None)
     await session.commit()
 
 
@@ -479,6 +490,7 @@ async def add_project_department(
     session: AsyncSession = Depends(get_session),
 ) -> ProjectResponse:
     project = await _get_project_or_404(session, project_id)
+    _ensure_project_accepts_work_changes(project)
     department = await _get_active_department_or_404(session, data.department_id)
     await _ensure_active_member(session, data.owner_id)
     if not project_service.can_add_department(member, project, department):
@@ -525,6 +537,7 @@ async def update_project_department(
     await _ensure_active_department(session, project_department)
     if not project_service.can_manage_project_department(member, project, project_department):
         raise HTTPException(status_code=403, detail="Недостаточно прав для изменения отдела")
+    _ensure_project_accepts_work_changes(project)
 
     updates = data.model_dump(exclude_unset=True)
     if updates.get("owner_id") is not None:
@@ -568,6 +581,7 @@ async def add_project_milestone(
     project = await _get_project_or_404(session, project_id)
     if not project_service.can_manage_project(member, project):
         raise HTTPException(status_code=403, detail="Недостаточно прав для добавления этапа")
+    _ensure_project_accepts_work_changes(project)
 
     milestone = await project_service.repo.add_milestone(
         session,
@@ -602,6 +616,7 @@ async def update_project_milestone(
     milestone = _find_project_milestone_or_404(project, project_milestone_id)
     if not project_service.can_manage_project(member, project):
         raise HTTPException(status_code=403, detail="Недостаточно прав для изменения этапа")
+    _ensure_project_accepts_work_changes(project)
 
     updates = data.model_dump(exclude_unset=True)
     fields = {}
@@ -660,6 +675,7 @@ async def create_project_task(
     project = await _get_project_or_404(session, project_id)
     if not project_service.can_manage_project(member, project):
         raise HTTPException(status_code=403, detail="Недостаточно прав для создания задачи")
+    _ensure_project_accepts_work_changes(project)
 
     return await _create_linked_task(
         request,
@@ -688,6 +704,7 @@ async def create_project_department_task(
     await _ensure_active_department(session, project_department)
     if not project_service.can_manage_project_department(member, project, project_department):
         raise HTTPException(status_code=403, detail="Недостаточно прав для создания задачи")
+    _ensure_project_accepts_work_changes(project)
 
     return await _create_linked_task(
         request,
