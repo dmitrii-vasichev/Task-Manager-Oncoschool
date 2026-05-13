@@ -472,6 +472,7 @@ class Idea(Base):
         Index("idx_ideas_status", "status"),
         Index("idx_ideas_author_id", "author_id"),
         Index("idx_ideas_review_owner_id", "review_owner_id"),
+        Index("idx_ideas_project_id", "project_id"),
         Index("idx_ideas_created_at", "created_at"),
     )
 

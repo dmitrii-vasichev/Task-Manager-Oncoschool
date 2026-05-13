@@ -70,6 +70,7 @@ def upgrade() -> None:
         ["id"],
         ondelete="SET NULL",
     )
+    op.create_index("idx_ideas_project_id", "ideas", ["project_id"])
 
     op.create_table(
         "project_departments",
@@ -304,6 +305,7 @@ def downgrade() -> None:
     op.drop_index("idx_project_departments_project_id", table_name="project_departments")
     op.drop_table("project_departments")
 
+    op.drop_index("idx_ideas_project_id", table_name="ideas")
     op.drop_constraint("fk_ideas_project_id_projects", "ideas", type_="foreignkey")
     op.drop_column("ideas", "project_id")
 

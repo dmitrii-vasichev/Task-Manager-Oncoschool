@@ -4,20 +4,9 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from sqlalchemy import ForeignKeyConstraint, UniqueConstraint
-from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import configure_mappers
 
 from app.db import models
-
-try:
-    from app.db.repositories import ProjectRepository
-except ImportError as exc:
-    if "ProjectRepository" not in str(exc):
-        raise
-    ProjectRepository = None
-
-_POSTGRESQL_DIALECT_FACTORY = postgresql.dialect
-_PROJECT_REPOSITORY_IMPORT = ProjectRepository
 
 
 def member(role: str = "member", *, member_id: uuid.UUID | None = None):
