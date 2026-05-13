@@ -135,3 +135,34 @@ test("dashboard task badges avoid a red zero-overdue state", () => {
   );
   assert.doesNotMatch(badgeBlock[0], /value:\s*0/);
 });
+
+test("dashboard task rows synchronize desktop card heights without fixed card heights", () => {
+  const source = readSource("app/page.tsx");
+  const item = source.match(
+    /function TaskListItem[\s\S]*?\/\/ ────────────────────────────────────────────\n\/\/ Section header/,
+  );
+  const block = source.match(
+    /function DashboardTaskBlock[\s\S]*?function DashboardActivityCard/,
+  );
+  const sync = source.match(
+    /function DashboardSynchronizedTaskGroups[\s\S]*?function DashboardTaskBlock/,
+  );
+
+  assert.ok(item, "dashboard task list item source should exist");
+  assert.ok(block, "dashboard task block source should exist");
+  assert.ok(sync, "synchronized dashboard task group source should exist");
+  assert.match(source, /type DashboardVisibleTaskGroup = DashboardTaskGroup &/);
+  assert.match(item[0], /relative flex h-full flex-col/);
+  assert.match(block[0], /shouldSynchronizeTaskRows/);
+  assert.match(block[0], /space-y-3 xl:hidden/);
+  assert.match(sync[0], /synchronizedTaskRows/);
+  assert.match(sync[0], /Array\.from\(\{\s*length:\s*Math\.max\(/);
+  assert.match(sync[0], /hidden gap-x-4 gap-y-2 xl:grid xl:grid-cols-2/);
+  assert.match(sync[0], /aria-hidden="true"/);
+  assert.match(sync[0], /controlsId=\{`\$\{overdueGroup\.listId\} \$\{listId\}`\}/);
+  assert.match(sync[0], /controlsId=\{`\$\{activeGroup\.listId\} \$\{listId\}`\}/);
+  assert.doesNotMatch(item[0], /h-\[\d/);
+  assert.doesNotMatch(sync[0], /h-\[\d/);
+  assert.doesNotMatch(block[0], /h-\[\d/);
+  assert.doesNotMatch(sync[0], /height:\s*\d/);
+});
