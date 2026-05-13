@@ -46,6 +46,11 @@ export function CreateIdeaDialog({
     setError(null);
   }
 
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen && !saving) resetForm();
+    onOpenChange(nextOpen);
+  }
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
 
@@ -88,10 +93,7 @@ export function CreateIdeaDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen && !saving) resetForm();
-        onOpenChange(nextOpen);
-      }}
+      onOpenChange={handleOpenChange}
     >
       <DialogContent className="max-h-[calc(100vh-1.5rem)] overflow-y-auto sm:max-w-[520px]">
         <DialogHeader>
@@ -158,7 +160,7 @@ export function CreateIdeaDialog({
             <Button
               type="button"
               variant="outline"
-              onClick={() => onOpenChange(false)}
+              onClick={() => handleOpenChange(false)}
               disabled={saving}
             >
               Отмена
