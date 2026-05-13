@@ -11,6 +11,7 @@ from app.api.ideas import router as ideas_router
 from app.api.meeting_schedules import router as meeting_schedules_router
 from app.api.meetings import router as meetings_router
 from app.api.notifications import router as notifications_router
+from app.api.projects import router as projects_router
 from app.api.settings import router as settings_router
 from app.api.task_labels import router as task_labels_router
 from app.api.tasks import router as tasks_router
@@ -25,6 +26,7 @@ api_router.include_router(tasks_router)
 api_router.include_router(task_labels_router)
 api_router.include_router(task_updates_router)
 api_router.include_router(ideas_router)
+api_router.include_router(projects_router)
 api_router.include_router(meetings_router)
 api_router.include_router(meeting_schedules_router)
 api_router.include_router(notifications_router)

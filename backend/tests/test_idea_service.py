@@ -39,6 +39,8 @@ def idea(**overrides):
         "task_links": [],
         "comments": [],
         "events": [],
+        "project_id": None,
+        "project": None,
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -482,3 +484,25 @@ class IdeaServiceRuleTests(unittest.TestCase):
         self.assertEqual(response.hidden_linked_task_count, 1)
         self.assertEqual(response.completed_linked_task_count, 1)
         self.assertIsNone(response.task_links[0].task)
+
+    def test_shape_response_hides_soft_deleted_linked_project(self) -> None:
+        project_id = uuid.uuid4()
+        linked_project = SimpleNamespace(
+            id=project_id,
+            title="Launch project",
+            status="planned",
+            deleted_at=datetime(2026, 1, 2, 12, 0, 0),
+        )
+        item = idea(project_id=project_id, project=linked_project)
+
+        async def run_shape():
+            return await self.service.shape_response(
+                SimpleNamespace(),
+                member(),
+                item,
+            )
+
+        response = asyncio.run(run_shape())
+
+        self.assertEqual(response.project_id, project_id)
+        self.assertIsNone(response.project)

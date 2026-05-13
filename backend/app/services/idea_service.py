@@ -174,8 +174,16 @@ class IdeaService:
             ]
         )
         response = IdeaResponse.model_validate(idea)
+        linked_project = getattr(idea, "project", None)
+        project_response = response.project
+        if (
+            linked_project is not None
+            and getattr(linked_project, "deleted_at", None) is not None
+        ):
+            project_response = None
         return response.model_copy(
             update={
+                "project": project_response,
                 "departments": shaped_departments,
                 "task_links": shaped_direct_links,
                 "comments": response.comments if include_comments else [],

@@ -36,9 +36,27 @@ IdeaEventType = Literal[
     "department_updated",
     "task_linked",
     "comment_added",
+    "project_created",
+    "project_linked",
     "idea_completed",
     "idea_reopened",
     "idea_deleted",
+]
+ProjectStatusType = Literal["planned", "in_progress", "paused", "completed", "cancelled"]
+ProjectDepartmentStatusType = Literal["not_started", "in_progress", "ready", "not_required"]
+ProjectMilestoneStatusType = Literal["planned", "in_progress", "done"]
+ProjectEventType = Literal[
+    "project_created",
+    "project_updated",
+    "status_changed",
+    "department_added",
+    "department_updated",
+    "milestone_added",
+    "milestone_updated",
+    "task_linked",
+    "comment_added",
+    "project_completed",
+    "project_deleted",
 ]
 MeetingAIProcessingStatusType = Literal[
     "idle",
@@ -333,6 +351,107 @@ class IdeaLinkedTaskCreate(BaseModel):
         return normalize_task_urgency(value)
 
 
+class ProjectCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(min_length=1)
+    owner_id: uuid.UUID
+    source_idea_id: uuid.UUID | None = None
+    department_ids: list[uuid.UUID] = Field(default_factory=list)
+
+    @field_validator("title", "description", mode="before")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class ProjectUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    description: str | None = Field(default=None, min_length=1)
+    owner_id: uuid.UUID | None = None
+
+    @field_validator("title", "description", mode="before")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class ProjectStatusChange(BaseModel):
+    status: ProjectStatusType
+
+
+class ProjectDepartmentCreate(BaseModel):
+    department_id: uuid.UUID
+    owner_id: uuid.UUID
+
+
+class ProjectDepartmentUpdate(BaseModel):
+    owner_id: uuid.UUID | None = None
+    status: ProjectDepartmentStatusType | None = None
+    note: str | None = None
+
+
+class ProjectMilestoneCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    due_date: date | None = None
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class ProjectMilestoneUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    status: ProjectMilestoneStatusType | None = None
+    due_date: date | None = None
+    sort_order: int | None = None
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_optional_title(cls, value: str | None) -> str | None:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class ProjectCommentCreate(BaseModel):
+    body: str = Field(min_length=1)
+
+    @field_validator("body", mode="before")
+    @classmethod
+    def strip_body(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class ProjectLinkedTaskCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    description: str | None = None
+    priority: TaskPriorityType = "normal"
+    assignee_id: uuid.UUID | None = None
+    deadline: date | None = None
+    label_ids: list[uuid.UUID] = Field(default_factory=list)
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def strip_title(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def normalize_priority(cls, value: str | None) -> str:
+        return normalize_task_urgency(value)
+
+
 class IdeaEventResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -387,6 +506,22 @@ class IdeaDepartmentResponse(BaseModel):
     task_links: list[IdeaTaskResponse] = Field(default_factory=list)
 
 
+class ProjectSummaryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    status: str
+
+
+class IdeaSummaryResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    status: str
+
+
 class IdeaResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -394,6 +529,7 @@ class IdeaResponse(BaseModel):
     title: str
     description: str
     status: str
+    project_id: uuid.UUID | None = None
     author_id: uuid.UUID
     review_owner_id: uuid.UUID
     decision_comment: str | None
@@ -408,6 +544,7 @@ class IdeaResponse(BaseModel):
     author: TeamMemberResponse | None = None
     review_owner: TeamMemberResponse | None = None
     decision_by: TeamMemberResponse | None = None
+    project: ProjectSummaryResponse | None = None
     departments: list[IdeaDepartmentResponse] = Field(default_factory=list)
     task_links: list[IdeaTaskResponse] = Field(default_factory=list)
     comments: list[IdeaCommentResponse] = Field(default_factory=list)
@@ -424,6 +561,114 @@ class IdeaResponse(BaseModel):
 
 class PaginatedIdeasResponse(BaseModel):
     items: list[IdeaResponse]
+    total: int
+    page: int
+    per_page: int
+    pages: int
+
+
+class ProjectEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    actor_id: uuid.UUID | None
+    event_type: str
+    payload: dict
+    created_at: datetime
+    actor: TeamMemberResponse | None = None
+
+
+class ProjectCommentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    author_id: uuid.UUID
+    body: str
+    created_at: datetime
+    updated_at: datetime
+    author: TeamMemberResponse | None = None
+
+
+class ProjectTaskResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    project_department_id: uuid.UUID | None
+    task_id: uuid.UUID
+    created_by_id: uuid.UUID | None
+    created_at: datetime
+    task: TaskResponse | None = None
+    hidden: bool = False
+
+
+class ProjectDepartmentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    department_id: uuid.UUID
+    owner_id: uuid.UUID
+    status: str
+    note: str | None
+    created_by_id: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+    department: DepartmentResponse | None = None
+    owner: TeamMemberResponse | None = None
+    task_links: list[ProjectTaskResponse] = Field(default_factory=list)
+
+
+class ProjectMilestoneResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    title: str
+    status: str
+    due_date: date | None
+    sort_order: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    description: str
+    status: str
+    owner_id: uuid.UUID
+    source_idea_id: uuid.UUID | None
+    completed_at: datetime | None
+    deleted_at: datetime | None = None
+    deleted_by_id: uuid.UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+    owner: TeamMemberResponse | None = None
+    source_idea: IdeaSummaryResponse | None = None
+    departments: list[ProjectDepartmentResponse] = Field(default_factory=list)
+    milestones: list[ProjectMilestoneResponse] = Field(default_factory=list)
+    task_links: list[ProjectTaskResponse] = Field(default_factory=list)
+    comments: list[ProjectCommentResponse] = Field(default_factory=list)
+    events: list[ProjectEventResponse] = Field(default_factory=list)
+    linked_task_count: int = 0
+    visible_linked_task_count: int = 0
+    completed_linked_task_count: int = 0
+    hidden_linked_task_count: int = 0
+    ready_department_count: int = 0
+    required_department_count: int = 0
+    completed_milestone_count: int = 0
+    milestone_count: int = 0
+    can_complete: bool = False
+    can_delete: bool = False
+
+
+class PaginatedProjectsResponse(BaseModel):
+    items: list[ProjectResponse]
     total: int
     page: int
     per_page: int
