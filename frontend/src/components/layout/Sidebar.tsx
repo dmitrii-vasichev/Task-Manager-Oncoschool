@@ -13,6 +13,7 @@ import {
   Settings,
   Megaphone,
   Lightbulb,
+  FolderKanban,
   LogOut,
   ChevronsLeft,
   ChevronsRight,
@@ -81,6 +82,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, section: "dashboard" },
   { href: "/tasks", label: "Задачи", icon: CheckSquare, section: "work" },
   { href: "/ideas", label: "Идеи", icon: Lightbulb, section: "work" },
+  { href: "/projects", label: "Проекты", icon: FolderKanban, section: "work" },
   { href: "/meetings", label: "Встречи", icon: CalendarDays, section: "work" },
   { href: "/analytics", label: "Статистика задач", icon: BarChart3, section: "analytics" },
   {
