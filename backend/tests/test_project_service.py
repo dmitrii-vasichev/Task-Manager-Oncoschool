@@ -1,9 +1,11 @@
+import asyncio
 import unittest
 import uuid
 from datetime import datetime
 from types import SimpleNamespace
 
 from sqlalchemy import ForeignKeyConstraint, UniqueConstraint
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.orm import configure_mappers
 
 from app.db import models
@@ -31,6 +33,21 @@ def project(**overrides):
         "task_links": [],
         "comments": [],
         "events": [],
+    }
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
+def task_link(status: str, **overrides):
+    now = datetime(2026, 5, 13, 12, 0, 0)
+    base = {
+        "id": uuid.uuid4(),
+        "project_id": uuid.uuid4(),
+        "project_department_id": None,
+        "task_id": uuid.uuid4(),
+        "created_by_id": None,
+        "created_at": now,
+        "task": SimpleNamespace(status=status),
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -78,3 +95,86 @@ class ProjectModelSmokeTests(unittest.TestCase):
         idea_table = models.Idea.__table__
 
         self.assertIn("project_id", idea_table.c)
+
+
+class ProjectRepositoryTests(unittest.TestCase):
+    def test_list_excludes_soft_deleted_projects(self) -> None:
+        from app.db.repositories import ProjectRepository
+
+        class FakeScalarResult:
+            def unique(self):
+                return self
+
+            def all(self):
+                return []
+
+        class FakeResult:
+            def scalar_one(self):
+                return 0
+
+            def scalars(self):
+                return FakeScalarResult()
+
+        class FakeSession:
+            def __init__(self) -> None:
+                self.statements = []
+
+            async def execute(self, stmt):
+                self.statements.append(stmt)
+                return FakeResult()
+
+        async def run_list() -> FakeSession:
+            session = FakeSession()
+            await ProjectRepository().list(session)
+            return session
+
+        session = asyncio.run(run_list())
+        list_stmt = session.statements[1]
+        compiled = str(
+            list_stmt.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+
+        self.assertIn("projects.deleted_at IS NULL", compiled)
+
+
+class ProjectServiceRuleTests(unittest.TestCase):
+    def setUp(self) -> None:
+        from app.services.project_service import ProjectService
+
+        self.service = ProjectService()
+
+    def test_moderator_can_create_direct_project(self) -> None:
+        self.assertTrue(self.service.can_create_direct_project(member("admin")))
+        self.assertTrue(self.service.can_create_direct_project(member("moderator")))
+        self.assertFalse(self.service.can_create_direct_project(member("member")))
+
+    def test_owner_can_manage_project(self) -> None:
+        owner_id = uuid.uuid4()
+        item = project(owner_id=owner_id)
+
+        self.assertTrue(
+            self.service.can_manage_project(member(member_id=owner_id), item)
+        )
+        self.assertTrue(self.service.can_manage_project(member("moderator"), item))
+        self.assertFalse(self.service.can_manage_project(member(), item))
+
+    def test_project_with_open_task_cannot_complete(self) -> None:
+        item = project(task_links=[task_link("in_progress")])
+
+        self.assertFalse(self.service.can_complete_project(item))
+
+    def test_project_with_closed_tasks_can_complete(self) -> None:
+        item = project(task_links=[task_link("done"), task_link("cancelled")])
+
+        self.assertTrue(self.service.can_complete_project(item))
+
+    def test_project_without_tasks_cannot_complete(self) -> None:
+        self.assertFalse(self.service.can_complete_project(project()))
+
+    def test_delete_requires_no_linked_tasks(self) -> None:
+        item = project(task_links=[task_link("done")])
+
+        self.assertFalse(self.service.can_delete_project(member("admin"), item))

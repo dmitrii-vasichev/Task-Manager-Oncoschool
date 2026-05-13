@@ -33,6 +33,12 @@ from app.db.models import (
     MeetingParticipant,
     MeetingSchedule,
     NotificationSubscription,
+    Project,
+    ProjectComment,
+    ProjectDepartment,
+    ProjectEvent,
+    ProjectMilestone,
+    ProjectTask,
     ReminderSettings,
     Task,
     TaskLabel,
@@ -668,6 +674,227 @@ class IdeaRepository:
     ) -> IdeaEvent:
         event = IdeaEvent(
             idea_id=idea_id,
+            actor_id=actor_id,
+            event_type=event_type,
+            payload=payload or {},
+        )
+        session.add(event)
+        await session.flush()
+        return event
+
+
+class ProjectRepository:
+    def detail_options(self):
+        department_task_links = (
+            selectinload(Project.departments)
+            .selectinload(ProjectDepartment.task_links)
+            .selectinload(ProjectTask.task)
+        )
+        task_links = selectinload(Project.task_links).selectinload(ProjectTask.task)
+
+        return (
+            selectinload(Project.owner),
+            selectinload(Project.source_idea),
+            selectinload(Project.deleted_by),
+            selectinload(Project.departments).selectinload(ProjectDepartment.department),
+            selectinload(Project.departments).selectinload(ProjectDepartment.owner),
+            department_task_links.selectinload(Task.assignee),
+            department_task_links.selectinload(Task.created_by),
+            department_task_links.selectinload(Task.labels),
+            task_links.selectinload(Task.assignee),
+            task_links.selectinload(Task.created_by),
+            task_links.selectinload(Task.labels),
+            selectinload(Project.comments).selectinload(ProjectComment.author),
+            selectinload(Project.events).selectinload(ProjectEvent.actor),
+            selectinload(Project.milestones),
+        )
+
+    async def get_by_id(self, session: AsyncSession, project_id: uuid.UUID) -> Project | None:
+        stmt = (
+            select(Project)
+            .where(Project.id == project_id, Project.deleted_at.is_(None))
+            .options(*self.detail_options())
+        )
+        result = await session.execute(stmt)
+        return result.scalars().first()
+
+    async def list(
+        self,
+        session: AsyncSession,
+        *,
+        status: str | None = None,
+        search: str | None = None,
+        owner_id: uuid.UUID | None = None,
+        department_id: uuid.UUID | None = None,
+        source_idea_id: uuid.UUID | None = None,
+        created_from: date | None = None,
+        created_to: date | None = None,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> tuple[list[Project], int]:
+        stmt = select(Project).where(Project.deleted_at.is_(None)).options(*self.detail_options())
+        if status:
+            stmt = stmt.where(Project.status.in_([item.strip() for item in status.split(",") if item.strip()]))
+        if search:
+            normalized_search = search.strip()
+            if normalized_search:
+                search_pattern = f"%{normalized_search}%"
+                stmt = stmt.where(
+                    or_(
+                        Project.title.ilike(search_pattern),
+                        Project.description.ilike(search_pattern),
+                    )
+                )
+        if owner_id:
+            stmt = stmt.where(Project.owner_id == owner_id)
+        if department_id:
+            stmt = stmt.join(Project.departments).where(
+                ProjectDepartment.department_id == department_id
+            )
+        if source_idea_id:
+            stmt = stmt.where(Project.source_idea_id == source_idea_id)
+        if created_from:
+            stmt = stmt.where(Project.created_at >= datetime.combine(created_from, datetime.min.time()))
+        if created_to:
+            stmt = stmt.where(Project.created_at <= datetime.combine(created_to, datetime.max.time()))
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = (await session.execute(count_stmt)).scalar_one()
+        result = await session.execute(
+            stmt.order_by(Project.updated_at.desc()).offset((page - 1) * per_page).limit(per_page)
+        )
+        return list(result.scalars().unique().all()), total
+
+    async def create(
+        self,
+        session: AsyncSession,
+        *,
+        title: str,
+        description: str,
+        owner_id: uuid.UUID,
+        source_idea_id: uuid.UUID | None = None,
+    ) -> Project:
+        project = Project(
+            title=title,
+            description=description,
+            owner_id=owner_id,
+            source_idea_id=source_idea_id,
+        )
+        session.add(project)
+        await session.flush()
+        return project
+
+    async def update(self, session: AsyncSession, project: Project, **fields) -> Project:
+        for key, value in fields.items():
+            setattr(project, key, value)
+        await session.flush()
+        return project
+
+    async def soft_delete(
+        self,
+        session: AsyncSession,
+        project: Project,
+        *,
+        deleted_by_id: uuid.UUID,
+        deleted_at: datetime,
+    ) -> Project:
+        project.deleted_at = deleted_at
+        project.deleted_by_id = deleted_by_id
+        await session.flush()
+        return project
+
+    async def add_department(
+        self,
+        session: AsyncSession,
+        *,
+        project_id: uuid.UUID,
+        department_id: uuid.UUID,
+        owner_id: uuid.UUID,
+        created_by_id: uuid.UUID,
+    ) -> ProjectDepartment:
+        item = ProjectDepartment(
+            project_id=project_id,
+            department_id=department_id,
+            owner_id=owner_id,
+            created_by_id=created_by_id,
+        )
+        session.add(item)
+        await session.flush()
+        return item
+
+    async def add_milestone(
+        self,
+        session: AsyncSession,
+        *,
+        project_id: uuid.UUID,
+        title: str,
+        due_date: date | None = None,
+        sort_order: int = 0,
+    ) -> ProjectMilestone:
+        milestone = ProjectMilestone(
+            project_id=project_id,
+            title=title,
+            due_date=due_date,
+            sort_order=sort_order,
+        )
+        session.add(milestone)
+        await session.flush()
+        return milestone
+
+    async def update_milestone(
+        self,
+        session: AsyncSession,
+        milestone: ProjectMilestone,
+        **fields,
+    ) -> ProjectMilestone:
+        for key, value in fields.items():
+            setattr(milestone, key, value)
+        await session.flush()
+        return milestone
+
+    async def add_comment(
+        self,
+        session: AsyncSession,
+        *,
+        project_id: uuid.UUID,
+        author_id: uuid.UUID,
+        body: str,
+    ) -> ProjectComment:
+        comment = ProjectComment(project_id=project_id, author_id=author_id, body=body)
+        session.add(comment)
+        await session.flush()
+        return comment
+
+    async def add_task_link(
+        self,
+        session: AsyncSession,
+        *,
+        project_id: uuid.UUID,
+        task_id: uuid.UUID,
+        created_by_id: uuid.UUID,
+        project_department_id: uuid.UUID | None = None,
+    ) -> ProjectTask:
+        link = ProjectTask(
+            project_id=project_id,
+            project_department_id=project_department_id,
+            task_id=task_id,
+            created_by_id=created_by_id,
+        )
+        session.add(link)
+        await session.flush()
+        return link
+
+    async def add_event(
+        self,
+        session: AsyncSession,
+        *,
+        project_id: uuid.UUID,
+        actor_id: uuid.UUID | None,
+        event_type: str,
+        payload: dict | None = None,
+    ) -> ProjectEvent:
+        event = ProjectEvent(
+            project_id=project_id,
             actor_id=actor_id,
             event_type=event_type,
             payload=payload or {},
