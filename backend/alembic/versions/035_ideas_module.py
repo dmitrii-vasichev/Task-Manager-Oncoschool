@@ -32,13 +32,13 @@ def upgrade() -> None:
         sa.Column(
             "author_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("team_members.id", ondelete="CASCADE"),
+            sa.ForeignKey("team_members.id"),
             nullable=False,
         ),
         sa.Column(
             "review_owner_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("team_members.id", ondelete="CASCADE"),
+            sa.ForeignKey("team_members.id"),
             nullable=False,
         ),
         sa.Column("decision_comment", sa.Text(), nullable=True),
@@ -82,7 +82,7 @@ def upgrade() -> None:
         sa.Column(
             "owner_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("team_members.id", ondelete="CASCADE"),
+            sa.ForeignKey("team_members.id"),
             nullable=False,
         ),
         sa.Column(
@@ -104,6 +104,11 @@ def upgrade() -> None:
             "idea_id",
             "department_id",
             name="uq_idea_departments_idea_department",
+        ),
+        sa.UniqueConstraint(
+            "idea_id",
+            "id",
+            name="uq_idea_departments_idea_id_id",
         ),
     )
     op.create_index("idx_idea_departments_idea_id", "idea_departments", ["idea_id"])
@@ -132,7 +137,6 @@ def upgrade() -> None:
         sa.Column(
             "idea_department_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("idea_departments.id", ondelete="SET NULL"),
             nullable=True,
         ),
         sa.Column(
@@ -148,6 +152,11 @@ def upgrade() -> None:
             nullable=True,
         ),
         sa.Column("created_at", sa.DateTime(), server_default=sa.func.now(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["idea_id", "idea_department_id"],
+            ["idea_departments.idea_id", "idea_departments.id"],
+            name="fk_idea_tasks_idea_department_same_idea",
+        ),
         sa.UniqueConstraint("task_id", name="uq_idea_tasks_task_id"),
     )
     op.create_index("idx_idea_tasks_idea_id", "idea_tasks", ["idea_id"])
@@ -175,7 +184,7 @@ def upgrade() -> None:
         sa.Column(
             "author_id",
             postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("team_members.id", ondelete="CASCADE"),
+            sa.ForeignKey("team_members.id"),
             nullable=False,
         ),
         sa.Column("body", sa.Text(), nullable=False),

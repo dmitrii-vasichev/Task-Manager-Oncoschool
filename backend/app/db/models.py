@@ -13,6 +13,7 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     Numeric,
@@ -20,10 +21,11 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    and_,
     inspect,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, foreign, mapped_column, relationship
 from sqlalchemy.sql import func
 
 
@@ -482,10 +484,10 @@ class Idea(Base):
         String(30), default="new", server_default="new", nullable=False
     )
     author_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("team_members.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("team_members.id"), nullable=False
     )
     review_owner_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("team_members.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("team_members.id"), nullable=False
     )
     decision_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     decision_by_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -520,6 +522,7 @@ class IdeaDepartment(Base):
     __tablename__ = "idea_departments"
     __table_args__ = (
         UniqueConstraint("idea_id", "department_id", name="uq_idea_departments_idea_department"),
+        UniqueConstraint("idea_id", "id", name="uq_idea_departments_idea_id_id"),
         Index("idx_idea_departments_idea_id", "idea_id"),
         Index("idx_idea_departments_department_id", "department_id"),
         Index("idx_idea_departments_owner_id", "owner_id"),
@@ -536,7 +539,7 @@ class IdeaDepartment(Base):
         ForeignKey("departments.id", ondelete="CASCADE"), nullable=False
     )
     owner_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("team_members.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("team_members.id"), nullable=False
     )
     status: Mapped[str] = mapped_column(
         String(30), default="not_started", server_default="not_started", nullable=False
@@ -554,13 +557,24 @@ class IdeaDepartment(Base):
     department: Mapped["Department"] = relationship()
     owner: Mapped["TeamMember"] = relationship(foreign_keys=[owner_id])
     created_by: Mapped["TeamMember | None"] = relationship(foreign_keys=[created_by_id])
-    task_links: Mapped[list["IdeaTask"]] = relationship(back_populates="idea_department")
+    task_links: Mapped[list["IdeaTask"]] = relationship(
+        back_populates="idea_department",
+        primaryjoin=lambda: and_(
+            IdeaDepartment.idea_id == IdeaTask.idea_id,
+            IdeaDepartment.id == foreign(IdeaTask.idea_department_id),
+        ),
+    )
 
 
 class IdeaTask(Base):
     __tablename__ = "idea_tasks"
     __table_args__ = (
         UniqueConstraint("task_id", name="uq_idea_tasks_task_id"),
+        ForeignKeyConstraint(
+            ["idea_id", "idea_department_id"],
+            ["idea_departments.idea_id", "idea_departments.id"],
+            name="fk_idea_tasks_idea_department_same_idea",
+        ),
         Index("idx_idea_tasks_idea_id", "idea_id"),
         Index("idx_idea_tasks_idea_department_id", "idea_department_id"),
         Index("idx_idea_tasks_task_id", "task_id"),
@@ -573,7 +587,7 @@ class IdeaTask(Base):
         ForeignKey("ideas.id", ondelete="CASCADE"), nullable=False
     )
     idea_department_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("idea_departments.id", ondelete="SET NULL"), nullable=True
+        nullable=True
     )
     task_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False
@@ -584,7 +598,13 @@ class IdeaTask(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     idea: Mapped["Idea"] = relationship(back_populates="task_links")
-    idea_department: Mapped["IdeaDepartment | None"] = relationship(back_populates="task_links")
+    idea_department: Mapped["IdeaDepartment | None"] = relationship(
+        back_populates="task_links",
+        primaryjoin=lambda: and_(
+            IdeaDepartment.idea_id == IdeaTask.idea_id,
+            IdeaDepartment.id == foreign(IdeaTask.idea_department_id),
+        ),
+    )
     task: Mapped["Task"] = relationship()
     created_by: Mapped["TeamMember | None"] = relationship()
 
@@ -603,7 +623,7 @@ class IdeaComment(Base):
         ForeignKey("ideas.id", ondelete="CASCADE"), nullable=False
     )
     author_id: Mapped[uuid.UUID] = mapped_column(
-        ForeignKey("team_members.id", ondelete="CASCADE"), nullable=False
+        ForeignKey("team_members.id"), nullable=False
     )
     body: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
