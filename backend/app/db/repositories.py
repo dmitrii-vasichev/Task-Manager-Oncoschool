@@ -501,6 +501,7 @@ class IdeaRepository:
             selectinload(Idea.author),
             selectinload(Idea.review_owner),
             selectinload(Idea.decision_by),
+            selectinload(Idea.deleted_by),
             selectinload(Idea.departments).selectinload(IdeaDepartment.department),
             selectinload(Idea.departments).selectinload(IdeaDepartment.owner),
             department_task_links.selectinload(Task.assignee),
@@ -514,7 +515,11 @@ class IdeaRepository:
         )
 
     async def get_by_id(self, session: AsyncSession, idea_id: uuid.UUID) -> Idea | None:
-        stmt = select(Idea).where(Idea.id == idea_id).options(*self.detail_options())
+        stmt = (
+            select(Idea)
+            .where(Idea.id == idea_id, Idea.deleted_at.is_(None))
+            .options(*self.detail_options())
+        )
         result = await session.execute(stmt)
         return result.scalars().first()
 
@@ -532,7 +537,7 @@ class IdeaRepository:
         page: int = 1,
         per_page: int = 50,
     ) -> tuple[list[Idea], int]:
-        stmt = select(Idea).options(*self.detail_options())
+        stmt = select(Idea).where(Idea.deleted_at.is_(None)).options(*self.detail_options())
         if status:
             stmt = stmt.where(Idea.status.in_([item.strip() for item in status.split(",") if item.strip()]))
         if search:
@@ -585,6 +590,19 @@ class IdeaRepository:
     async def update(self, session: AsyncSession, idea: Idea, **fields) -> Idea:
         for key, value in fields.items():
             setattr(idea, key, value)
+        await session.flush()
+        return idea
+
+    async def soft_delete(
+        self,
+        session: AsyncSession,
+        idea: Idea,
+        *,
+        deleted_by_id: uuid.UUID,
+        deleted_at: datetime,
+    ) -> Idea:
+        idea.deleted_at = deleted_at
+        idea.deleted_by_id = deleted_by_id
         await session.flush()
         return idea
 

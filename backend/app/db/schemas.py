@@ -38,6 +38,7 @@ IdeaEventType = Literal[
     "comment_added",
     "idea_completed",
     "idea_reopened",
+    "idea_deleted",
 ]
 MeetingAIProcessingStatusType = Literal[
     "idle",
@@ -400,6 +401,8 @@ class IdeaResponse(BaseModel):
     decision_at: datetime | None
     deferred_until: date | None
     completed_at: datetime | None
+    deleted_at: datetime | None = None
+    deleted_by_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
     author: TeamMemberResponse | None = None
@@ -416,6 +419,7 @@ class IdeaResponse(BaseModel):
     ready_department_count: int = 0
     required_department_count: int = 0
     can_complete: bool = False
+    can_delete: bool = False
 
 
 class PaginatedIdeasResponse(BaseModel):

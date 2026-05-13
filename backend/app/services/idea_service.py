@@ -35,6 +35,30 @@ class IdeaService:
             or getattr(idea, "review_owner_id", None) == getattr(member, "id", None)
         )
 
+    def can_delete_idea(self, member: TeamMember, idea: Idea) -> bool:
+        if self._has_linked_tasks(idea):
+            return False
+        if PermissionService.is_moderator(member):
+            return True
+        return (
+            getattr(idea, "author_id", None) == getattr(member, "id", None)
+            and getattr(idea, "status", None) == "new"
+        )
+
+    def validate_delete_idea(self, member: TeamMember, idea: Idea) -> None:
+        if self._has_linked_tasks(idea):
+            raise ValueError("Идею нельзя удалить: по ней уже созданы связанные задачи")
+
+        if PermissionService.is_moderator(member):
+            return
+
+        if getattr(idea, "author_id", None) == getattr(member, "id", None):
+            if getattr(idea, "status", None) != "new":
+                raise ValueError("Удалить можно только новую идею до начала работы")
+            return
+
+        raise PermissionError("Недостаточно прав для удаления идеи")
+
     def can_manage_idea_department(
         self,
         member: TeamMember,
@@ -179,6 +203,7 @@ class IdeaService:
                     if department.status != "not_required"
                 ),
                 "can_complete": self.can_complete_idea(idea),
+                "can_delete": self.can_delete_idea(member, idea),
             }
         )
 
@@ -271,6 +296,14 @@ class IdeaService:
     def _is_closed_task_link(self, link: IdeaTask) -> bool:
         task = getattr(link, "task", None)
         return getattr(task, "status", None) in CLOSED_TASK_STATUSES
+
+    def _has_linked_tasks(self, idea: Idea) -> bool:
+        if getattr(idea, "task_links", None):
+            return True
+        return any(
+            getattr(department, "task_links", None)
+            for department in (getattr(idea, "departments", []) or [])
+        )
 
     def _dedupe_task_links(self, links: list) -> list:
         seen = set()

@@ -371,6 +371,12 @@ class ApiClient {
     return this.request<Idea>(`/api/ideas/${id}`);
   }
 
+  async deleteIdea(id: string): Promise<void> {
+    return this.request<void>(`/api/ideas/${id}`, {
+      method: "DELETE",
+    });
+  }
+
   async updateIdeaStatus(
     id: string,
     data: IdeaStatusChangeRequest

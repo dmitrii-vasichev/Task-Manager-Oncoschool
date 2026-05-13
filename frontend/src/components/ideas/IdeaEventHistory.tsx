@@ -2,6 +2,7 @@
 
 import { Activity } from "lucide-react";
 import { parseUTCDate } from "@/lib/dateUtils";
+import { formatIdeaEvent } from "@/lib/ideaEventUtils";
 import type { IdeaEvent } from "@/lib/types";
 
 function formatEventDate(value: string): string {
@@ -17,6 +18,16 @@ function formatEventDate(value: string): string {
   });
 }
 
+function formatEventCount(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${count} событие`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return `${count} события`;
+  }
+  return `${count} событий`;
+}
+
 export function IdeaEventHistory({ events }: { events: IdeaEvent[] }) {
   return (
     <section className="rounded-lg border border-border/60 bg-card shadow-sm">
@@ -24,7 +35,7 @@ export function IdeaEventHistory({ events }: { events: IdeaEvent[] }) {
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-foreground">История</h2>
-            <p className="text-xs text-muted-foreground">{events.length} событий</p>
+            <p className="text-xs text-muted-foreground">{formatEventCount(events.length)}</p>
           </div>
           <Activity className="h-4 w-4 shrink-0 text-muted-foreground" />
         </div>
@@ -36,24 +47,33 @@ export function IdeaEventHistory({ events }: { events: IdeaEvent[] }) {
             Событий пока нет
           </div>
         ) : (
-          events.map((event) => (
-            <div
-              key={event.id}
-              className="rounded-md border border-border/60 px-3 py-2"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <p className="break-all text-sm font-medium text-foreground">
-                  {event.event_type}
-                </p>
-                <p className="shrink-0 text-xs text-muted-foreground">
-                  {formatEventDate(event.created_at)}
+          events.map((event) => {
+            const formattedEvent = formatIdeaEvent(event);
+
+            return (
+              <div
+                key={event.id}
+                className="rounded-md border border-border/60 px-3 py-2"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="min-w-0 break-words text-sm font-medium text-foreground">
+                    {formattedEvent.title}
+                  </p>
+                  <p className="shrink-0 text-xs text-muted-foreground">
+                    {formatEventDate(event.created_at)}
+                  </p>
+                </div>
+                {formattedEvent.detail ? (
+                  <p className="mt-1 break-words text-xs leading-5 text-foreground/80">
+                    {formattedEvent.detail}
+                  </p>
+                ) : null}
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  {event.actor?.full_name || "Системное событие"}
                 </p>
               </div>
-              <p className="mt-1 truncate text-xs text-muted-foreground">
-                {event.actor?.full_name || "Системное событие"}
-              </p>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </section>

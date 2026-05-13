@@ -496,6 +496,10 @@ class Idea(Base):
     decision_at: Mapped[datetime | None] = mapped_column(nullable=True)
     deferred_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    deleted_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_members.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()
@@ -504,6 +508,7 @@ class Idea(Base):
     author: Mapped["TeamMember"] = relationship(foreign_keys=[author_id])
     review_owner: Mapped["TeamMember"] = relationship(foreign_keys=[review_owner_id])
     decision_by: Mapped["TeamMember | None"] = relationship(foreign_keys=[decision_by_id])
+    deleted_by: Mapped["TeamMember | None"] = relationship(foreign_keys=[deleted_by_id])
     departments: Mapped[list["IdeaDepartment"]] = relationship(
         back_populates="idea", cascade="all, delete-orphan"
     )

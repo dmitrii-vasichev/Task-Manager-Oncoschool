@@ -25,8 +25,8 @@ def linked_task_data():
     return IdeaLinkedTaskCreate(title="Create landing flow")
 
 
-def active_member(member_id: uuid.UUID | None = None):
-    return SimpleNamespace(id=member_id or uuid.uuid4(), is_active=True, role="member")
+def active_member(member_id: uuid.UUID | None = None, *, role: str = "member"):
+    return SimpleNamespace(id=member_id or uuid.uuid4(), is_active=True, role=role)
 
 
 def active_department(department_id: uuid.UUID | None = None):
@@ -102,6 +102,101 @@ async def test_change_idea_status_raises_404_when_idea_does_not_exist(monkeypatc
         )
 
     assert exc_info.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_idea_soft_deletes_and_commits(monkeypatch):
+    admin = active_member(role="admin")
+    idea = SimpleNamespace(
+        id=uuid.uuid4(),
+        status="accepted",
+        author_id=uuid.uuid4(),
+        task_links=[],
+        departments=[],
+    )
+    session = AsyncMock()
+    add_event = AsyncMock()
+    soft_delete = AsyncMock()
+    monkeypatch.setattr(
+        ideas_api.idea_service.repo,
+        "get_by_id",
+        AsyncMock(return_value=idea),
+    )
+    monkeypatch.setattr(ideas_api.idea_service.repo, "add_event", add_event)
+    monkeypatch.setattr(ideas_api.idea_service.repo, "soft_delete", soft_delete)
+
+    await ideas_api.delete_idea(
+        idea_id=idea.id,
+        member=admin,
+        session=session,
+    )
+
+    add_event.assert_awaited_once()
+    assert add_event.await_args.kwargs["event_type"] == "idea_deleted"
+    soft_delete.assert_awaited_once()
+    assert soft_delete.await_args.kwargs["deleted_by_id"] == admin.id
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_idea_rejects_linked_tasks(monkeypatch):
+    admin = active_member(role="admin")
+    idea = SimpleNamespace(
+        id=uuid.uuid4(),
+        status="new",
+        author_id=uuid.uuid4(),
+        task_links=[SimpleNamespace(id=uuid.uuid4())],
+        departments=[],
+    )
+    session = AsyncMock()
+    soft_delete = AsyncMock()
+    monkeypatch.setattr(
+        ideas_api.idea_service.repo,
+        "get_by_id",
+        AsyncMock(return_value=idea),
+    )
+    monkeypatch.setattr(ideas_api.idea_service.repo, "soft_delete", soft_delete)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await ideas_api.delete_idea(
+            idea_id=idea.id,
+            member=admin,
+            session=session,
+        )
+
+    assert exc_info.value.status_code == 400
+    soft_delete.assert_not_awaited()
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delete_idea_rejects_unrelated_member(monkeypatch):
+    idea = SimpleNamespace(
+        id=uuid.uuid4(),
+        status="new",
+        author_id=uuid.uuid4(),
+        task_links=[],
+        departments=[],
+    )
+    session = AsyncMock()
+    soft_delete = AsyncMock()
+    monkeypatch.setattr(
+        ideas_api.idea_service.repo,
+        "get_by_id",
+        AsyncMock(return_value=idea),
+    )
+    monkeypatch.setattr(ideas_api.idea_service.repo, "soft_delete", soft_delete)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await ideas_api.delete_idea(
+            idea_id=idea.id,
+            member=active_member(),
+            session=session,
+        )
+
+    assert exc_info.value.status_code == 403
+    soft_delete.assert_not_awaited()
+    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -22,15 +22,18 @@
   - Added linked task creation and department status actions from the idea detail page.
   - Added final review follow-up for multi-department execution: departments can be selected during idea creation, added later from the idea detail page, assigned an owner, and used as the target for department-scoped task creation.
   - Department-scoped tasks are visible in both department rows and the overall linked-task list while preserving hidden-task access handling.
+  - Added readable Russian event labels and status-transition details to the idea history panel.
+  - Added idea soft deletion: deleted ideas are excluded from normal list/detail reads, authors can delete only their own new ideas without linked tasks, and admin/moderator users can delete ideas without linked tasks.
 - Key approved decisions:
   - No Telegram bot flow, idea tags, idea dashboard, or Projects implementation in Phase 1.
   - Rejected and deferred ideas require reasons.
   - Linked task details must follow existing task visibility permissions.
   - Completion requires all departments to be ready/not required, or all direct linked tasks closed when no departments are involved.
+  - Deletion is intentionally blocked after linked tasks exist; use status flow or future archive behavior for ideas already connected to work.
 - Latest verification:
-  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_idea_service.py tests/test_ideas_api.py -q` passed: 31 tests.
-  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest -q` passed: 409 tests, with existing warnings.
-  - `cd frontend && npm test` passed: 64 tests, with existing `MODULE_TYPELESS_PACKAGE_JSON` warnings.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_idea_service.py tests/test_ideas_api.py -q` passed: 39 tests.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest -q` passed: 417 tests, with existing warnings.
+  - `cd frontend && npm test` passed: 70 tests, with existing `MODULE_TYPELESS_PACKAGE_JSON` warnings.
   - `cd frontend && npx tsc --noEmit` passed.
   - `cd frontend && npm run lint` passed.
   - `cd frontend && npm run build` passed, including `/ideas` and `/ideas/[id]`.

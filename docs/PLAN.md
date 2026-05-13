@@ -21,6 +21,8 @@
 - Implemented; automated verification passed.
 - Phase 1 includes backend persistence, schemas, repository, service rules, API routes, frontend API/types, the Ideas register, idea detail, department status actions, linked task creation, comments, and event history.
 - Accepted ideas can add departments after review, assign department owners, and create tasks scoped to a specific department contribution.
+- Follow-up implemented: idea history now renders user-facing Russian event labels instead of raw event keys.
+- Follow-up implemented: ideas support soft deletion. Authors can delete only their own new ideas without linked tasks; admin/moderator users can delete ideas without linked tasks. Deleted ideas are hidden from list/detail responses.
 
 **Definition of done:**
 
@@ -32,6 +34,9 @@
 - Linked task creation uses the existing task service.
 - Idea completion is gated by completed department contributions or by closed direct linked tasks when no departments are involved.
 - Linked task details respect existing task visibility.
+- Idea history shows readable Russian event names and status transitions, not technical event keys.
+- Deleting an idea never removes linked tasks; deletion is blocked once tasks have been created.
+- Deleted ideas are soft-deleted and excluded from normal Ideas register/detail views.
 - Projects remain documented as Phase 2 and are not implemented in Phase 1.
 
 **Validation commands:**
@@ -48,9 +53,9 @@ git diff --check
 
 **Latest verification result:**
 
-- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_idea_service.py tests/test_ideas_api.py -q` passed: 31 tests.
-- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest -q` passed: 409 tests.
-- `cd frontend && npm test` passed: 64 tests.
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_idea_service.py tests/test_ideas_api.py -q` passed: 39 tests.
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest -q` passed: 417 tests.
+- `cd frontend && npm test` passed: 70 tests.
 - `cd frontend && npx tsc --noEmit` passed.
 - `cd frontend && npm run lint` passed.
 - `cd frontend && npm run build` passed, including `/ideas` and `/ideas/[id]`.

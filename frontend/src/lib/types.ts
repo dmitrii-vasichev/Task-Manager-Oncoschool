@@ -238,6 +238,8 @@ export interface Idea {
   decision_at: string | null;
   deferred_until: string | null;
   completed_at: string | null;
+  deleted_at: string | null;
+  deleted_by_id: string | null;
   created_at: string;
   updated_at: string;
   author: TeamMember | null;
@@ -254,6 +256,7 @@ export interface Idea {
   ready_department_count: number;
   required_department_count: number;
   can_complete: boolean;
+  can_delete: boolean;
 }
 
 export interface TaskChecklistItem {

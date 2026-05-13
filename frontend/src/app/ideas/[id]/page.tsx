@@ -1,10 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Lightbulb, Plus, UserRound } from "lucide-react";
+import { ArrowLeft, Lightbulb, Plus, Trash2, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IdeaStatusBadge } from "@/components/ideas/IdeaStatusBadge";
 import { IdeaDecisionPanel } from "@/components/ideas/IdeaDecisionPanel";
@@ -82,13 +90,16 @@ function IdeaDetailSkeleton() {
 
 export default function IdeaDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params.id as string;
-  const { toastError } = useToast();
+  const { toastError, toastSuccess } = useToast();
   const [idea, setIdea] = useState<Idea | null>(null);
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [taskDialogDepartmentId, setTaskDialogDepartmentId] = useState<string | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [loading, setLoading] = useState(true);
   const latestRequestSeqRef = useRef(0);
 
@@ -175,6 +186,20 @@ export default function IdeaDetailPage() {
     }
   }
 
+  async function handleDeleteIdea() {
+    if (!idea || deleting) return;
+
+    setDeleting(true);
+    try {
+      await api.deleteIdea(idea.id);
+      toastSuccess("Идея удалена");
+      router.push("/ideas");
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : "Не удалось удалить идею");
+      setDeleting(false);
+    }
+  }
+
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
       <Button asChild variant="ghost" size="sm" className="h-8 rounded-md px-2 text-xs">
@@ -233,6 +258,19 @@ export default function IdeaDetailPage() {
               <Plus className="h-3.5 w-3.5" />
               Создать задачу
             </Button>
+            {idea.can_delete ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setDeleteDialogOpen(true)}
+                disabled={deleting}
+                className="h-9 rounded-md border-destructive/30 px-3 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Удалить
+              </Button>
+            ) : null}
             <div className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary sm:flex">
               <UserRound className="h-5 w-5" />
             </div>
@@ -248,6 +286,41 @@ export default function IdeaDetailPage() {
         members={members}
         onCreated={setIdea}
       />
+
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(nextOpen) => {
+          if (!deleting) setDeleteDialogOpen(nextOpen);
+        }}
+      >
+        <DialogContent className="sm:max-w-[420px]">
+          <DialogHeader>
+            <DialogTitle className="text-lg">Удалить идею?</DialogTitle>
+            <DialogDescription>
+              Идея исчезнет из реестра и карточки. Это действие нельзя отменить через интерфейс.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deleting}
+            >
+              Оставить
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDeleteIdea}
+              disabled={deleting}
+              className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              {deleting ? "Удаляем..." : "Удалить"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         <main className="space-y-4">

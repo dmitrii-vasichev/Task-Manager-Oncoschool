@@ -134,6 +134,12 @@ class IdeaModelSmokeTests(unittest.TestCase):
             composite_fk_targets,
         )
 
+    def test_idea_soft_delete_columns_are_registered(self) -> None:
+        idea_table = models.Idea.__table__
+
+        self.assertIn("deleted_at", idea_table.c)
+        self.assertIn("deleted_by_id", idea_table.c)
+
 
 class IdeaRepositoryTests(unittest.TestCase):
     def test_detail_options_eager_loads_task_response_relationships_for_idea_links(self) -> None:
@@ -197,6 +203,45 @@ class IdeaRepositoryTests(unittest.TestCase):
 
         self.assertIn("ideas.title ILIKE '%%Reports%%'", compiled)
         self.assertIn("ideas.description ILIKE '%%Reports%%'", compiled)
+
+    def test_list_excludes_soft_deleted_ideas(self) -> None:
+        class FakeScalarResult:
+            def unique(self):
+                return self
+
+            def all(self):
+                return []
+
+        class FakeResult:
+            def scalar_one(self):
+                return 0
+
+            def scalars(self):
+                return FakeScalarResult()
+
+        class FakeSession:
+            def __init__(self) -> None:
+                self.statements = []
+
+            async def execute(self, stmt):
+                self.statements.append(stmt)
+                return FakeResult()
+
+        async def run_list() -> FakeSession:
+            session = FakeSession()
+            await IdeaRepository().list(session)
+            return session
+
+        session = asyncio.run(run_list())
+        list_stmt = session.statements[1]
+        compiled = str(
+            list_stmt.compile(
+                dialect=postgresql.dialect(),
+                compile_kwargs={"literal_binds": True},
+            )
+        )
+
+        self.assertIn("ideas.deleted_at IS NULL", compiled)
 
     def test_add_task_link_sets_idea_and_department_ids(self) -> None:
         class FakeSession:
@@ -297,6 +342,57 @@ class IdeaServiceRuleTests(unittest.TestCase):
         self.assertTrue(self.service.can_manage_idea(member(member_id=owner_id), item))
         self.assertTrue(self.service.can_manage_idea(member("moderator"), item))
         self.assertFalse(self.service.can_manage_idea(member(), item))
+
+    def test_author_can_delete_only_new_idea_without_linked_tasks(self) -> None:
+        author_id = uuid.uuid4()
+
+        self.assertTrue(
+            self.service.can_delete_idea(
+                member(member_id=author_id),
+                idea(status="new", author_id=author_id, task_links=[]),
+            )
+        )
+        self.assertFalse(
+            self.service.can_delete_idea(
+                member(member_id=author_id),
+                idea(status="accepted", author_id=author_id, task_links=[]),
+            )
+        )
+        self.assertFalse(
+            self.service.can_delete_idea(
+                member(member_id=author_id),
+                idea(status="new", author_id=author_id, task_links=[task_link("new")]),
+            )
+        )
+
+    def test_moderator_can_delete_any_idea_without_linked_tasks(self) -> None:
+        self.assertTrue(
+            self.service.can_delete_idea(
+                member("moderator"),
+                idea(status="accepted", task_links=[]),
+            )
+        )
+        self.assertFalse(
+            self.service.can_delete_idea(
+                member("admin"),
+                idea(status="new", task_links=[task_link("new")]),
+            )
+        )
+
+    def test_delete_validation_reports_status_and_permission_blockers(self) -> None:
+        author_id = uuid.uuid4()
+
+        with self.assertRaises(ValueError):
+            self.service.validate_delete_idea(
+                member(member_id=author_id),
+                idea(status="accepted", author_id=author_id),
+            )
+
+        with self.assertRaises(PermissionError):
+            self.service.validate_delete_idea(
+                member(),
+                idea(status="new", author_id=author_id),
+            )
 
     def test_department_head_can_manage_own_department(self) -> None:
         head_id = uuid.uuid4()

@@ -1,5 +1,5 @@
 import uuid
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.exc import IntegrityError
@@ -203,6 +203,37 @@ async def get_idea(
 ) -> IdeaResponse:
     idea = await _get_idea_or_404(session, idea_id)
     return await idea_service.shape_response(session, member, idea)
+
+
+@router.delete("/{idea_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_idea(
+    idea_id: uuid.UUID,
+    member: TeamMember = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+) -> None:
+    idea = await _get_idea_or_404(session, idea_id)
+    try:
+        idea_service.validate_delete_idea(member, idea)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    await idea_service.repo.add_event(
+        session,
+        idea_id=idea.id,
+        actor_id=member.id,
+        event_type="idea_deleted",
+        payload={"status": idea.status},
+    )
+    await idea_service.repo.soft_delete(
+        session,
+        idea,
+        deleted_by_id=member.id,
+        deleted_at=deleted_at,
+    )
+    await session.commit()
 
 
 @router.patch("/{idea_id}", response_model=IdeaResponse)
