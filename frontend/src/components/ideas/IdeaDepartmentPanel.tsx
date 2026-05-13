@@ -1,11 +1,57 @@
 "use client";
 
-import { Building2 } from "lucide-react";
+import { useState } from "react";
+import { Building2, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/shared/UserAvatar";
+import { useToast } from "@/components/shared/Toast";
 import { IDEA_DEPARTMENT_STATUS_LABELS } from "@/lib/ideaUtils";
-import type { Idea } from "@/lib/types";
+import { api } from "@/lib/api";
+import type { Idea, IdeaDepartmentStatus } from "@/lib/types";
 
-export function IdeaDepartmentPanel({ idea }: { idea: Idea }) {
+const DEPARTMENT_ACTION_STATUSES: IdeaDepartmentStatus[] = [
+  "in_progress",
+  "ready",
+  "not_required",
+];
+
+export function IdeaDepartmentPanel({
+  idea,
+  onUpdated,
+}: {
+  idea: Idea;
+  onUpdated: (idea: Idea) => void;
+}) {
+  const { toastSuccess, toastError } = useToast();
+  const [savingByDepartment, setSavingByDepartment] = useState<
+    Partial<Record<string, IdeaDepartmentStatus>>
+  >({});
+
+  async function handleDepartmentStatusChange(
+    ideaDepartmentId: string,
+    status: IdeaDepartmentStatus,
+  ) {
+    setSavingByDepartment((current) => ({
+      ...current,
+      [ideaDepartmentId]: status,
+    }));
+    try {
+      const updated = await api.updateIdeaDepartment(idea.id, ideaDepartmentId, {
+        status,
+      });
+      onUpdated(updated);
+      toastSuccess("Статус отдела обновлён");
+    } catch (error) {
+      toastError(error instanceof Error ? error.message : "Не удалось обновить отдел");
+    } finally {
+      setSavingByDepartment((current) => {
+        const next = { ...current };
+        delete next[ideaDepartmentId];
+        return next;
+      });
+    }
+  }
+
   return (
     <section className="rounded-lg border border-border/60 bg-card shadow-sm">
       <div className="border-b border-border/60 px-4 py-3">
@@ -28,6 +74,7 @@ export function IdeaDepartmentPanel({ idea }: { idea: Idea }) {
         ) : (
           idea.departments.map((department) => {
             const ownerName = department.owner?.full_name || "Владелец не указан";
+            const savingStatus = savingByDepartment[department.id];
 
             return (
               <div
@@ -52,9 +99,32 @@ export function IdeaDepartmentPanel({ idea }: { idea: Idea }) {
                     <p className="truncate text-xs text-muted-foreground">{ownerName}</p>
                   </div>
                 </div>
-                <p className="text-xs font-medium text-muted-foreground">
-                  {department.task_links.length} задач
-                </p>
+                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {department.task_links.length} задач
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 sm:justify-end">
+                    {DEPARTMENT_ACTION_STATUSES.map((status) => {
+                      const isSaving = savingStatus === status;
+                      const isDisabled = Boolean(savingStatus) || department.status === status;
+
+                      return (
+                        <Button
+                          key={status}
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          disabled={isDisabled}
+                          onClick={() => handleDepartmentStatusChange(department.id, status)}
+                          className="h-7 rounded-md px-2 text-2xs"
+                        >
+                          {isSaving && <Loader2 className="h-3 w-3 animate-spin" />}
+                          {IDEA_DEPARTMENT_STATUS_LABELS[status]}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             );
           })

@@ -3,20 +3,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Lightbulb, UserRound } from "lucide-react";
+import { ArrowLeft, Lightbulb, Plus, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { IdeaStatusBadge } from "@/components/ideas/IdeaStatusBadge";
 import { IdeaDecisionPanel } from "@/components/ideas/IdeaDecisionPanel";
 import { IdeaDepartmentPanel } from "@/components/ideas/IdeaDepartmentPanel";
 import { IdeaLinkedTasks } from "@/components/ideas/IdeaLinkedTasks";
+import { CreateIdeaTaskDialog } from "@/components/ideas/CreateIdeaTaskDialog";
 import { IdeaComments } from "@/components/ideas/IdeaComments";
 import { IdeaEventHistory } from "@/components/ideas/IdeaEventHistory";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { useToast } from "@/components/shared/Toast";
 import { parseUTCDate } from "@/lib/dateUtils";
 import { api } from "@/lib/api";
-import type { Idea } from "@/lib/types";
+import type { Idea, TeamMember } from "@/lib/types";
 
 function formatDateTime(value: string): string {
   const parsed = parseUTCDate(value);
@@ -84,6 +85,8 @@ export default function IdeaDetailPage() {
   const id = params.id as string;
   const { toastError } = useToast();
   const [idea, setIdea] = useState<Idea | null>(null);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const latestRequestSeqRef = useRef(0);
 
@@ -94,9 +97,13 @@ export default function IdeaDetailPage() {
 
     setLoading(true);
     try {
-      const loadedIdea = await api.getIdea(id);
+      const [loadedIdea, loadedMembers] = await Promise.all([
+        api.getIdea(id),
+        api.getTeam().catch(() => []),
+      ]);
       if (!isLatestRequest()) return;
       setIdea(loadedIdea);
+      setMembers(loadedMembers);
     } catch (error) {
       if (isLatestRequest()) {
         toastError(error instanceof Error ? error.message : "Не удалось загрузить идею");
@@ -141,6 +148,7 @@ export default function IdeaDetailPage() {
 
   const authorName = idea.author?.full_name || "Автор не указан";
   const reviewOwnerName = idea.review_owner?.full_name || "Ответственный не указан";
+  const canCreateTask = idea.status === "accepted" || idea.status === "in_tasks";
 
   return (
     <div className="space-y-4 animate-in fade-in duration-300">
@@ -184,16 +192,41 @@ export default function IdeaDetailPage() {
             </div>
           </div>
 
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <UserRound className="h-5 w-5" />
+          <div className="flex shrink-0 items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setTaskDialogOpen(true)}
+              disabled={!canCreateTask}
+              title={
+                canCreateTask
+                  ? undefined
+                  : "Создание задач доступно для принятых идей и идей в задачах"
+              }
+              className="h-9 rounded-md px-3 text-xs"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Создать задачу
+            </Button>
+            <div className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary sm:flex">
+              <UserRound className="h-5 w-5" />
+            </div>
           </div>
         </div>
       </header>
 
+      <CreateIdeaTaskDialog
+        open={taskDialogOpen}
+        onOpenChange={setTaskDialogOpen}
+        idea={idea}
+        members={members}
+        onCreated={setIdea}
+      />
+
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         <main className="space-y-4">
           <IdeaDecisionPanel idea={idea} onUpdated={setIdea} />
-          <IdeaDepartmentPanel idea={idea} />
+          <IdeaDepartmentPanel idea={idea} onUpdated={setIdea} />
           <IdeaLinkedTasks links={idea.task_links} />
           <IdeaComments idea={idea} onUpdated={setIdea} />
         </main>
