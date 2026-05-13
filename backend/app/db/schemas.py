@@ -36,6 +36,8 @@ IdeaEventType = Literal[
     "department_updated",
     "task_linked",
     "comment_added",
+    "project_created",
+    "project_linked",
     "idea_completed",
     "idea_reopened",
     "idea_deleted",

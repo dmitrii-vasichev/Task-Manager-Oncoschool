@@ -508,6 +508,7 @@ class IdeaRepository:
             selectinload(Idea.review_owner),
             selectinload(Idea.decision_by),
             selectinload(Idea.deleted_by),
+            selectinload(Idea.project),
             selectinload(Idea.departments).selectinload(IdeaDepartment.department),
             selectinload(Idea.departments).selectinload(IdeaDepartment.owner),
             department_task_links.selectinload(Task.assignee),
