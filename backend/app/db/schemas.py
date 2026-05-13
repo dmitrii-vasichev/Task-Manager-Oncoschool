@@ -280,8 +280,10 @@ class IdeaStatusChange(BaseModel):
     def strip_comment(cls, value: str | None) -> str | None:
         if value is None:
             return None
-        normalized = value.strip()
-        return normalized or None
+        if isinstance(value, str):
+            normalized = value.strip()
+            return normalized or None
+        return value
 
     @field_validator("comment")
     @classmethod
@@ -355,6 +357,8 @@ class IdeaCommentResponse(BaseModel):
 
 
 class IdeaTaskResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: uuid.UUID
     idea_id: uuid.UUID
     idea_department_id: uuid.UUID | None

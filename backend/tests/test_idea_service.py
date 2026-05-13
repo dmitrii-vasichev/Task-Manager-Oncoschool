@@ -1,11 +1,14 @@
 import unittest
+import uuid
+from datetime import datetime
+from types import SimpleNamespace
 
 from pydantic import ValidationError
 from sqlalchemy import ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.orm import configure_mappers
 
 from app.db import models
-from app.db.schemas import IdeaCreate, IdeaStatusChange
+from app.db.schemas import IdeaCreate, IdeaStatusChange, IdeaTaskResponse
 
 
 class IdeaModelSmokeTests(unittest.TestCase):
@@ -70,3 +73,24 @@ class IdeaSchemaTests(unittest.TestCase):
         data = IdeaStatusChange(status="accepted")
         self.assertEqual(data.status, "accepted")
         self.assertIsNone(data.comment)
+
+    def test_status_change_rejects_non_string_comment_with_validation_error(self) -> None:
+        with self.assertRaises(ValidationError):
+            IdeaStatusChange(status="accepted", comment=123)
+
+    def test_task_response_validates_from_orm_like_object(self) -> None:
+        link = SimpleNamespace(
+            id=uuid.UUID("00000000-0000-0000-0000-000000000001"),
+            idea_id=uuid.UUID("00000000-0000-0000-0000-000000000002"),
+            idea_department_id=None,
+            task_id=uuid.UUID("00000000-0000-0000-0000-000000000003"),
+            created_by_id=None,
+            created_at=datetime(2026, 1, 1, 12, 0, 0),
+            task=None,
+            hidden=False,
+        )
+
+        data = IdeaTaskResponse.model_validate(link)
+
+        self.assertEqual(data.id, link.id)
+        self.assertEqual(data.task_id, link.task_id)
