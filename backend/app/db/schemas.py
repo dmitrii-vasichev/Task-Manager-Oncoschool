@@ -18,6 +18,27 @@ TelegramBroadcastStatusType = Literal["scheduled", "sent", "failed", "cancelled"
 MeetingReminderZoomMissingBehaviorType = Literal["hide", "fallback"]
 ReminderDigestSectionKeyType = Literal["overdue", "upcoming", "in_progress", "new"]
 ReminderTaskLineFieldKeyType = Literal["number", "title", "deadline", "priority"]
+IdeaStatusType = Literal[
+    "new",
+    "in_review",
+    "accepted",
+    "in_tasks",
+    "completed",
+    "rejected",
+    "deferred",
+]
+IdeaDepartmentStatusType = Literal["not_started", "in_progress", "ready", "not_required"]
+IdeaEventType = Literal[
+    "idea_created",
+    "status_changed",
+    "decision_recorded",
+    "department_added",
+    "department_updated",
+    "task_linked",
+    "comment_added",
+    "idea_completed",
+    "idea_reopened",
+]
 MeetingAIProcessingStatusType = Literal[
     "idle",
     "queued",
@@ -217,6 +238,188 @@ class TaskResponse(BaseModel):
     assignee: TeamMemberResponse | None = None
     created_by: TeamMemberResponse | None = None
     labels: list[TaskLabelResponse] = Field(default_factory=list)
+
+
+# ── Idea ──
+
+
+class IdeaCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(min_length=1)
+    review_owner_id: uuid.UUID
+    department_ids: list[uuid.UUID] = Field(default_factory=list)
+
+    @field_validator("title", "description", mode="before")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class IdeaUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    description: str | None = Field(default=None, min_length=1)
+    review_owner_id: uuid.UUID | None = None
+
+    @field_validator("title", "description", mode="before")
+    @classmethod
+    def strip_optional_text(cls, value: str | None) -> str | None:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class IdeaStatusChange(BaseModel):
+    status: IdeaStatusType
+    comment: str | None = Field(default=None, validate_default=True)
+    deferred_until: date | None = None
+
+    @field_validator("comment", mode="before")
+    @classmethod
+    def strip_comment(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("comment")
+    @classmethod
+    def require_reason_for_negative_decisions(
+        cls, value: str | None, info
+    ) -> str | None:
+        status = info.data.get("status")
+        if status in {"rejected", "deferred"} and not value:
+            raise ValueError("Reason is required for rejected or deferred ideas")
+        return value
+
+
+class IdeaDepartmentCreate(BaseModel):
+    department_id: uuid.UUID
+    owner_id: uuid.UUID
+
+
+class IdeaDepartmentUpdate(BaseModel):
+    owner_id: uuid.UUID | None = None
+    status: IdeaDepartmentStatusType | None = None
+    note: str | None = None
+
+
+class IdeaCommentCreate(BaseModel):
+    body: str = Field(min_length=1)
+
+    @field_validator("body", mode="before")
+    @classmethod
+    def strip_body(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+
+class IdeaLinkedTaskCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    description: str | None = None
+    priority: TaskPriorityType = "normal"
+    assignee_id: uuid.UUID | None = None
+    deadline: date | None = None
+    label_ids: list[uuid.UUID] = Field(default_factory=list)
+
+    @field_validator("priority", mode="before")
+    @classmethod
+    def normalize_priority(cls, value: str | None) -> str:
+        return normalize_task_urgency(value)
+
+
+class IdeaEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    idea_id: uuid.UUID
+    actor_id: uuid.UUID | None
+    event_type: str
+    payload: dict
+    created_at: datetime
+    actor: TeamMemberResponse | None = None
+
+
+class IdeaCommentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    idea_id: uuid.UUID
+    author_id: uuid.UUID
+    body: str
+    created_at: datetime
+    updated_at: datetime
+    author: TeamMemberResponse | None = None
+
+
+class IdeaTaskResponse(BaseModel):
+    id: uuid.UUID
+    idea_id: uuid.UUID
+    idea_department_id: uuid.UUID | None
+    task_id: uuid.UUID
+    created_by_id: uuid.UUID | None
+    created_at: datetime
+    task: TaskResponse | None = None
+    hidden: bool = False
+
+
+class IdeaDepartmentResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    idea_id: uuid.UUID
+    department_id: uuid.UUID
+    owner_id: uuid.UUID
+    status: str
+    note: str | None
+    created_by_id: uuid.UUID | None
+    created_at: datetime
+    updated_at: datetime
+    department: DepartmentResponse | None = None
+    owner: TeamMemberResponse | None = None
+    task_links: list[IdeaTaskResponse] = Field(default_factory=list)
+
+
+class IdeaResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    title: str
+    description: str
+    status: str
+    author_id: uuid.UUID
+    review_owner_id: uuid.UUID
+    decision_comment: str | None
+    decision_by_id: uuid.UUID | None
+    decision_at: datetime | None
+    deferred_until: date | None
+    completed_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+    author: TeamMemberResponse | None = None
+    review_owner: TeamMemberResponse | None = None
+    decision_by: TeamMemberResponse | None = None
+    departments: list[IdeaDepartmentResponse] = Field(default_factory=list)
+    task_links: list[IdeaTaskResponse] = Field(default_factory=list)
+    comments: list[IdeaCommentResponse] = Field(default_factory=list)
+    events: list[IdeaEventResponse] = Field(default_factory=list)
+    linked_task_count: int = 0
+    visible_linked_task_count: int = 0
+    completed_linked_task_count: int = 0
+    hidden_linked_task_count: int = 0
+    ready_department_count: int = 0
+    required_department_count: int = 0
+    can_complete: bool = False
+
+
+class PaginatedIdeasResponse(BaseModel):
+    items: list[IdeaResponse]
+    total: int
+    page: int
+    per_page: int
+    pages: int
 
 
 # ── TaskUpdate ──

@@ -1,9 +1,11 @@
 import unittest
 
+from pydantic import ValidationError
 from sqlalchemy import ForeignKeyConstraint, UniqueConstraint
 from sqlalchemy.orm import configure_mappers
 
 from app.db import models
+from app.db.schemas import IdeaCreate, IdeaStatusChange
 
 
 class IdeaModelSmokeTests(unittest.TestCase):
@@ -41,3 +43,30 @@ class IdeaModelSmokeTests(unittest.TestCase):
             ("idea_departments.idea_id", "idea_departments.id"),
             composite_fk_targets,
         )
+
+
+class IdeaSchemaTests(unittest.TestCase):
+    def test_create_idea_requires_non_empty_title_and_description(self) -> None:
+        with self.assertRaises(ValidationError):
+            IdeaCreate(title="", description="Useful details", review_owner_id="00000000-0000-0000-0000-000000000001")
+
+        with self.assertRaises(ValidationError):
+            IdeaCreate(title="Improve reports", description="", review_owner_id="00000000-0000-0000-0000-000000000001")
+
+    def test_rejected_and_deferred_status_changes_require_reason(self) -> None:
+        with self.assertRaises(ValidationError):
+            IdeaStatusChange(status="rejected")
+
+        with self.assertRaises(ValidationError):
+            IdeaStatusChange(status="deferred")
+
+        with self.assertRaises(ValidationError):
+            IdeaStatusChange(status="rejected", comment="")
+
+        with self.assertRaises(ValidationError):
+            IdeaStatusChange(status="deferred", comment="   ")
+
+    def test_accepted_status_change_allows_empty_comment(self) -> None:
+        data = IdeaStatusChange(status="accepted")
+        self.assertEqual(data.status, "accepted")
+        self.assertIsNone(data.comment)

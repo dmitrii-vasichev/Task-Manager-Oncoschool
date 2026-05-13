@@ -21,6 +21,11 @@ from app.db.models import (
     DailyMetric,
     Department,
     GetCourseCredentials,
+    Idea,
+    IdeaComment,
+    IdeaDepartment,
+    IdeaEvent,
+    IdeaTask,
     InAppNotification,
     Meeting,
     MeetingAIProcessing,
@@ -481,6 +486,163 @@ class TaskRepository:
         stmt = delete(Task).where(Task.id == task_id)
         result = await session.execute(stmt)
         return result.rowcount > 0
+
+
+class IdeaRepository:
+    def detail_options(self):
+        return (
+            selectinload(Idea.author),
+            selectinload(Idea.review_owner),
+            selectinload(Idea.decision_by),
+            selectinload(Idea.departments).selectinload(IdeaDepartment.department),
+            selectinload(Idea.departments).selectinload(IdeaDepartment.owner),
+            selectinload(Idea.departments)
+            .selectinload(IdeaDepartment.task_links)
+            .selectinload(IdeaTask.task)
+            .selectinload(Task.assignee),
+            selectinload(Idea.departments)
+            .selectinload(IdeaDepartment.task_links)
+            .selectinload(IdeaTask.task)
+            .selectinload(Task.created_by),
+            selectinload(Idea.task_links).selectinload(IdeaTask.task).selectinload(Task.assignee),
+            selectinload(Idea.task_links).selectinload(IdeaTask.task).selectinload(Task.created_by),
+            selectinload(Idea.comments).selectinload(IdeaComment.author),
+            selectinload(Idea.events).selectinload(IdeaEvent.actor),
+        )
+
+    async def get_by_id(self, session: AsyncSession, idea_id: uuid.UUID) -> Idea | None:
+        stmt = select(Idea).where(Idea.id == idea_id).options(*self.detail_options())
+        result = await session.execute(stmt)
+        return result.scalars().first()
+
+    async def list(
+        self,
+        session: AsyncSession,
+        *,
+        status: str | None = None,
+        author_id: uuid.UUID | None = None,
+        review_owner_id: uuid.UUID | None = None,
+        department_id: uuid.UUID | None = None,
+        created_from: date | None = None,
+        created_to: date | None = None,
+        page: int = 1,
+        per_page: int = 50,
+    ) -> tuple[list[Idea], int]:
+        stmt = select(Idea).options(*self.detail_options())
+        if status:
+            stmt = stmt.where(Idea.status.in_([item.strip() for item in status.split(",") if item.strip()]))
+        if author_id:
+            stmt = stmt.where(Idea.author_id == author_id)
+        if review_owner_id:
+            stmt = stmt.where(Idea.review_owner_id == review_owner_id)
+        if department_id:
+            stmt = stmt.join(Idea.departments).where(IdeaDepartment.department_id == department_id)
+        if created_from:
+            stmt = stmt.where(Idea.created_at >= datetime.combine(created_from, datetime.min.time()))
+        if created_to:
+            stmt = stmt.where(Idea.created_at <= datetime.combine(created_to, datetime.max.time()))
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = (await session.execute(count_stmt)).scalar_one()
+        result = await session.execute(
+            stmt.order_by(Idea.updated_at.desc()).offset((page - 1) * per_page).limit(per_page)
+        )
+        return list(result.scalars().unique().all()), total
+
+    async def create(
+        self,
+        session: AsyncSession,
+        *,
+        title: str,
+        description: str,
+        author_id: uuid.UUID,
+        review_owner_id: uuid.UUID,
+    ) -> Idea:
+        idea = Idea(
+            title=title,
+            description=description,
+            author_id=author_id,
+            review_owner_id=review_owner_id,
+        )
+        session.add(idea)
+        await session.flush()
+        return idea
+
+    async def update(self, session: AsyncSession, idea: Idea, **fields) -> Idea:
+        for key, value in fields.items():
+            setattr(idea, key, value)
+        await session.flush()
+        return idea
+
+    async def add_department(
+        self,
+        session: AsyncSession,
+        *,
+        idea_id: uuid.UUID,
+        department_id: uuid.UUID,
+        owner_id: uuid.UUID,
+        created_by_id: uuid.UUID,
+    ) -> IdeaDepartment:
+        item = IdeaDepartment(
+            idea_id=idea_id,
+            department_id=department_id,
+            owner_id=owner_id,
+            created_by_id=created_by_id,
+        )
+        session.add(item)
+        await session.flush()
+        return item
+
+    async def add_comment(
+        self,
+        session: AsyncSession,
+        *,
+        idea_id: uuid.UUID,
+        author_id: uuid.UUID,
+        body: str,
+    ) -> IdeaComment:
+        comment = IdeaComment(idea_id=idea_id, author_id=author_id, body=body)
+        session.add(comment)
+        await session.flush()
+        return comment
+
+    async def add_task_link(
+        self,
+        session: AsyncSession,
+        *,
+        idea_id: uuid.UUID,
+        task_id: uuid.UUID,
+        created_by_id: uuid.UUID,
+        idea_department_id: uuid.UUID | None = None,
+    ) -> IdeaTask:
+        link = IdeaTask(
+            idea_id=idea_id,
+            idea_department_id=idea_department_id,
+            task_id=task_id,
+            created_by_id=created_by_id,
+        )
+        session.add(link)
+        await session.flush()
+        return link
+
+    async def add_event(
+        self,
+        session: AsyncSession,
+        *,
+        idea_id: uuid.UUID,
+        actor_id: uuid.UUID | None,
+        event_type: str,
+        payload: dict | None = None,
+    ) -> IdeaEvent:
+        event = IdeaEvent(
+            idea_id=idea_id,
+            actor_id=actor_id,
+            event_type=event_type,
+            payload=payload or {},
+        )
+        session.add(event)
+        await session.flush()
+        return event
 
 
 class TaskUpdateRepository:
