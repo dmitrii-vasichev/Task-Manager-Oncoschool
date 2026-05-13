@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Lightbulb, Plus, Trash2, UserRound } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowUpRight,
+  FolderKanban,
+  Lightbulb,
+  Plus,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,6 +29,8 @@ import { IdeaLinkedTasks } from "@/components/ideas/IdeaLinkedTasks";
 import { CreateIdeaTaskDialog } from "@/components/ideas/CreateIdeaTaskDialog";
 import { IdeaComments } from "@/components/ideas/IdeaComments";
 import { IdeaEventHistory } from "@/components/ideas/IdeaEventHistory";
+import { CreateProjectFromIdeaDialog } from "@/components/projects/CreateProjectFromIdeaDialog";
+import { ProjectStatusBadge } from "@/components/projects/ProjectStatusBadge";
 import { UserAvatar } from "@/components/shared/UserAvatar";
 import { useToast } from "@/components/shared/Toast";
 import { parseUTCDate } from "@/lib/dateUtils";
@@ -97,6 +107,7 @@ export default function IdeaDetailPage() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [projectDialogOpen, setProjectDialogOpen] = useState(false);
   const [taskDialogDepartmentId, setTaskDialogDepartmentId] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -164,6 +175,7 @@ export default function IdeaDetailPage() {
   const authorName = idea.author?.full_name || "Автор не указан";
   const reviewOwnerName = idea.review_owner?.full_name || "Ответственный не указан";
   const canCreateTask = idea.status === "accepted" || idea.status === "in_tasks";
+  const canCreateProject = canCreateTask && !idea.project;
   const linkedTaskLinks: IdeaTaskLink[] = [
     ...idea.task_links,
     ...idea.departments.flatMap((department) => department.task_links),
@@ -198,6 +210,10 @@ export default function IdeaDetailPage() {
       toastError(error instanceof Error ? error.message : "Не удалось удалить идею");
       setDeleting(false);
     }
+  }
+
+  function handleProjectCreated(project: { id: string }) {
+    router.push(`/projects/${project.id}`);
   }
 
   return (
@@ -258,6 +274,18 @@ export default function IdeaDetailPage() {
               <Plus className="h-3.5 w-3.5" />
               Создать задачу
             </Button>
+            {canCreateProject ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setProjectDialogOpen(true)}
+                className="h-9 rounded-md px-3 text-xs"
+              >
+                <FolderKanban className="h-3.5 w-3.5" />
+                Создать проект
+              </Button>
+            ) : null}
             {idea.can_delete ? (
               <Button
                 type="button"
@@ -285,6 +313,14 @@ export default function IdeaDetailPage() {
         ideaDepartmentId={taskDialogDepartmentId}
         members={members}
         onCreated={setIdea}
+      />
+
+      <CreateProjectFromIdeaDialog
+        open={projectDialogOpen}
+        onOpenChange={setProjectDialogOpen}
+        idea={idea}
+        members={members}
+        onCreated={handleProjectCreated}
       />
 
       <Dialog
@@ -324,6 +360,30 @@ export default function IdeaDetailPage() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start">
         <main className="space-y-4">
+          {idea.project ? (
+            <Link
+              href={`/projects/${idea.project.id}`}
+              className="group flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border/60 bg-card px-4 py-3 shadow-sm transition-colors hover:border-primary/25 hover:bg-muted/20"
+            >
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <FolderKanban className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-foreground">
+                      Связанный проект
+                    </p>
+                    <ProjectStatusBadge status={idea.project.status} />
+                  </div>
+                  <p className="mt-1 truncate text-sm text-muted-foreground group-hover:text-primary">
+                    {idea.project.title}
+                  </p>
+                </div>
+              </div>
+              <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground group-hover:text-primary" />
+            </Link>
+          ) : null}
           <IdeaDecisionPanel idea={idea} onUpdated={setIdea} />
           <IdeaDepartmentPanel
             idea={idea}

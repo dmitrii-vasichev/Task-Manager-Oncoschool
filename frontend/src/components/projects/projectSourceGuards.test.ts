@@ -43,3 +43,11 @@ test("project detail route composes operational detail panels", () => {
   assert.match(source, /ProjectComments/);
   assert.match(source, /ProjectEventHistory/);
 });
+
+test("idea detail route exposes project conversion affordance", () => {
+  const source = readSource("app/ideas/[id]/page.tsx");
+
+  assert.match(source, /CreateProjectFromIdeaDialog/);
+  assert.match(source, /Создать проект/);
+  assert.match(source, /\/projects\/\$\{idea\.project\.id\}/);
+});
