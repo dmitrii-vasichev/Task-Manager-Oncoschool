@@ -464,6 +464,183 @@ class TaskUpdate(Base):
     author: Mapped["TeamMember"] = relationship(back_populates="task_updates")
 
 
+class Idea(Base):
+    __tablename__ = "ideas"
+    __table_args__ = (
+        Index("idx_ideas_status", "status"),
+        Index("idx_ideas_author_id", "author_id"),
+        Index("idx_ideas_review_owner_id", "review_owner_id"),
+        Index("idx_ideas_created_at", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(30), default="new", server_default="new", nullable=False
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team_members.id", ondelete="CASCADE"), nullable=False
+    )
+    review_owner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team_members.id", ondelete="CASCADE"), nullable=False
+    )
+    decision_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    decision_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_members.id", ondelete="SET NULL"), nullable=True
+    )
+    decision_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    deferred_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
+
+    author: Mapped["TeamMember"] = relationship(foreign_keys=[author_id])
+    review_owner: Mapped["TeamMember"] = relationship(foreign_keys=[review_owner_id])
+    decision_by: Mapped["TeamMember | None"] = relationship(foreign_keys=[decision_by_id])
+    departments: Mapped[list["IdeaDepartment"]] = relationship(
+        back_populates="idea", cascade="all, delete-orphan"
+    )
+    task_links: Mapped[list["IdeaTask"]] = relationship(
+        back_populates="idea", cascade="all, delete-orphan"
+    )
+    comments: Mapped[list["IdeaComment"]] = relationship(
+        back_populates="idea", cascade="all, delete-orphan"
+    )
+    events: Mapped[list["IdeaEvent"]] = relationship(
+        back_populates="idea", cascade="all, delete-orphan"
+    )
+
+
+class IdeaDepartment(Base):
+    __tablename__ = "idea_departments"
+    __table_args__ = (
+        UniqueConstraint("idea_id", "department_id", name="uq_idea_departments_idea_department"),
+        Index("idx_idea_departments_idea_id", "idea_id"),
+        Index("idx_idea_departments_department_id", "department_id"),
+        Index("idx_idea_departments_owner_id", "owner_id"),
+        Index("idx_idea_departments_status", "status"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    idea_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ideas.id", ondelete="CASCADE"), nullable=False
+    )
+    department_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("departments.id", ondelete="CASCADE"), nullable=False
+    )
+    owner_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team_members.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(
+        String(30), default="not_started", server_default="not_started", nullable=False
+    )
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_members.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
+
+    idea: Mapped["Idea"] = relationship(back_populates="departments")
+    department: Mapped["Department"] = relationship()
+    owner: Mapped["TeamMember"] = relationship(foreign_keys=[owner_id])
+    created_by: Mapped["TeamMember | None"] = relationship(foreign_keys=[created_by_id])
+    task_links: Mapped[list["IdeaTask"]] = relationship(back_populates="idea_department")
+
+
+class IdeaTask(Base):
+    __tablename__ = "idea_tasks"
+    __table_args__ = (
+        UniqueConstraint("task_id", name="uq_idea_tasks_task_id"),
+        Index("idx_idea_tasks_idea_id", "idea_id"),
+        Index("idx_idea_tasks_idea_department_id", "idea_department_id"),
+        Index("idx_idea_tasks_task_id", "task_id"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    idea_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ideas.id", ondelete="CASCADE"), nullable=False
+    )
+    idea_department_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("idea_departments.id", ondelete="SET NULL"), nullable=True
+    )
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), nullable=False
+    )
+    created_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_members.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    idea: Mapped["Idea"] = relationship(back_populates="task_links")
+    idea_department: Mapped["IdeaDepartment | None"] = relationship(back_populates="task_links")
+    task: Mapped["Task"] = relationship()
+    created_by: Mapped["TeamMember | None"] = relationship()
+
+
+class IdeaComment(Base):
+    __tablename__ = "idea_comments"
+    __table_args__ = (
+        Index("idx_idea_comments_idea_id", "idea_id"),
+        Index("idx_idea_comments_created_at", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    idea_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ideas.id", ondelete="CASCADE"), nullable=False
+    )
+    author_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("team_members.id", ondelete="CASCADE"), nullable=False
+    )
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
+
+    idea: Mapped["Idea"] = relationship(back_populates="comments")
+    author: Mapped["TeamMember"] = relationship()
+
+
+class IdeaEvent(Base):
+    __tablename__ = "idea_events"
+    __table_args__ = (
+        Index("idx_idea_events_idea_id", "idea_id"),
+        Index("idx_idea_events_created_at", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    idea_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("ideas.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("team_members.id", ondelete="SET NULL"), nullable=True
+    )
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default="{}", nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    idea: Mapped["Idea"] = relationship(back_populates="events")
+    actor: Mapped["TeamMember | None"] = relationship()
+
+
 class MeetingParticipant(Base):
     __tablename__ = "meeting_participants"
 
