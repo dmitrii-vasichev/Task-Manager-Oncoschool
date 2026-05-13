@@ -579,7 +579,11 @@ function DashboardSynchronizedTaskGroups({
       {synchronizedTaskRows.map(({ rowIndex, overdueTask, activeTask }) => (
         <Fragment key={rowIndex}>
           {overdueTask ? (
-            <div className="h-full" aria-labelledby={overdueHeadingId}>
+            <div
+              role="group"
+              aria-labelledby={overdueHeadingId}
+              className="h-full"
+            >
               <TaskListItem
                 task={overdueTask}
                 variant={overdueGroup.itemVariant}
@@ -590,7 +594,11 @@ function DashboardSynchronizedTaskGroups({
             <div aria-hidden="true" />
           )}
           {activeTask ? (
-            <div className="h-full" aria-labelledby={activeHeadingId}>
+            <div
+              role="group"
+              aria-labelledby={activeHeadingId}
+              className="h-full"
+            >
               <TaskListItem
                 task={activeTask}
                 variant={activeGroup.itemVariant}
@@ -604,24 +612,28 @@ function DashboardSynchronizedTaskGroups({
       ))}
       {hasExpandControls && (
         <>
-          <div>
-            {overdueGroup.canExpand && (
+          {overdueGroup.canExpand ? (
+            <div>
               <DashboardTaskGroupExpandButton
                 group={overdueGroup}
                 controlsId={`${overdueGroup.listId} ${listId}`}
                 onExpandedChange={onGroupExpandedChange}
               />
-            )}
-          </div>
-          <div>
-            {activeGroup.canExpand && (
+            </div>
+          ) : (
+            <div aria-hidden="true" />
+          )}
+          {activeGroup.canExpand ? (
+            <div>
               <DashboardTaskGroupExpandButton
                 group={activeGroup}
                 controlsId={`${activeGroup.listId} ${listId}`}
                 onExpandedChange={onGroupExpandedChange}
               />
-            )}
-          </div>
+            </div>
+          ) : (
+            <div aria-hidden="true" />
+          )}
         </>
       )}
     </div>
