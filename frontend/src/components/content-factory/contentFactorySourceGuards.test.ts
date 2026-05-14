@@ -93,13 +93,19 @@ test("content factory chrome avoids repeated module titles", () => {
   );
 });
 
-test("content factory workspace navigation keeps every section discoverable", () => {
+test("content factory workspace navigation exposes visible scroll controls", () => {
   const navSource = readSource(
     "components/content-factory/ContentFactoryWorkspaceNav.tsx",
   );
 
-  assert.match(navSource, /flex-wrap/);
-  assert.doesNotMatch(navSource, /overflow-x-auto/);
+  assert.match(navSource, /ChevronLeft/);
+  assert.match(navSource, /ChevronRight/);
+  assert.match(navSource, /scrollBy/);
+  assert.match(navSource, /scrollIntoView/);
+  assert.match(navSource, /overflow-x-auto/);
+  assert.match(navSource, /from-card/);
+  assert.match(navSource, /to-transparent/);
+  assert.doesNotMatch(navSource, /flex-wrap/);
 });
 
 test("content factory help route explains the workspace", () => {
