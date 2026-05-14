@@ -20,13 +20,15 @@
   - Added `/content-factory/review` with production, factcheck, doctor review, approval, scheduling, failed, and cancelled queues.
   - Added Content Factory review navigation in the sidebar and header metadata.
   - Ran Sprint 5 frontend verification successfully.
+  - Committed and pushed Sprint 5 to `origin/codex/content-factory-sprint-5`.
+  - Opened draft PR #183: `https://github.com/dmitrii-vasichev/oncoschool-team-portal/pull/183`.
 - Key decisions:
   - Treat `docs/content-factory-design.md` as the approved Sprint 5 design source; no new product discovery is needed before implementation.
   - Keep Sprint 5 frontend-heavy because backend segment targets and metric snapshots already exist.
   - Defer API publishing integrations, AI drafting, patient CRM, and retrospectives to later sprints.
 - Next actions:
   - Run authenticated manual QA for segment targets, UTM helper, manual metrics, and review queues.
-  - Commit, push, and open the Sprint 5 PR.
+  - Review and merge PR #183 when ready.
   - After merge, start Sprint 6 planning from `docs/content-factory-design.md` and `docs/BACKLOG.md`.
 - Latest verification:
   - `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/lib/contentFactoryApiSourceGuards.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 29 tests, with existing Node module-type warnings.
