@@ -1,12 +1,13 @@
 import uuid
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi import HTTPException
 
 from app.api.content_factory import bundles as bundles_api
+from app.api.content_factory.deps import require_cf_admin
 from app.db.schemas import CFBundleCreate, CFBundleUpdate
 
 
@@ -103,27 +104,69 @@ async def test_update_bundle_404(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_delete_bundle_returns_204(monkeypatch):
+async def test_delete_bundle_requires_admin():
+    # Even a flagged non-admin member must be rejected by the dep.
+    non_admin = cf_member(role="member", has_cf=True)
+    with pytest.raises(HTTPException) as exc:
+        await require_cf_admin(member=non_admin)
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_delete_bundle_returns_204_when_empty(monkeypatch):
+    admin = cf_member(role="admin")
+    bundle = make_bundle()
     session = AsyncMock()
+    monkeypatch.setattr(
+        bundles_api.bundle_service, "get", AsyncMock(return_value=bundle)
+    )
     monkeypatch.setattr(
         bundles_api.bundle_service, "delete", AsyncMock(return_value=True)
     )
+    # FK pre-check returns 0 (no publications):
+    count_result = MagicMock()
+    count_result.scalar_one = MagicMock(return_value=0)
+    session.execute = AsyncMock(return_value=count_result)
+
     result = await bundles_api.delete_bundle(
-        bundle_id=uuid.uuid4(), member=cf_member(), session=session,
+        bundle_id=bundle.id, member=admin, session=session,
     )
-    # delete_bundle returns a Response object
     assert result.status_code == 204
     session.commit.assert_awaited()
 
 
 @pytest.mark.asyncio
-async def test_delete_bundle_404(monkeypatch):
+async def test_delete_bundle_404_when_missing(monkeypatch):
+    admin = cf_member(role="admin")
     session = AsyncMock()
     monkeypatch.setattr(
-        bundles_api.bundle_service, "delete", AsyncMock(return_value=False)
+        bundles_api.bundle_service, "get", AsyncMock(return_value=None)
     )
     with pytest.raises(HTTPException) as exc:
         await bundles_api.delete_bundle(
-            bundle_id=uuid.uuid4(), member=cf_member(), session=session,
+            bundle_id=uuid.uuid4(), member=admin, session=session,
         )
     assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_bundle_409_when_has_publications(monkeypatch):
+    admin = cf_member(role="admin")
+    bundle = make_bundle()
+    session = AsyncMock()
+    monkeypatch.setattr(
+        bundles_api.bundle_service, "get", AsyncMock(return_value=bundle)
+    )
+    delete_mock = AsyncMock(return_value=True)
+    monkeypatch.setattr(bundles_api.bundle_service, "delete", delete_mock)
+    count_result = MagicMock()
+    count_result.scalar_one = MagicMock(return_value=3)
+    session.execute = AsyncMock(return_value=count_result)
+
+    with pytest.raises(HTTPException) as exc:
+        await bundles_api.delete_bundle(
+            bundle_id=bundle.id, member=admin, session=session,
+        )
+    assert exc.value.status_code == 409
+    assert "3 публикаций" in exc.value.detail
+    delete_mock.assert_not_awaited()
