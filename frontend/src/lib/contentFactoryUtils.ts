@@ -1,6 +1,7 @@
 import type {
   CFBundleStatus,
   CFProductStream,
+  CFPublicationUpdateRequest,
   CFPublicationStatus,
   MemberRole,
 } from "./types";
@@ -98,6 +99,19 @@ export type ContentFactoryPublicationFilters = {
   responsible_id?: string | null;
 };
 
+export type ContentFactoryBundleFilterValues = {
+  status: "all" | CFBundleStatus;
+  product_stream: "" | CFProductStream;
+  owner_id: string;
+};
+
+type DisplayNameRecord = {
+  id: string;
+  display_name?: string | null;
+  full_name?: string | null;
+  name?: string | null;
+};
+
 export function canAccessContentFactory(
   member: ContentFactoryAccessMember | null | undefined,
 ): boolean {
@@ -185,6 +199,75 @@ export function matchesContentFactoryPublicationFilters<
     return false;
   }
   return true;
+}
+
+export function buildContentFactoryBundleParams(
+  filters: ContentFactoryBundleFilterValues,
+): Record<string, string> {
+  const params: Record<string, string> = { limit: "500" };
+  if (filters.status !== "all") params.status = filters.status;
+  if (filters.product_stream) params.product_stream = filters.product_stream;
+  if (filters.owner_id) params.owner_id = filters.owner_id;
+  return params;
+}
+
+export function formatContentFactoryBundleCount(count: number): string {
+  return `${count} ${count === 1 ? "bundle" : "bundles"}`;
+}
+
+function russianPublicationNoun(count: number): string {
+  const lastDigit = count % 10;
+  const lastTwoDigits = count % 100;
+  if (lastDigit === 1 && lastTwoDigits !== 11) return "публикация";
+  if (
+    lastDigit >= 2 &&
+    lastDigit <= 4 &&
+    (lastTwoDigits < 12 || lastTwoDigits > 14)
+  ) {
+    return "публикации";
+  }
+  return "публикаций";
+}
+
+export function formatContentFactoryPublicationCount(count: number): string {
+  return `${count} ${russianPublicationNoun(count)}`;
+}
+
+export function getContentFactoryDisplayName(
+  id: string | null | undefined,
+  records: DisplayNameRecord[],
+): string {
+  if (!id) return "Не указано";
+  const record = records.find((item) => item.id === id);
+  return (
+    record?.display_name ||
+    record?.full_name ||
+    record?.name ||
+    id.slice(0, 9)
+  );
+}
+
+function cleanNullableText(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+export function cleanContentFactoryPublicationUpdate(
+  payload: CFPublicationUpdateRequest,
+): CFPublicationUpdateRequest {
+  const cleaned: CFPublicationUpdateRequest = {
+    ...payload,
+    title: cleanNullableText(payload.title),
+    body_text: cleanNullableText(payload.body_text),
+    platform_post_url: cleanNullableText(payload.platform_post_url),
+    platform_post_id: cleanNullableText(payload.platform_post_id),
+    cancelled_reason: cleanNullableText(payload.cancelled_reason),
+  };
+  return Object.fromEntries(
+    Object.entries(cleaned).filter(([, value]) => value !== undefined),
+  ) as CFPublicationUpdateRequest;
 }
 
 export function summarizeContentFactoryDashboard<

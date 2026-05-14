@@ -1,4 +1,69 @@
-# Active Plan: Content Factory Sprint 3 Frontend
+# Active Plan: Content Factory Sprint 4 Workspace
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-14-content-factory-sprint-4-workspace.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Build the Content Factory bundle and publication workspace so users can create bundles, work inside a campaign bundle, edit publication production fields, and inspect publication body version history.
+
+**Recovered design:** `docs/content-factory-design.md`
+
+**Preserved market research:** `docs/content-factory-market-context-report.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-14-content-factory-sprint-4-workspace.md`
+
+**Backlog:** `docs/BACKLOG.md`
+
+**Milestones:**
+
+1. Extend the backend/frontend update contract for bundle owner/product stream and publication metadata fields needed by the editor.
+2. Add frontend API methods and pure workspace helpers for bundle params, labels, relation names, and publication payload cleanup.
+3. Build the `/content-factory/bundles` register with filters and create/edit bundle workflow.
+4. Build `/content-factory/bundles/{id}` as the bundle workspace with brief, source materials, and publication list.
+5. Build `/content-factory/publications/{id}` as the publication editor with status/schedule/content/metadata editing and version-history display.
+6. Run backend/frontend verification and update durable repo docs.
+
+**Implementation status:**
+
+- Implemented; automated verification passed.
+- Sprint 1 and Sprint 2 backend work are merged to `main`.
+- Sprint 2.5 recovery and Sprint 3 frontend foundation are merged to `main`.
+
+**Definition of done:**
+
+- `CFBundleUpdate` supports owner and product stream updates used by the workspace UI.
+- `CFPublicationUpdate` supports platform, format, rubric, nosology, and responsible-user updates used by the editor.
+- Frontend API exposes `getCFBundle`, `createCFPublicationForBundle`, and `getCFPublicationVersions`.
+- `/content-factory/bundles` lists bundles, supports status/product stream/owner filters, and can create bundles.
+- `/content-factory/bundles/{id}` shows bundle brief, owner, product stream, event date, funnel template, source materials, and publication list.
+- `/content-factory/publications/{id}` edits title, body, media refs, schedule, status, UTM, post URL, post ID, responsible user, rubric, format, platform, and nosology where supported by the API.
+- Publication body version history is visible from the publication editor.
+- Verification commands pass and docs are updated.
+
+**Validation commands:**
+
+```bash
+cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_cf_bundle_service.py tests/test_cf_publication_service.py tests/test_content_factory_bundles_api.py tests/test_content_factory_publications_api.py -q
+cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/lib/contentFactoryApiSourceGuards.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_cf_bundle_service.py tests/test_cf_publication_service.py tests/test_content_factory_bundles_api.py tests/test_content_factory_publications_api.py -q` passed: 23 tests, with existing AsyncMock/runtime warnings.
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/lib/contentFactoryApiSourceGuards.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 22 tests, with existing Node module-type warnings.
+- `cd frontend && npm test` passed: 106 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/bundles`, `/content-factory/bundles/[id]`, and `/content-factory/publications/[id]`.
+- `git diff --check` passed.
+- Local dev server smoke on `http://127.0.0.1:3005` returned HTTP 200 for `/content-factory/bundles`, `/content-factory/bundles/demo-id`, and `/content-factory/publications/demo-id`; the dev server compiled the new routes without runtime errors. Headless Chrome reached the portal's initial unauthenticated shell, but the external Telegram/login bootstrap prevented a reliable login-flow screenshot in this environment.
+
+---
+
+# Previous Plan: Content Factory Sprint 3 Frontend
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-14-content-factory-sprint-3-frontend.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
 

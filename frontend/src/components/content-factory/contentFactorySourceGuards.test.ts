@@ -13,14 +13,17 @@ test("sidebar exposes content factory navigation", () => {
   const source = readSource("components/layout/Sidebar.tsx");
 
   assert.match(source, /href:\s*"\/content-factory\/dashboard"/);
+  assert.match(source, /href:\s*"\/content-factory\/bundles"/);
   assert.match(source, /label:\s*"Content Factory"/);
 });
 
-test("header knows content factory dashboard and calendar routes", () => {
+test("header knows content factory workspace routes", () => {
   const source = readSource("components/layout/Header.tsx");
 
   assert.match(source, /\/content-factory\/dashboard/);
   assert.match(source, /\/content-factory\/calendar/);
+  assert.match(source, /\/content-factory\/bundles/);
+  assert.match(source, /\/content-factory\/publications/);
 });
 
 test("content factory layout uses dedicated access guard", () => {
@@ -38,6 +41,21 @@ test("dashboard and calendar routes exist", () => {
   assert.match(
     readSource("app/content-factory/calendar/page.tsx"),
     /ContentFactoryCalendarPage/,
+  );
+});
+
+test("bundle and publication workspace routes exist", () => {
+  assert.match(
+    readSource("app/content-factory/bundles/page.tsx"),
+    /ContentFactoryBundlesPage/,
+  );
+  assert.match(
+    readSource("app/content-factory/bundles/[id]/page.tsx"),
+    /ContentFactoryBundleDetailPage/,
+  );
+  assert.match(
+    readSource("app/content-factory/publications/[id]/page.tsx"),
+    /ContentFactoryPublicationDetailPage/,
   );
 });
 
@@ -60,4 +78,21 @@ test("calendar route uses content factory filters and date grouping", () => {
   assert.match(source, /ContentFactoryFilters/);
   assert.match(source, /ContentFactoryStatusBadge/);
   assert.match(source, /href="\/content-factory\/dashboard"/);
+});
+
+test("workspace routes use bundle and publication APIs", () => {
+  const bundlesSource = readSource("app/content-factory/bundles/page.tsx");
+  const bundleDetailSource = readSource("app/content-factory/bundles/[id]/page.tsx");
+  const publicationSource = readSource(
+    "app/content-factory/publications/[id]/page.tsx",
+  );
+
+  assert.match(bundlesSource, /api\.getCFBundles/);
+  assert.match(bundlesSource, /ContentFactoryBundleDialog/);
+  assert.match(bundleDetailSource, /api\.getCFBundle/);
+  assert.match(bundleDetailSource, /api\.getCFPublicationsForBundle/);
+  assert.match(bundleDetailSource, /ContentFactoryPublicationDialog/);
+  assert.match(publicationSource, /api\.getCFPublication/);
+  assert.match(publicationSource, /api\.getCFPublicationVersions/);
+  assert.match(publicationSource, /ContentFactoryPublicationVersionList/);
 });

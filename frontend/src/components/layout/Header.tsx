@@ -13,6 +13,8 @@ import {
   ChevronRight,
   Factory,
   FileBarChart,
+  FileText,
+  FolderKanban,
   LayoutDashboard,
   Loader2,
   MessageSquareWarning,
@@ -52,6 +54,12 @@ const PAGE_META: Record<string, PageMeta> = {
   "/content/telegram-analysis": { title: "Telegram-анализ", icon: Search },
   "/content-factory/dashboard": { title: "Content Factory", icon: Factory },
   "/content-factory/calendar": { title: "Календарь контента", icon: CalendarDays },
+  "/content-factory/bundles": { title: "CF Bundles", icon: FolderKanban },
+  "/content-factory/publications": {
+    title: "CF Publication",
+    icon: FileText,
+    parent: "/content-factory/bundles",
+  },
   "/team": { title: "Команда", icon: Users },
   "/broadcasts": { title: "Рассылки", icon: Megaphone },
   "/settings": { title: "Настройки", icon: Settings },
@@ -69,6 +77,32 @@ function getPageMeta(
 
   // Check for detail pages like /tasks/42
   const segments = pathname.split("/").filter(Boolean);
+
+  if (pathname.startsWith("/content-factory/bundles/")) {
+    const parentMeta = PAGE_META["/content-factory/bundles"];
+    return {
+      ...parentMeta,
+      title: pageTitle || "Bundle",
+      parent: "/content-factory/bundles",
+      crumbs: [
+        { label: parentMeta.title, href: "/content-factory/bundles" },
+        { label: pageTitle || "Bundle" },
+      ],
+    };
+  }
+
+  if (pathname.startsWith("/content-factory/publications/")) {
+    const parentMeta = PAGE_META["/content-factory/bundles"];
+    return {
+      ...PAGE_META["/content-factory/publications"],
+      title: pageTitle || "Publication",
+      parent: "/content-factory/bundles",
+      crumbs: [
+        { label: parentMeta.title, href: "/content-factory/bundles" },
+        { label: pageTitle || "Publication" },
+      ],
+    };
+  }
 
   if (segments.length >= 2) {
     const parentPath = `/${segments[0]}`;

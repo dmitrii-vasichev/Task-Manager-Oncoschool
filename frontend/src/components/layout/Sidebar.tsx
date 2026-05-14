@@ -110,6 +110,13 @@ const NAV_ITEMS: NavItem[] = [
     contentFactoryAccess: true,
     section: "content",
   },
+  {
+    href: "/content-factory/bundles",
+    label: "CF Bundles",
+    icon: FolderKanban,
+    contentFactoryAccess: true,
+    section: "content",
+  },
   { href: "/team", label: "Команда", icon: Users, moderatorOnly: true, section: "manage" },
   {
     href: "/broadcasts",

@@ -94,7 +94,9 @@ import type {
   CFBundleUpdateRequest,
   CFBundleListParams,
   CFPublication,
+  CFPublicationCreateRequest,
   CFPublicationUpdateRequest,
+  CFPublicationVersion,
   CFPublicationListParams,
   CFExternalSegment,
   CFMetricSnapshot,
@@ -621,6 +623,10 @@ class ApiClient {
     return this.request<CFBundle[]>(`/api/content-factory/bundles${query}`);
   }
 
+  async getCFBundle(id: string): Promise<CFBundle> {
+    return this.request<CFBundle>(`/api/content-factory/bundles/${id}`);
+  }
+
   async createCFBundle(data: CFBundleCreateRequest): Promise<CFBundle> {
     return this.request<CFBundle>("/api/content-factory/bundles", {
       method: "POST",
@@ -653,8 +659,27 @@ class ApiClient {
     );
   }
 
+  async createCFPublicationForBundle(
+    bundleId: string,
+    data: CFPublicationCreateRequest
+  ): Promise<CFPublication> {
+    return this.request<CFPublication>(
+      `/api/content-factory/bundles/${bundleId}/publications`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
+  }
+
   async getCFPublication(id: string): Promise<CFPublication> {
     return this.request<CFPublication>(`/api/content-factory/publications/${id}`);
+  }
+
+  async getCFPublicationVersions(id: string): Promise<CFPublicationVersion[]> {
+    return this.request<CFPublicationVersion[]>(
+      `/api/content-factory/publications/${id}/versions`
+    );
   }
 
   async updateCFPublication(

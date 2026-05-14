@@ -1145,11 +1145,13 @@ export interface CFBundleCreateRequest {
 
 export interface CFBundleUpdateRequest {
   name?: string | null;
+  product_stream?: CFProductStream | null;
   status?: CFBundleStatus | null;
   event_date?: string | null;
   brief?: string | null;
   funnel_template_id?: string | null;
   source_material_refs?: unknown[] | null;
+  owner_id?: string | null;
 }
 
 export interface CFPublication {
@@ -1191,6 +1193,11 @@ export interface CFPublicationCreateRequest {
 }
 
 export interface CFPublicationUpdateRequest {
+  platform_id?: string | null;
+  format_id?: string | null;
+  rubric_id?: string | null;
+  nosology_id?: string | null;
+  responsible_id?: string | null;
   title?: string | null;
   body_text?: string | null;
   media_refs?: unknown[] | null;
