@@ -397,3 +397,47 @@ test("segment analytics route loads usage evidence and is linked from registry",
     /\/content-factory\/publications\/\$\{item\.publication\.id\}/,
   );
 });
+
+test("effectiveness route loads outcome evidence and is linked from workspace navigation", () => {
+  assert.equal(sourceExists("app/content-factory/effectiveness/page.tsx"), true);
+  assert.equal(
+    sourceExists(
+      "components/content-factory/ContentFactoryEffectivenessTable.tsx",
+    ),
+    true,
+  );
+
+  const routeSource = readSource("app/content-factory/effectiveness/page.tsx");
+  const tableSource = readSource(
+    "components/content-factory/ContentFactoryEffectivenessTable.tsx",
+  );
+  const uiSource = readSource("lib/contentFactoryUi.ts");
+  const navSource = readSource(
+    "components/content-factory/ContentFactoryWorkspaceNav.tsx",
+  );
+  const headerSource = readSource("components/layout/Header.tsx");
+  const helpSource = readSource("app/content-factory/help/page.tsx");
+
+  assert.match(uiSource, /\/content-factory\/effectiveness/);
+  assert.match(uiSource, /Эффективность/);
+  assert.match(navSource, /\/content-factory\/effectiveness/);
+  assert.match(headerSource, /\/content-factory\/effectiveness/);
+  assert.match(headerSource, /Эффективность/);
+  assert.match(helpSource, /CONTENT_FACTORY_SECTIONS/);
+  assert.match(routeSource, /ContentFactoryEffectivenessPage/);
+  assert.match(routeSource, /api\.getCFPublications\(\{ limit: 500 \}\)/);
+  assert.match(routeSource, /api\.getCFBundles\(\{ limit: 500 \}\)/);
+  assert.match(routeSource, /api\.getCFPlatforms\(\)/);
+  assert.match(routeSource, /api\.getCFFormats\(\)/);
+  assert.match(routeSource, /api\.getCFPublicationSegmentTargets/);
+  assert.match(routeSource, /api\.getCFMetrics/);
+  assert.match(routeSource, /buildContentFactoryEffectivenessRows/);
+  assert.match(routeSource, /summarizeContentFactoryEffectiveness/);
+  assert.match(routeSource, /filterContentFactoryEffectivenessRows/);
+  assert.match(tableSource, /ContentFactoryEffectivenessTable/);
+  assert.match(
+    tableSource,
+    /\/content-factory\/publications\/\$\{row\.publication\.id\}/,
+  );
+  assert.match(tableSource, /\/content-factory\/bundles\/\$\{row\.bundle\.id\}/);
+});

@@ -10,11 +10,13 @@ const {
   CF_RETRO_TYPE_LABELS,
   CF_SEGMENT_SOURCE_LABELS,
   buildContentFactoryBundleParams,
+  buildContentFactoryEffectivenessRows,
   buildContentFactorySegmentUsageRows,
   buildContentFactoryUtm,
   canAccessContentFactory,
   cleanContentFactoryPublicationUpdate,
   compareContentFactorySegmentSnapshots,
+  filterContentFactoryEffectivenessRows,
   filterContentFactorySegmentUsageRows,
   filterContentFactoryPublications,
   filterContentFactorySegments,
@@ -29,6 +31,7 @@ const {
   getContentFactoryRetroTitle,
   getContentFactoryReviewQueueGroups,
   groupPublicationsByDate,
+  summarizeContentFactoryEffectiveness,
   summarizeContentFactorySegments,
   summarizeContentFactorySegmentUsage,
   summarizeContentFactoryReferenceRecords,
@@ -705,6 +708,328 @@ test("filterContentFactorySegmentUsageRows combines search usage and role filter
       role: "all",
     }).map((row) => row.segment.id),
     ["seg-unused"],
+  );
+});
+
+test("buildContentFactoryEffectivenessRows joins publications to objectives metrics and target evidence", () => {
+  assert.equal(typeof buildContentFactoryEffectivenessRows, "function");
+
+  const rows = buildContentFactoryEffectivenessRows({
+    now: new Date("2026-05-20T12:00:00Z"),
+    freshnessDays: 8,
+    publications: [
+      {
+        id: "pub-fresh",
+        bundle_id: "bundle-1",
+        platform_id: "platform-telegram",
+        format_id: "format-registration",
+        title: "Webinar registration reminder",
+        status: "published",
+        scheduled_at: "2026-05-14T10:00:00Z",
+        actual_published_at: "2026-05-14T11:00:00Z",
+        updated_at: "2026-05-14T11:15:00Z",
+      },
+      {
+        id: "pub-stale",
+        bundle_id: "bundle-2",
+        platform_id: "platform-vk",
+        format_id: "format-trust",
+        title: "Patient story",
+        status: "published",
+        scheduled_at: "2026-05-01T10:00:00Z",
+        actual_published_at: "2026-05-01T11:00:00Z",
+        updated_at: "2026-05-01T11:15:00Z",
+      },
+    ],
+    bundles: [
+      { id: "bundle-1", name: "May webinar", status: "live" },
+      { id: "bundle-2", name: "Trust series", status: "retrospective" },
+    ],
+    platforms: [
+      {
+        id: "platform-telegram",
+        code: "telegram",
+        display_name: "Telegram",
+      },
+      { id: "platform-vk", code: "vk", display_name: "VK" },
+    ],
+    formats: [
+      {
+        id: "format-registration",
+        code: "button",
+        display_name: "Кнопка",
+        default_objective: "registration",
+      },
+      {
+        id: "format-trust",
+        code: "patient_story",
+        display_name: "История пациента",
+        default_objective: "trust",
+      },
+    ],
+    segmentTargetsByPublicationId: {
+      "pub-fresh": [
+        {
+          publication_id: "pub-fresh",
+          external_segment_id: "segment-1",
+          role: "target",
+          expected_count: 100,
+          actual_count_at_send: 88,
+        },
+      ],
+    },
+    metricsByPublicationId: {
+      "pub-fresh": [
+        {
+          id: "metric-1",
+          publication_id: "pub-fresh",
+          window: "7d",
+          metric_name: "registrations",
+          metric_value: 42,
+          metric_value_text: null,
+          source: "manual",
+          source_method: "GetCourse",
+          confidence: "high",
+          raw_payload: null,
+          note: null,
+          captured_by_id: null,
+          captured_at: "2026-05-19T12:00:00Z",
+        },
+      ],
+      "pub-stale": [
+        {
+          id: "metric-2",
+          publication_id: "pub-stale",
+          window: "24h",
+          metric_name: "views",
+          metric_value: 500,
+          metric_value_text: null,
+          source: "manual",
+          source_method: "Telegram",
+          confidence: "medium",
+          raw_payload: null,
+          note: null,
+          captured_by_id: null,
+          captured_at: "2026-05-02T12:00:00Z",
+        },
+      ],
+    },
+  });
+
+  const fresh = rows.find((row) => row.publication.id === "pub-fresh");
+  assert.ok(fresh);
+  assert.equal(fresh.objective, "registration");
+  assert.equal(fresh.bundle?.name, "May webinar");
+  assert.equal(fresh.platform?.display_name, "Telegram");
+  assert.equal(fresh.format?.display_name, "Кнопка");
+  assert.equal(fresh.metricHealth, "fresh");
+  assert.equal(fresh.metricCount, 1);
+  assert.equal(fresh.latestMetric?.metric_name, "registrations");
+  assert.equal(fresh.latestMetricAt, "2026-05-19T12:00:00Z");
+  assert.equal(fresh.targetExpectedCount, 100);
+  assert.equal(fresh.targetActualCountAtSend, 88);
+
+  const stale = rows.find((row) => row.publication.id === "pub-stale");
+  assert.ok(stale);
+  assert.equal(stale.objective, "trust");
+  assert.equal(stale.metricHealth, "stale");
+});
+
+test("summarizeContentFactoryEffectiveness counts evidence coverage and stale rows", () => {
+  assert.equal(typeof summarizeContentFactoryEffectiveness, "function");
+
+  const rows = buildContentFactoryEffectivenessRows({
+    now: new Date("2026-05-20T12:00:00Z"),
+    freshnessDays: 8,
+    publications: [
+      {
+        id: "fresh",
+        bundle_id: "bundle",
+        platform_id: "telegram",
+        format_id: "registration",
+        title: "Fresh",
+        status: "published",
+        scheduled_at: null,
+        actual_published_at: "2026-05-14T11:00:00Z",
+      },
+      {
+        id: "missing",
+        bundle_id: "bundle",
+        platform_id: "telegram",
+        format_id: "registration",
+        title: "Missing",
+        status: "scheduled",
+        scheduled_at: "2026-05-21T11:00:00Z",
+        actual_published_at: null,
+      },
+      {
+        id: "stale",
+        bundle_id: "bundle",
+        platform_id: "vk",
+        format_id: "trust",
+        title: "Stale",
+        status: "published",
+        scheduled_at: null,
+        actual_published_at: "2026-05-01T11:00:00Z",
+      },
+    ],
+    bundles: [{ id: "bundle", name: "Bundle", status: "live" }],
+    platforms: [
+      { id: "telegram", code: "telegram", display_name: "Telegram" },
+      { id: "vk", code: "vk", display_name: "VK" },
+    ],
+    formats: [
+      {
+        id: "registration",
+        code: "button",
+        display_name: "Кнопка",
+        default_objective: "registration",
+      },
+      {
+        id: "trust",
+        code: "story",
+        display_name: "История",
+        default_objective: "trust",
+      },
+    ],
+    segmentTargetsByPublicationId: {},
+    metricsByPublicationId: {
+      fresh: [
+        {
+          id: "metric-fresh",
+          publication_id: "fresh",
+          window: "7d",
+          metric_name: "registrations",
+          metric_value: 10,
+          metric_value_text: null,
+          source: "manual",
+          source_method: null,
+          confidence: "high",
+          raw_payload: null,
+          note: null,
+          captured_by_id: null,
+          captured_at: "2026-05-20T10:00:00Z",
+        },
+      ],
+      stale: [
+        {
+          id: "metric-stale",
+          publication_id: "stale",
+          window: "24h",
+          metric_name: "views",
+          metric_value: 300,
+          metric_value_text: null,
+          source: "manual",
+          source_method: null,
+          confidence: "medium",
+          raw_payload: null,
+          note: null,
+          captured_by_id: null,
+          captured_at: "2026-05-02T10:00:00Z",
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(summarizeContentFactoryEffectiveness(rows), {
+    totalPublications: 3,
+    publishedPublications: 2,
+    rowsWithEvidence: 2,
+    rowsWithoutEvidence: 1,
+    freshEvidenceRows: 1,
+    staleEvidenceRows: 1,
+  });
+});
+
+test("filterContentFactoryEffectivenessRows combines search objective health and platform filters", () => {
+  assert.equal(typeof filterContentFactoryEffectivenessRows, "function");
+
+  const rows = buildContentFactoryEffectivenessRows({
+    now: new Date("2026-05-20T12:00:00Z"),
+    freshnessDays: 8,
+    publications: [
+      {
+        id: "pub-registration",
+        bundle_id: "bundle-webinar",
+        platform_id: "telegram",
+        format_id: "registration",
+        title: "Webinar reminder",
+        status: "published",
+        scheduled_at: null,
+        actual_published_at: "2026-05-14T11:00:00Z",
+      },
+      {
+        id: "pub-trust",
+        bundle_id: "bundle-story",
+        platform_id: "vk",
+        format_id: "trust",
+        title: "Patient story",
+        status: "published",
+        scheduled_at: null,
+        actual_published_at: "2026-05-14T11:00:00Z",
+      },
+    ],
+    bundles: [
+      { id: "bundle-webinar", name: "May webinar", status: "live" },
+      { id: "bundle-story", name: "Story bundle", status: "production" },
+    ],
+    platforms: [
+      { id: "telegram", code: "telegram", display_name: "Telegram" },
+      { id: "vk", code: "vk", display_name: "VK" },
+    ],
+    formats: [
+      {
+        id: "registration",
+        code: "button",
+        display_name: "Кнопка",
+        default_objective: "registration",
+      },
+      {
+        id: "trust",
+        code: "story",
+        display_name: "История",
+        default_objective: "trust",
+      },
+    ],
+    segmentTargetsByPublicationId: {},
+    metricsByPublicationId: {
+      "pub-registration": [
+        {
+          id: "metric",
+          publication_id: "pub-registration",
+          window: "7d",
+          metric_name: "registrations",
+          metric_value: 20,
+          metric_value_text: null,
+          source: "manual",
+          source_method: null,
+          confidence: "high",
+          raw_payload: null,
+          note: null,
+          captured_by_id: null,
+          captured_at: "2026-05-20T10:00:00Z",
+        },
+      ],
+    },
+  });
+
+  assert.deepEqual(
+    filterContentFactoryEffectivenessRows(rows, {
+      search: "webinar",
+      objective: "registration",
+      metricHealth: "fresh",
+      platformId: "telegram",
+    }).map((row) => row.publication.id),
+    ["pub-registration"],
+  );
+  assert.deepEqual(
+    filterContentFactoryEffectivenessRows(rows, {
+      search: "",
+      objective: "all",
+      metricHealth: "missing",
+      platformId: "all",
+    }).map((row) => row.publication.id),
+    ["pub-trust"],
   );
 });
 

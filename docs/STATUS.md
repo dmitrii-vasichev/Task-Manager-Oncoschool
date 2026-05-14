@@ -2,7 +2,7 @@
 
 ## Content Factory Sprint 10 Effectiveness Analytics
 
-- Current phase: planning pack created on branch `codex/content-factory-sprint-10-effectiveness`
+- Current phase: implemented and verified on branch `codex/content-factory-sprint-10-effectiveness`
 - Source: user approval on 2026-05-14, preserved research, restored Content Factory design doc, Sprint 1-9.5 implementation, and user UX feedback after navigation consolidation
 - Deep research: `docs/content-factory-market-context-report.md`
 - Design: `docs/superpowers/specs/2026-05-14-content-factory-sprint-10-effectiveness-design.md`
@@ -15,6 +15,10 @@
   - Created branch `codex/content-factory-sprint-10-effectiveness`.
   - Wrote Sprint 10 design and implementation plan.
   - Made Sprint 10 the active repository plan.
+  - Added effectiveness helpers for objective inference, metric freshness, target evidence, summary counts, and filters.
+  - Added `/content-factory/effectiveness` with summary cards, filters, partial-evidence handling, and compact publication rows.
+  - Added `Эффективность` to internal Content Factory navigation and header metadata.
+  - Ran Sprint 10 frontend verification successfully.
 - Key decisions:
   - Keep Sprint 10 frontend-heavy and reuse existing endpoints before adding a backend aggregate endpoint.
   - Name the new workspace `Эффективность`.
@@ -22,11 +26,16 @@
   - Treat metric snapshots as evidence with freshness and confidence, not as a universal reaction-based score.
   - Use an 8-day freshness window so the 7-day metric window has one operational day of slack.
 - Next actions:
-  - Add failing helper and source guard tests.
-  - Implement effectiveness helpers, table, route, and navigation.
-  - Run frontend verification and push Sprint 10.
+  - Merge and push Sprint 10.
+  - Run authenticated manual QA against real Content Factory metric rows when useful.
 - Latest verification:
-  - Not run yet for Sprint 10 implementation.
+  - `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 56 tests, with existing Node module-type warnings.
+  - `cd frontend && npm test` passed: 146 tests, with existing Node module-type warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/content-factory/effectiveness`.
+  - Local dev server smoke on `http://127.0.0.1:3012/content-factory/effectiveness` returned HTTP 200 and compiled the route.
+  - `git diff --check` passed.
 
 ## Content Factory Sprint 9.5 UX Consolidation
 

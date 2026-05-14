@@ -5,7 +5,7 @@
 ### Next
 
 - Run authenticated manual QA across the consolidated Content Factory workspace.
-- Build Sprint 10 effectiveness analytics using existing publication metric snapshots.
+- Run authenticated manual QA for Sprint 10 effectiveness analytics against real metric rows.
 
 ### Later
 

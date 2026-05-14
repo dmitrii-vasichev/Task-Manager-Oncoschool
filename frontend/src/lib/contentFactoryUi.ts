@@ -28,6 +28,11 @@ export const CONTENT_FACTORY_SECTIONS: ContentFactorySection[] = [
     description: "Публикации, которым нужен текст, дизайн, фактчек или одобрение.",
   },
   {
+    href: "/content-factory/effectiveness",
+    label: "Эффективность",
+    description: "Свежесть ручных замеров и результат публикаций относительно цели.",
+  },
+  {
     href: "/content-factory/segments",
     label: "Аудитории",
     description: "Зеркало внешних аудиторий и история изменения размера базы.",

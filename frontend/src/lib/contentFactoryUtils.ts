@@ -2,7 +2,9 @@ import type {
   CFBundle,
   CFBundleStatus,
   CFExternalSegment,
+  CFFormat,
   CFMetricSnapshot,
+  CFPlatform,
   CFProductStream,
   CFPublicationSegmentTarget,
   CFPublicationUpdateRequest,
@@ -284,6 +286,112 @@ type SegmentUsageMetricLike = Pick<
   id?: string;
 };
 
+export type ContentFactoryEffectivenessMetricHealth =
+  | "fresh"
+  | "stale"
+  | "missing";
+
+type EffectivenessPublicationLike = {
+  id: string;
+  bundle_id: string;
+  platform_id: string;
+  format_id: string;
+  title?: string | null;
+  status: CFPublicationStatus | string;
+  scheduled_at?: string | null;
+  actual_published_at?: string | null;
+  updated_at?: string | null;
+  created_at?: string | null;
+};
+
+type EffectivenessBundleLike = Pick<CFBundle, "id" | "name" | "status">;
+
+type EffectivenessPlatformLike = Pick<
+  CFPlatform,
+  "id" | "code" | "display_name"
+>;
+
+type EffectivenessFormatLike = Pick<
+  CFFormat,
+  "id" | "code" | "display_name" | "default_objective"
+>;
+
+type EffectivenessTargetLike = Pick<
+  CFPublicationSegmentTarget,
+  "publication_id" | "expected_count" | "actual_count_at_send"
+>;
+
+type EffectivenessMetricLike = Pick<
+  CFMetricSnapshot,
+  | "publication_id"
+  | "window"
+  | "metric_name"
+  | "metric_value"
+  | "metric_value_text"
+  | "confidence"
+  | "captured_at"
+> & {
+  id?: string;
+};
+
+export type ContentFactoryEffectivenessInput<
+  TPublication extends EffectivenessPublicationLike,
+  TBundle extends EffectivenessBundleLike,
+  TPlatform extends EffectivenessPlatformLike,
+  TFormat extends EffectivenessFormatLike,
+  TTarget extends EffectivenessTargetLike,
+  TMetric extends EffectivenessMetricLike,
+> = {
+  now?: Date | string;
+  freshnessDays?: number;
+  publications: TPublication[];
+  bundles: TBundle[];
+  platforms: TPlatform[];
+  formats: TFormat[];
+  segmentTargetsByPublicationId: Record<string, TTarget[] | undefined>;
+  metricsByPublicationId: Record<string, TMetric[] | undefined>;
+};
+
+export type ContentFactoryEffectivenessRow<
+  TPublication extends EffectivenessPublicationLike = EffectivenessPublicationLike,
+  TBundle extends EffectivenessBundleLike = EffectivenessBundleLike,
+  TPlatform extends EffectivenessPlatformLike = EffectivenessPlatformLike,
+  TFormat extends EffectivenessFormatLike = EffectivenessFormatLike,
+  TTarget extends EffectivenessTargetLike = EffectivenessTargetLike,
+  TMetric extends EffectivenessMetricLike = EffectivenessMetricLike,
+> = {
+  publication: TPublication;
+  bundle: TBundle | null;
+  platform: TPlatform | null;
+  format: TFormat | null;
+  objective: string;
+  targets: TTarget[];
+  metrics: TMetric[];
+  metricCount: number;
+  latestMetric: TMetric | null;
+  latestMetricAt: string | null;
+  metricHealth: ContentFactoryEffectivenessMetricHealth;
+  targetExpectedCount: number;
+  targetActualCountAtSend: number;
+  latestActivityAt: string | null;
+};
+
+export type ContentFactoryEffectivenessSummary = {
+  totalPublications: number;
+  publishedPublications: number;
+  rowsWithEvidence: number;
+  rowsWithoutEvidence: number;
+  freshEvidenceRows: number;
+  staleEvidenceRows: number;
+};
+
+export type ContentFactoryEffectivenessFilters = {
+  search?: string | null;
+  objective?: "all" | string | null;
+  metricHealth?: "all" | ContentFactoryEffectivenessMetricHealth | null;
+  platformId?: "all" | string | null;
+};
+
 export type ContentFactorySegmentSummary = {
   total: number;
   active: number;
@@ -415,6 +523,191 @@ function emptyStatusCounts<TStatus extends string>(
     TStatus,
     number
   >;
+}
+
+function dateInputTime(value: Date | string | null | undefined): number {
+  if (value instanceof Date) return value.getTime();
+  return dateTime(value) ?? Date.now();
+}
+
+function sortMetricsByCapturedAt<TMetric extends EffectivenessMetricLike>(
+  metrics: TMetric[],
+): TMetric[] {
+  return [...metrics].sort(
+    (left, right) =>
+      (dateTime(right.captured_at) ?? 0) - (dateTime(left.captured_at) ?? 0),
+  );
+}
+
+function getMetricHealth<TMetric extends EffectivenessMetricLike>(
+  metrics: TMetric[],
+  nowTime: number,
+  freshnessMs: number,
+): ContentFactoryEffectivenessMetricHealth {
+  if (metrics.length === 0) return "missing";
+  const latestMetricTime = dateTime(metrics[0]?.captured_at);
+  if (latestMetricTime === null) return "stale";
+  return nowTime - latestMetricTime <= freshnessMs ? "fresh" : "stale";
+}
+
+export function buildContentFactoryEffectivenessRows<
+  TPublication extends EffectivenessPublicationLike,
+  TBundle extends EffectivenessBundleLike,
+  TPlatform extends EffectivenessPlatformLike,
+  TFormat extends EffectivenessFormatLike,
+  TTarget extends EffectivenessTargetLike,
+  TMetric extends EffectivenessMetricLike,
+>({
+  now,
+  freshnessDays = 8,
+  publications,
+  bundles,
+  platforms,
+  formats,
+  segmentTargetsByPublicationId,
+  metricsByPublicationId,
+}: ContentFactoryEffectivenessInput<
+  TPublication,
+  TBundle,
+  TPlatform,
+  TFormat,
+  TTarget,
+  TMetric
+>): Array<
+  ContentFactoryEffectivenessRow<
+    TPublication,
+    TBundle,
+    TPlatform,
+    TFormat,
+    TTarget,
+    TMetric
+  >
+> {
+  const bundlesById = new Map(bundles.map((bundle) => [bundle.id, bundle]));
+  const platformsById = new Map(
+    platforms.map((platform) => [platform.id, platform]),
+  );
+  const formatsById = new Map(formats.map((format) => [format.id, format]));
+  const nowTime = dateInputTime(now);
+  const freshnessMs = Math.max(freshnessDays, 0) * 24 * 60 * 60 * 1000;
+
+  return publications
+    .map((publication) => {
+      const bundle = bundlesById.get(publication.bundle_id) ?? null;
+      const platform = platformsById.get(publication.platform_id) ?? null;
+      const format = formatsById.get(publication.format_id) ?? null;
+      const targets = segmentTargetsByPublicationId[publication.id] ?? [];
+      const metrics = sortMetricsByCapturedAt(
+        metricsByPublicationId[publication.id] ?? [],
+      );
+      const latestMetric = metrics[0] ?? null;
+      const latestMetricAt = latestMetric?.captured_at ?? null;
+      const objective = format?.default_objective?.trim() || "unknown";
+
+      return {
+        publication,
+        bundle,
+        platform,
+        format,
+        objective,
+        targets,
+        metrics,
+        metricCount: metrics.length,
+        latestMetric,
+        latestMetricAt,
+        metricHealth: getMetricHealth(metrics, nowTime, freshnessMs),
+        targetExpectedCount: targets.reduce(
+          (total, target) => total + (target.expected_count ?? 0),
+          0,
+        ),
+        targetActualCountAtSend: targets.reduce(
+          (total, target) => total + (target.actual_count_at_send ?? 0),
+          0,
+        ),
+        latestActivityAt:
+          latestIso([latestMetricAt]) ??
+          latestIso([
+            publication.actual_published_at,
+            publication.scheduled_at,
+            publication.updated_at,
+            publication.created_at,
+          ]),
+      };
+    })
+    .sort(
+      (left, right) =>
+        (dateTime(right.latestActivityAt) ?? 0) -
+          (dateTime(left.latestActivityAt) ?? 0) ||
+        (left.publication.title ?? left.publication.id).localeCompare(
+          right.publication.title ?? right.publication.id,
+          "ru",
+        ),
+    );
+}
+
+export function summarizeContentFactoryEffectiveness(
+  rows: ContentFactoryEffectivenessRow[],
+): ContentFactoryEffectivenessSummary {
+  return {
+    totalPublications: rows.length,
+    publishedPublications: rows.filter(
+      (row) => row.publication.status === "published",
+    ).length,
+    rowsWithEvidence: rows.filter((row) => row.metricCount > 0).length,
+    rowsWithoutEvidence: rows.filter((row) => row.metricCount === 0).length,
+    freshEvidenceRows: rows.filter((row) => row.metricHealth === "fresh").length,
+    staleEvidenceRows: rows.filter((row) => row.metricHealth === "stale").length,
+  };
+}
+
+export function filterContentFactoryEffectivenessRows<
+  TRow extends ContentFactoryEffectivenessRow,
+>(
+  rows: TRow[],
+  filters: ContentFactoryEffectivenessFilters,
+): TRow[] {
+  const search = filters.search?.trim().toLowerCase();
+  return rows.filter((row) => {
+    if (
+      filters.objective &&
+      filters.objective !== "all" &&
+      row.objective !== filters.objective
+    ) {
+      return false;
+    }
+    if (
+      filters.metricHealth &&
+      filters.metricHealth !== "all" &&
+      row.metricHealth !== filters.metricHealth
+    ) {
+      return false;
+    }
+    if (
+      filters.platformId &&
+      filters.platformId !== "all" &&
+      row.publication.platform_id !== filters.platformId
+    ) {
+      return false;
+    }
+    if (!search) return true;
+
+    const haystack = [
+      row.publication.id,
+      row.publication.title,
+      row.bundle?.name,
+      row.platform?.display_name,
+      row.platform?.code,
+      row.format?.display_name,
+      row.format?.code,
+      row.objective,
+      ...row.metrics.map((metric) => metric.metric_name),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    return haystack.includes(search);
+  });
 }
 
 export function groupPublicationsByDate<T extends PublicationScheduleLike>(

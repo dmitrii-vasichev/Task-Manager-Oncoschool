@@ -14,6 +14,7 @@ import {
   History,
   ListChecks,
   Settings2,
+  TrendingUp,
   Users,
 } from "lucide-react";
 import {
@@ -27,6 +28,7 @@ const ICONS: Record<string, React.ElementType> = {
   "/content-factory/calendar": CalendarDays,
   "/content-factory/bundles": FolderKanban,
   "/content-factory/review": ListChecks,
+  "/content-factory/effectiveness": TrendingUp,
   "/content-factory/segments": Users,
   "/content-factory/segments/analytics": BarChart3,
   "/content-factory/retros": History,

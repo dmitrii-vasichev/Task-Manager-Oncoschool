@@ -24,7 +24,7 @@
 
 **Implementation status:**
 
-- Planning pack created on branch `codex/content-factory-sprint-10-effectiveness`.
+- Implemented and verified on branch `codex/content-factory-sprint-10-effectiveness`.
 - Sprint 1 through Sprint 9.5 work is merged to `main`.
 - Sprint 9.5 follow-up UX fixes for repeated titles and internal nav scroll controls are merged to `main`.
 
@@ -50,7 +50,13 @@ git diff --check
 
 **Latest verification result:**
 
-- Not run yet for Sprint 10 implementation.
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 56 tests, with existing Node module-type warnings.
+- `cd frontend && npm test` passed: 146 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/effectiveness`.
+- Local dev server smoke on `http://127.0.0.1:3012/content-factory/effectiveness` returned HTTP 200 and compiled the route.
+- `git diff --check` passed.
 
 ---
 
