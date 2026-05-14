@@ -4,14 +4,15 @@
 
 ### Next
 
-- Build Sprint 3 frontend foundation for `/content-factory`: types, API client methods, access guard, sidebar/header navigation, dashboard page, and calendar page.
-- Return `has_content_factory_access` from `/api/auth/me` and add it to the frontend `TeamMember` type.
-- Add frontend smoke tests or source guards for Content Factory route access, API methods, dashboard grouping, and calendar grouping.
-- Use the preserved deep research at `docs/content-factory-market-context-report.md` and restored design at `docs/content-factory-design.md` as planning inputs for Sprint 3 and later slices.
+- Build Sprint 5 segments, UTM, manual metrics, and review discipline.
+- Add segment targeting UI for target, exclusion, control, and retargeting roles.
+- Add a UTM/click-id helper using bundle, publication, segment, channel, format, and CTA context.
+- Add manual metric capture for 3h, 24h, 72h, 7d, final, and custom windows.
+- Add review queues for factcheck, doctor review, approval, scheduling, and publishing.
+- Keep the preserved deep research at `docs/content-factory-market-context-report.md` and restored design at `docs/content-factory-design.md` as planning inputs for Sprint 5 and later slices.
 
 ### Later
 
-- Add bundle detail editing and publication editor flows.
 - Add reference-table admin CRUD for platforms, formats, rubrics, nosologies, and funnel templates.
 - Add segment management UI and segment snapshot history.
 - Add manual metric capture UI and metric trend summaries.

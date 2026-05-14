@@ -4,8 +4,13 @@ import test from "node:test";
 import {
   CF_BUNDLE_STATUS_LABELS,
   CF_PUBLICATION_STATUS_LABELS,
+  buildContentFactoryBundleParams,
   canAccessContentFactory,
+  cleanContentFactoryPublicationUpdate,
   filterContentFactoryPublications,
+  formatContentFactoryBundleCount,
+  formatContentFactoryPublicationCount,
+  getContentFactoryDisplayName,
   groupPublicationsByDate,
   summarizeContentFactoryDashboard,
 } from "./contentFactoryUtils.ts";
@@ -141,5 +146,52 @@ test("filterContentFactoryPublications applies calendar filters together", () =>
   assert.deepEqual(
     result.map((publication) => publication.id),
     ["keep"],
+  );
+});
+
+test("buildContentFactoryBundleParams skips empty bundle filters", () => {
+  assert.deepEqual(
+    buildContentFactoryBundleParams({
+      status: "all",
+      product_stream: "",
+      owner_id: "owner-1",
+    }),
+    { limit: "500", owner_id: "owner-1" },
+  );
+});
+
+test("cleanContentFactoryPublicationUpdate trims strings and nulls blank optional fields", () => {
+  assert.deepEqual(
+    cleanContentFactoryPublicationUpdate({
+      title: "  Reminder ",
+      body_text: "",
+      platform_post_url: "   ",
+      platform_post_id: "vk-1",
+      utm: { campaign: "may" },
+    }),
+    {
+      title: "Reminder",
+      body_text: null,
+      platform_post_url: null,
+      platform_post_id: "vk-1",
+      utm: { campaign: "may" },
+    },
+  );
+});
+
+test("Content Factory count labels use expected plural forms", () => {
+  assert.equal(formatContentFactoryBundleCount(1), "1 bundle");
+  assert.equal(formatContentFactoryBundleCount(2), "2 bundles");
+  assert.equal(formatContentFactoryPublicationCount(5), "5 публикаций");
+  assert.equal(formatContentFactoryPublicationCount(21), "21 публикация");
+});
+
+test("getContentFactoryDisplayName falls back to an id fragment", () => {
+  assert.equal(getContentFactoryDisplayName("format-123456", []), "format-12");
+  assert.equal(
+    getContentFactoryDisplayName("member-1", [
+      { id: "member-1", full_name: "Мария Смирнова" },
+    ]),
+    "Мария Смирнова",
   );
 });

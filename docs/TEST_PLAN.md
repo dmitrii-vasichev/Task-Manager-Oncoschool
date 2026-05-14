@@ -1,5 +1,31 @@
 # Test Plan
 
+## Content Factory Sprint 4 Workspace
+
+### Automated
+
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_cf_bundle_service.py tests/test_cf_publication_service.py tests/test_content_factory_bundles_api.py tests/test_content_factory_publications_api.py -q`
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/lib/contentFactoryApiSourceGuards.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Log in as an admin or member with `has_content_factory_access=true` and confirm `/content-factory/bundles` is reachable from Content Factory navigation.
+2. Confirm bundle filters by status, product stream, and owner update the register without a page reload.
+3. Create a bundle with name, product stream, owner, status, event date, brief, funnel template, and source material refs.
+4. Open the created bundle and confirm the detail page shows brief, owner, product stream, event date, funnel template, source materials, and an empty publication state.
+5. Edit the bundle owner/product stream/status/brief and confirm the detail page refreshes with the updated values.
+6. Create a publication inside the bundle with platform, format, responsible user, status, schedule, title, body, media refs, and UTM JSON.
+7. Open the publication editor and confirm status, schedule, title, body, media refs, UTM, post URL, post ID, responsible user, rubric, format, platform, and nosology can be edited where the backend contract supports them.
+8. Change publication body text and confirm version history shows the new version after save.
+9. Change publication metadata without changing body text and confirm version history does not add an unnecessary body version.
+10. Confirm unauthenticated access to `/content-factory/bundles`, `/content-factory/bundles/{id}`, and `/content-factory/publications/{id}` reaches the existing login flow instead of a blank page or runtime crash.
+11. Confirm the workspace remains compact and operational, with no marketing-style hero page and no overlapping text at desktop and mobile widths.
+
 ## Content Factory Sprint 3 Frontend
 
 ### Automated

@@ -1440,11 +1440,13 @@ class CFBundleCreate(CFBundleBase):
 
 class CFBundleUpdate(BaseModel):
     name: str | None = None
+    product_stream: CFProductStreamType | None = None
     status: CFBundleStatusType | None = None
     event_date: datetime | None = None
     brief: str | None = None
     funnel_template_id: uuid.UUID | None = None
     source_material_refs: list | None = None
+    owner_id: uuid.UUID | None = None
 
 
 class CFBundleResponse(CFBundleBase):
@@ -1474,6 +1476,11 @@ class CFPublicationCreate(CFPublicationBase):
 
 
 class CFPublicationUpdate(BaseModel):
+    platform_id: uuid.UUID | None = None
+    format_id: uuid.UUID | None = None
+    rubric_id: uuid.UUID | None = None
+    nosology_id: uuid.UUID | None = None
+    responsible_id: uuid.UUID | None = None
     title: str | None = None
     body_text: str | None = None
     media_refs: list | None = None

@@ -45,6 +45,50 @@ class TestPublicationService(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.body_text, "new text")
         self.assertEqual(result.version_number, 2)
 
+    async def test_update_publication_metadata_without_body_version(self):
+        session = AsyncMock()
+        platform_id = uuid.uuid4()
+        format_id = uuid.uuid4()
+        rubric_id = uuid.uuid4()
+        nosology_id = uuid.uuid4()
+        responsible_id = uuid.uuid4()
+        publication = SimpleNamespace(
+            id=uuid.uuid4(),
+            bundle_id=uuid.uuid4(),
+            platform_id=uuid.uuid4(),
+            format_id=uuid.uuid4(),
+            rubric_id=None,
+            nosology_id=None,
+            responsible_id=uuid.uuid4(),
+            body_text="stable body",
+            version_number=1,
+            status="draft",
+            title="t",
+        )
+        PublicationService.get = AsyncMock(return_value=publication)
+
+        result = await PublicationService.update(
+            session,
+            publication.id,
+            CFPublicationUpdate(
+                platform_id=platform_id,
+                format_id=format_id,
+                rubric_id=rubric_id,
+                nosology_id=nosology_id,
+                responsible_id=responsible_id,
+            ),
+            editor_id=responsible_id,
+            approval_event="reviewed",
+        )
+
+        self.assertEqual(result.platform_id, platform_id)
+        self.assertEqual(result.format_id, format_id)
+        self.assertEqual(result.rubric_id, rubric_id)
+        self.assertEqual(result.nosology_id, nosology_id)
+        self.assertEqual(result.responsible_id, responsible_id)
+        self.assertEqual(result.version_number, 1)
+        session.add.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

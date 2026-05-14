@@ -1,5 +1,46 @@
 # Status
 
+## Content Factory Sprint 4 Workspace
+
+- Current phase: implemented; automated verification passed
+- Source: preserved deep research, restored Content Factory design doc, Sprint 1/2 backend API, and Sprint 3 frontend foundation
+- Deep research: `docs/content-factory-market-context-report.md`
+- Design: `docs/content-factory-design.md`
+- Plan: `docs/superpowers/plans/2026-05-14-content-factory-sprint-4-workspace.md`
+- Scope: bundle register, bundle detail workspace, publication create/edit surface, backend/frontend update contract for editor metadata fields, and publication body version-history display
+- Latest progress:
+  - Merged Sprint 2.5 recovery and Sprint 3 frontend foundation through PR #181.
+  - Confirmed local `main` is clean and aligned with `origin/main`.
+  - Created branch `codex/content-factory-sprint-4`.
+  - Wrote the Sprint 4 implementation plan in tracked repo docs.
+  - Made Sprint 4 the active repository plan in `docs/PLAN.md`.
+  - Extended `CFBundleUpdate` with owner and product stream updates.
+  - Extended `CFPublicationUpdate` with platform, format, rubric, nosology, and responsible-user updates.
+  - Added frontend API methods for single bundle fetch, bundle-scoped publication creation, and publication version history.
+  - Added pure Content Factory workspace helpers for bundle list params, count labels, display-name fallbacks, and publication update cleanup.
+  - Added `/content-factory/bundles` register with filters and create bundle dialog.
+  - Added `/content-factory/bundles/{id}` detail workspace with brief, source materials, publication list, bundle edit, and publication creation.
+  - Added `/content-factory/publications/{id}` editor surface with production details, UTM/media refs, edit dialog, and body version history.
+  - Added Content Factory bundle navigation and route metadata.
+- Key decisions:
+  - Continue from the preserved research and roadmap instead of trying to reconstruct the lost gitignored design files again.
+  - Keep Sprint 4 focused on manual operational workspace flows: bundle register/detail, publication editor, and version history.
+  - Defer reference-table admin CRUD, segment UI, manual metrics, retrospectives, API publishing integrations, and AI drafting to later sprints.
+  - Work in the current checkout on a normal branch rather than creating another manual git worktree.
+- Next actions:
+  - Run authenticated manual QA for admin, flagged member, and unflagged member access.
+  - Commit and push Sprint 4 workspace work when ready.
+  - After merge, start Sprint 5 planning for segments, UTM helper, manual metrics, and review queues.
+- Latest verification:
+  - Backend focused Sprint 4 suite passed: 23 tests, with existing AsyncMock/runtime warnings.
+  - Frontend focused Content Factory suite passed: 22 tests, with existing Node module-type warnings.
+  - `cd frontend && npm test` passed: 106 tests, with existing Node module-type warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/content-factory/bundles`, `/content-factory/bundles/[id]`, and `/content-factory/publications/[id]`.
+  - `git diff --check` passed.
+  - Local dev server smoke on `http://127.0.0.1:3005` returned HTTP 200 for `/content-factory/bundles`, `/content-factory/bundles/demo-id`, and `/content-factory/publications/demo-id`; the dev server compiled the new routes without runtime errors. Headless Chrome reached the portal's initial unauthenticated shell, but the external Telegram/login bootstrap prevented a reliable login-flow screenshot in this environment.
+
 ## Content Factory Sprint 3 Frontend
 
 - Current phase: implemented; automated verification passed

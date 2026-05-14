@@ -22,10 +22,16 @@ test("content factory API client exposes Sprint 3 endpoints", () => {
 
   assert.match(source, /async getCFPlatforms/);
   assert.match(source, /async getCFBundles/);
+  assert.match(source, /async getCFBundle/);
   assert.match(source, /async getCFPublications/);
+  assert.match(source, /async createCFPublicationForBundle/);
+  assert.match(source, /async getCFPublicationVersions/);
   assert.match(source, /\/api\/content-factory\/platforms/);
   assert.match(source, /\/api\/content-factory\/bundles/);
+  assert.match(source, /\/api\/content-factory\/bundles\/\$\{id\}/);
+  assert.match(source, /\/api\/content-factory\/bundles\/\$\{bundleId\}\/publications/);
   assert.match(source, /\/api\/content-factory\/publications/);
+  assert.match(source, /\/api\/content-factory\/publications\/\$\{id\}\/versions/);
 });
 
 test("permission service exposes content factory access helper", () => {

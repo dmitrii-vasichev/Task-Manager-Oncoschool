@@ -42,6 +42,29 @@ class TestBundleService(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.name, "New")
         self.assertEqual(result.status, "production")
 
+    async def test_update_bundle_owner_and_product_stream(self):
+        session = AsyncMock()
+        old_owner_id = uuid.uuid4()
+        new_owner_id = uuid.uuid4()
+        bundle = SimpleNamespace(
+            id=uuid.uuid4(),
+            name="Old",
+            status="planning",
+            product_stream="onco_school",
+            owner_id=old_owner_id,
+            brief=None,
+        )
+        BundleService.get = AsyncMock(return_value=bundle)
+
+        result = await BundleService.update(
+            session,
+            bundle.id,
+            CFBundleUpdate(product_stream="patient_live", owner_id=new_owner_id),
+        )
+
+        self.assertEqual(result.product_stream, "patient_live")
+        self.assertEqual(result.owner_id, new_owner_id)
+
 
 if __name__ == "__main__":
     unittest.main()
