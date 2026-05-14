@@ -92,6 +92,29 @@ class TestCFCoreSchemas(unittest.TestCase):
         )
         self.assertEqual(m.retro_type, "weekly")
 
+    def test_cf_guest_story_create_defaults(self):
+        m = schemas.CFGuestStoryCreate(
+            display_name="Patient story candidate",
+            role="patient",
+            owner_id=uuid.uuid4(),
+        )
+        self.assertEqual(m.status, "sourced")
+        self.assertEqual(m.source, "manual")
+        self.assertEqual(m.consent_status, "not_started")
+        self.assertEqual(m.anonymity_level, "full_name")
+        self.assertEqual(m.gift_status, "not_required")
+        self.assertEqual(m.allowed_channels, [])
+        self.assertEqual(m.sensitive_topics, [])
+
+    def test_cf_guest_story_create_rejects_bad_status(self):
+        with self.assertRaises(ValidationError):
+            schemas.CFGuestStoryCreate(
+                display_name="Patient story candidate",
+                role="patient",
+                owner_id=uuid.uuid4(),
+                status="not_a_stage",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

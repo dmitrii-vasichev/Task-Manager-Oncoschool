@@ -56,6 +56,12 @@ class TestContentFactoryCoreModels(unittest.TestCase):
     def test_cf_retro_note_exists(self):
         self.assertEqual(models.CFRetroNote.__tablename__, "cf_retro_note")
 
+    def test_cf_guest_story_exists(self):
+        self.assertEqual(models.CFGuestStory.__tablename__, "cf_guest_story")
+        self.assertTrue(hasattr(models.CFGuestStory, "status"))
+        self.assertTrue(hasattr(models.CFGuestStory, "consent_status"))
+        self.assertTrue(hasattr(models.CFGuestStory, "allowed_channels"))
+
     def test_relationships_configure(self):
         configure_mappers()
         # Bundle ↔ publications

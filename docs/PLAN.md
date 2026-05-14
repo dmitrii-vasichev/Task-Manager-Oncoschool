@@ -24,7 +24,7 @@
 
 **Implementation status:**
 
-- In progress on branch `codex/content-factory-sprint-11-guest-crm`.
+- Implemented and under validation on branch `codex/content-factory-sprint-11-guest-crm`.
 - Sprint 1 through Sprint 10 work is merged to `main`.
 - Sprint 11 starts from the preserved research recommendation to model patient/guest CRM as a separate entity, not as ordinary publication fields.
 
@@ -45,7 +45,9 @@ git diff --check
 
 **Latest verification result:**
 
-- Not yet run for Sprint 11 implementation.
+- Focused Sprint 11 backend test set passed: 41 tests.
+- Expanded Content Factory backend test set passed: 148 tests, with pre-existing `AsyncMock` warnings in older service tests.
+- `cd backend && ... alembic heads` returned a single head: `042_content_factory_guest_story`.
 
 ---
 

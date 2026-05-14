@@ -1761,3 +1761,52 @@ class CFRetroNote(Base):
     actions: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class CFGuestStory(Base):
+    __tablename__ = "cf_guest_story"
+    __table_args__ = (
+        Index("ix_cf_guest_story_status", "status"),
+        Index("ix_cf_guest_story_owner", "owner_id"),
+        Index("ix_cf_guest_story_bundle", "bundle_id"),
+        Index("ix_cf_guest_story_publication", "publication_id"),
+        Index("ix_cf_guest_story_stage_due", "stage_due_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    contact_ref: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    role: Mapped[str] = mapped_column(String(30), nullable=False)
+    source: Mapped[str] = mapped_column(String(30), nullable=False, default="manual", server_default="manual")
+    source_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    story_brief: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(40), nullable=False, default="sourced", server_default="sourced")
+    owner_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("team_members.id"), nullable=False)
+    stage_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    nosology_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("cf_nosology.id"), nullable=True)
+    bundle_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cf_bundle.id", ondelete="SET NULL"), nullable=True
+    )
+    publication_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cf_publication.id", ondelete="SET NULL"), nullable=True
+    )
+    screening_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    medical_factcheck_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    consent_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="not_started", server_default="not_started"
+    )
+    consent_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    consent_signed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    allowed_channels: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    anonymity_level: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="full_name", server_default="full_name"
+    )
+    sensitive_topics: Mapped[list[Any]] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    legal_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    gift_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="not_required", server_default="not_required"
+    )
+    follow_up_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)

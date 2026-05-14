@@ -85,6 +85,28 @@ CFMetricSourceType = Literal[
 CFConfidenceType = Literal["high", "medium", "low"]
 CFRetroType = Literal["weekly", "monthly", "bundle", "adhoc"]
 CFSegmentSourceType = Literal["getcourse"]
+CFGuestStoryRoleType = Literal[
+    "patient", "relative", "doctor", "volunteer", "partner", "other"
+]
+CFGuestStorySourceType = Literal[
+    "manual", "open_call", "referral", "screening_form", "partner", "other"
+]
+CFGuestStoryStatusType = Literal[
+    "sourced", "applied", "editorial_screening", "shortlisted",
+    "producer_call_scheduled", "producer_call_done",
+    "medical_factcheck_needed", "doctor_approved",
+    "consent_sent", "consent_signed", "scheduled",
+    "prep_materials_sent", "live_or_recorded", "post_production",
+    "published", "gift_sent", "follow_up_done",
+    "maybe_later", "rejected", "archived",
+]
+CFGuestConsentStatusType = Literal[
+    "not_started", "sent", "signed", "declined", "revoked", "expired"
+]
+CFGuestAnonymityLevelType = Literal[
+    "full_name", "first_name", "anonymous", "pseudonym"
+]
+CFGuestGiftStatusType = Literal["not_required", "pending", "sent", "received"]
 MeetingAIProcessingStatusType = Literal[
     "idle",
     "queued",
@@ -1584,4 +1606,69 @@ class CFRetroNoteResponse(CFRetroNoteBase):
     id: uuid.UUID
     facilitator_id: uuid.UUID
     created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CFGuestStoryBase(BaseModel):
+    display_name: str = Field(..., max_length=200)
+    contact_ref: str | None = Field(default=None, max_length=300)
+    role: CFGuestStoryRoleType
+    source: CFGuestStorySourceType = "manual"
+    source_notes: str | None = None
+    story_brief: str | None = None
+    status: CFGuestStoryStatusType = "sourced"
+    owner_id: uuid.UUID
+    stage_due_at: datetime | None = None
+    nosology_id: uuid.UUID | None = None
+    bundle_id: uuid.UUID | None = None
+    publication_id: uuid.UUID | None = None
+    screening_notes: str | None = None
+    medical_factcheck_notes: str | None = None
+    rejection_reason: str | None = None
+    consent_status: CFGuestConsentStatusType = "not_started"
+    consent_version: str | None = Field(default=None, max_length=50)
+    consent_signed_at: datetime | None = None
+    allowed_channels: list[str] = Field(default_factory=list)
+    anonymity_level: CFGuestAnonymityLevelType = "full_name"
+    sensitive_topics: list[str] = Field(default_factory=list)
+    legal_notes: str | None = None
+    gift_status: CFGuestGiftStatusType = "not_required"
+    follow_up_due_at: datetime | None = None
+
+
+class CFGuestStoryCreate(CFGuestStoryBase):
+    pass
+
+
+class CFGuestStoryUpdate(BaseModel):
+    display_name: str | None = Field(default=None, max_length=200)
+    contact_ref: str | None = Field(default=None, max_length=300)
+    role: CFGuestStoryRoleType | None = None
+    source: CFGuestStorySourceType | None = None
+    source_notes: str | None = None
+    story_brief: str | None = None
+    status: CFGuestStoryStatusType | None = None
+    owner_id: uuid.UUID | None = None
+    stage_due_at: datetime | None = None
+    nosology_id: uuid.UUID | None = None
+    bundle_id: uuid.UUID | None = None
+    publication_id: uuid.UUID | None = None
+    screening_notes: str | None = None
+    medical_factcheck_notes: str | None = None
+    rejection_reason: str | None = None
+    consent_status: CFGuestConsentStatusType | None = None
+    consent_version: str | None = Field(default=None, max_length=50)
+    consent_signed_at: datetime | None = None
+    allowed_channels: list[str] | None = None
+    anonymity_level: CFGuestAnonymityLevelType | None = None
+    sensitive_topics: list[str] | None = None
+    legal_notes: str | None = None
+    gift_status: CFGuestGiftStatusType | None = None
+    follow_up_due_at: datetime | None = None
+
+
+class CFGuestStoryResponse(CFGuestStoryBase):
+    id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
     model_config = ConfigDict(from_attributes=True)

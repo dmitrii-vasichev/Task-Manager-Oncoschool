@@ -10,6 +10,7 @@ from app.api.content_factory.bundles import router as bundles_router
 from app.api.content_factory.formats import router as formats_router
 from app.api.content_factory.funnel_templates import router as funnel_templates_router
 from app.api.content_factory.glossary import router as glossary_router
+from app.api.content_factory.guests import router as guests_router
 from app.api.content_factory.metrics import router as metrics_router
 from app.api.content_factory.nosologies import router as nosologies_router
 from app.api.content_factory.platforms import router as platforms_router
@@ -34,3 +35,4 @@ content_factory_router.include_router(pubs_router)
 content_factory_router.include_router(segments_router)
 content_factory_router.include_router(metrics_router)
 content_factory_router.include_router(retros_router)
+content_factory_router.include_router(guests_router)

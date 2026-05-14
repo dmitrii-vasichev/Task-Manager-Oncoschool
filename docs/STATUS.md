@@ -2,7 +2,7 @@
 
 ## Content Factory Sprint 11 Guest CRM Foundation
 
-- Current phase: planning started on branch `codex/content-factory-sprint-11-guest-crm`
+- Current phase: implemented and under validation on branch `codex/content-factory-sprint-11-guest-crm`
 - Source: user approval to continue development on 2026-05-14, preserved Content Factory research, restored Content Factory design doc, and Sprint 1-10 implementation
 - Deep research: `docs/content-factory-market-context-report.md`
 - Design: `docs/superpowers/specs/2026-05-14-content-factory-sprint-11-guest-crm-design.md`
@@ -15,6 +15,12 @@
   - Confirmed the preserved research recommends a dedicated guest/patient story entity with consent fields rather than storing patient lives as ordinary publications.
   - Wrote Sprint 11 design and implementation plan.
   - Made Sprint 11 the active repository plan.
+  - Added `CFGuestStory` model and Alembic revision `042_content_factory_guest_story`.
+  - Added guest story Pydantic schemas for create, update, and response contracts.
+  - Added `GuestStoryService` for create, read, list, and update operations.
+  - Added `/api/content-factory/guests` list, create, get, and update endpoints.
+  - Added model, schema, service, API, and migration tests.
+  - Ran focused and expanded Content Factory backend verification successfully.
 - Key decisions:
   - Keep Sprint 11 backend-only so the frontend guest workspace can build on a stable contract next.
   - Name the persistence model `CFGuestStory` and the API path `/api/content-factory/guests`.
@@ -22,11 +28,13 @@
   - Store consent metadata and boundaries, but do not store uploaded legal documents in this sprint.
   - Add no hard delete endpoint until operational retention rules are clearer.
 - Next actions:
-  - Write failing model and schema tests.
-  - Implement the guest story model, schemas, and Alembic migration.
-  - Continue TDD through service, API, migration guard, validation, and docs.
+  - Run final whitespace/status checks.
+  - Commit Sprint 11 implementation.
+  - Merge and push after final verification.
 - Latest verification:
-  - Not yet run for Sprint 11 implementation.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_content_factory_guest_stories_api.py tests/test_cf_guest_story_service.py tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py -q` passed: 41 tests.
+  - Expanded Content Factory backend test set passed: 148 tests, with pre-existing `AsyncMock` warnings in older service tests.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test alembic heads` returned one head: `042_content_factory_guest_story`.
 
 ## Content Factory Sprint 10 Effectiveness Analytics
 
