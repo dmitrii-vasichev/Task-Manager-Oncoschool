@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import CFRetroNote
-from app.db.schemas import CFRetroNoteCreate
+from app.db.schemas import CFRetroNoteCreate, CFRetroNoteUpdate
 
 
 class RetroService:
@@ -42,3 +42,15 @@ class RetroService:
             stmt = stmt.where(CFRetroNote.retro_type == retro_type)
         result = await session.execute(stmt)
         return list(result.scalars().all())
+
+    @staticmethod
+    async def update(
+        session: AsyncSession, retro_id: uuid.UUID, payload: CFRetroNoteUpdate
+    ) -> CFRetroNote | None:
+        retro = await RetroService.get(session, retro_id)
+        if retro is None:
+            return None
+        for field, value in payload.model_dump(exclude_unset=True).items():
+            setattr(retro, field, value)
+        await session.flush()
+        return retro

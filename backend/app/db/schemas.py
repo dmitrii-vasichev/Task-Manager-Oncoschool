@@ -124,6 +124,7 @@ class TeamMemberUpdate(BaseModel):
     role: MemberRoleType | None = None
     is_test: bool | None = None
     is_active: bool | None = None
+    has_content_factory_access: bool | None = None
     department_id: uuid.UUID | None = None
     extra_department_ids: list[uuid.UUID] | None = None
     position: str | None = None
@@ -150,6 +151,7 @@ class TeamMemberResponse(BaseModel):
     role: str
     is_test: bool
     is_active: bool
+    has_content_factory_access: bool
     created_at: datetime
     updated_at: datetime
 
@@ -1294,6 +1296,14 @@ class CFFormatCreate(CFFormatBase):
     pass
 
 
+class CFFormatUpdate(BaseModel):
+    display_name: str | None = None
+    default_objective: str | None = None
+    requires_medical_review: bool | None = None
+    is_active: bool | None = None
+    display_order: int | None = None
+
+
 class CFFormatResponse(CFFormatBase):
     id: uuid.UUID
     model_config = ConfigDict(from_attributes=True)
@@ -1307,6 +1317,12 @@ class CFRubricBase(BaseModel):
 
 class CFRubricCreate(CFRubricBase):
     pass
+
+
+class CFRubricUpdate(BaseModel):
+    display_name: str | None = None
+    is_active: bool | None = None
+    deprecated_at: datetime | None = None
 
 
 class CFRubricResponse(CFRubricBase):
@@ -1325,6 +1341,12 @@ class CFNosologyCreate(CFNosologyBase):
     pass
 
 
+class CFNosologyUpdate(BaseModel):
+    display_name: str | None = None
+    is_active: bool | None = None
+    deprecated_at: datetime | None = None
+
+
 class CFNosologyResponse(CFNosologyBase):
     id: uuid.UUID
     deprecated_at: datetime | None = None
@@ -1341,6 +1363,13 @@ class CFFunnelTemplateBase(BaseModel):
 
 class CFFunnelTemplateCreate(CFFunnelTemplateBase):
     pass
+
+
+class CFFunnelTemplateUpdate(BaseModel):
+    name: str | None = Field(default=None, max_length=200)
+    description: str | None = None
+    template_publications: list | None = None
+    is_active: bool | None = None
 
 
 class CFFunnelTemplateResponse(CFFunnelTemplateBase):
@@ -1388,6 +1417,11 @@ class CFSegmentSnapshotResponse(BaseModel):
     population_count: int
     notes: str | None = None
     model_config = ConfigDict(from_attributes=True)
+
+
+class CFSegmentRefreshRequest(BaseModel):
+    population_count: int = Field(..., ge=0)
+    note: str | None = None
 
 
 class CFBundleBase(BaseModel):
@@ -1528,6 +1562,15 @@ class CFRetroNoteBase(BaseModel):
 
 class CFRetroNoteCreate(CFRetroNoteBase):
     facilitator_id: uuid.UUID
+
+
+class CFRetroNoteUpdate(BaseModel):
+    best_by_objective: dict | None = None
+    broken: list[dict] | None = None
+    learnings: dict | None = None
+    decisions: dict | None = None
+    actions: list[dict] | None = None
+    notes: str | None = None
 
 
 class CFRetroNoteResponse(CFRetroNoteBase):

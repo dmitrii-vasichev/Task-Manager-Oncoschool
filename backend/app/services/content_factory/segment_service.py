@@ -57,3 +57,14 @@ class SegmentService:
         session.add(snapshot)
         await session.flush()
         return seg
+
+    @staticmethod
+    async def list_snapshots(
+        session: AsyncSession, seg_id: uuid.UUID
+    ) -> "list[CFSegmentSnapshot]":
+        result = await session.execute(
+            select(CFSegmentSnapshot)
+            .where(CFSegmentSnapshot.external_segment_id == seg_id)
+            .order_by(CFSegmentSnapshot.fetched_at.desc())
+        )
+        return [row for row in result.scalars().all()]

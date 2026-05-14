@@ -120,11 +120,18 @@ class PermissionService:
         """
         return PermissionService.is_admin(member)
 
-    # ── Content Factory (moderator+) ──
+    # ── Content Factory ──
+    # Gating uses an explicit boolean flag on team_members
+    # (admin role inherits implicitly). Granular roles
+    # (editor/reviewer/publisher) remain deferred until a later sprint.
 
     @staticmethod
     def can_access_content_factory(member: TeamMember) -> bool:
-        return bool(getattr(member, "is_active", True)) and PermissionService.is_moderator(member)
+        if not bool(getattr(member, "is_active", True)):
+            return False
+        if PermissionService.is_admin(member):
+            return True
+        return bool(getattr(member, "has_content_factory_access", False))
 
     @staticmethod
     def can_edit_cf_bundle(member: TeamMember) -> bool:

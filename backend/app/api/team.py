@@ -408,6 +408,16 @@ async def update_team_member(
             detail="Только администратор может менять признак тестового участника",
         )
 
+    cf_access_changed = (
+        "has_content_factory_access" in update_data
+        and update_data["has_content_factory_access"] != target.has_content_factory_access
+    )
+    if cf_access_changed and not PermissionService.is_admin(member):
+        raise HTTPException(
+            status_code=403,
+            detail="Только администратор может управлять доступом к Content Factory",
+        )
+
     # Deactivation workflow:
     # - block self-deactivation to avoid accidental lockout
     # - unassign all open tasks so they appear in "Не назначен"

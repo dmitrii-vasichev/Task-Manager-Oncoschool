@@ -125,6 +125,9 @@ class TeamMember(Base):
     bot_ui_version: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     is_test: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    has_content_factory_access: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         server_default=func.now()
     )

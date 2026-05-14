@@ -1,11 +1,15 @@
 import uuid
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import CFPublication, CFPublicationVersion
 from app.db.schemas import CFPublicationCreate, CFPublicationUpdate
+
+if TYPE_CHECKING:
+    from app.db.models import CFPublicationSegmentTarget
 
 
 class PublicationService:
@@ -95,3 +99,67 @@ class PublicationService:
 
         await session.flush()
         return pub
+
+    @staticmethod
+    async def list_versions(
+        session: AsyncSession, publication_id: uuid.UUID
+    ) -> list[CFPublicationVersion]:
+        result = await session.execute(
+            select(CFPublicationVersion)
+            .where(CFPublicationVersion.publication_id == publication_id)
+            .order_by(CFPublicationVersion.version_number)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def add_segment_target(
+        session: AsyncSession,
+        publication_id: uuid.UUID,
+        external_segment_id: uuid.UUID,
+        *,
+        role: str,
+        expected_count: int | None = None,
+    ) -> "CFPublicationSegmentTarget":
+        from app.db.models import CFPublicationSegmentTarget
+        target = CFPublicationSegmentTarget(
+            publication_id=publication_id,
+            external_segment_id=external_segment_id,
+            role=role,
+            expected_count=expected_count,
+        )
+        session.add(target)
+        await session.flush()
+        await session.refresh(target)
+        return target
+
+    @staticmethod
+    async def remove_segment_target(
+        session: AsyncSession,
+        publication_id: uuid.UUID,
+        external_segment_id: uuid.UUID,
+    ) -> bool:
+        from app.db.models import CFPublicationSegmentTarget
+        result = await session.execute(
+            select(CFPublicationSegmentTarget).where(
+                CFPublicationSegmentTarget.publication_id == publication_id,
+                CFPublicationSegmentTarget.external_segment_id == external_segment_id,
+            )
+        )
+        target = result.scalar_one_or_none()
+        if target is None:
+            return False
+        await session.delete(target)
+        await session.flush()
+        return True
+
+    @staticmethod
+    async def list_segment_targets(
+        session: AsyncSession, publication_id: uuid.UUID
+    ) -> list["CFPublicationSegmentTarget"]:
+        from app.db.models import CFPublicationSegmentTarget
+        result = await session.execute(
+            select(CFPublicationSegmentTarget).where(
+                CFPublicationSegmentTarget.publication_id == publication_id
+            )
+        )
+        return list(result.scalars().all())
