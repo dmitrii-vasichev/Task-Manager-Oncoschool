@@ -1,5 +1,33 @@
 # Status
 
+## Content Factory Sprint 11 Guest CRM Foundation
+
+- Current phase: planning started on branch `codex/content-factory-sprint-11-guest-crm`
+- Source: user approval to continue development on 2026-05-14, preserved Content Factory research, restored Content Factory design doc, and Sprint 1-10 implementation
+- Deep research: `docs/content-factory-market-context-report.md`
+- Design: `docs/superpowers/specs/2026-05-14-content-factory-sprint-11-guest-crm-design.md`
+- Plan: `docs/superpowers/plans/2026-05-14-content-factory-sprint-11-guest-crm.md`
+- Scope: backend guest story CRM foundation, pipeline status, consent metadata, Content Factory links, REST API, and focused backend tests
+- Latest progress:
+  - Confirmed Sprint 10 is merged to `main` and local `main` was clean before starting.
+  - Created branch `codex/content-factory-sprint-11-guest-crm`.
+  - Reviewed existing Content Factory backend model, schema, service, router, and test patterns.
+  - Confirmed the preserved research recommends a dedicated guest/patient story entity with consent fields rather than storing patient lives as ordinary publications.
+  - Wrote Sprint 11 design and implementation plan.
+  - Made Sprint 11 the active repository plan.
+- Key decisions:
+  - Keep Sprint 11 backend-only so the frontend guest workspace can build on a stable contract next.
+  - Name the persistence model `CFGuestStory` and the API path `/api/content-factory/guests`.
+  - Require Content Factory access for guest story operations; do not make the workflow admin-only.
+  - Store consent metadata and boundaries, but do not store uploaded legal documents in this sprint.
+  - Add no hard delete endpoint until operational retention rules are clearer.
+- Next actions:
+  - Write failing model and schema tests.
+  - Implement the guest story model, schemas, and Alembic migration.
+  - Continue TDD through service, API, migration guard, validation, and docs.
+- Latest verification:
+  - Not yet run for Sprint 11 implementation.
+
 ## Content Factory Sprint 10 Effectiveness Analytics
 
 - Current phase: implemented and verified on branch `codex/content-factory-sprint-10-effectiveness`

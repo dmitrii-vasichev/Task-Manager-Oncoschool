@@ -1,3 +1,54 @@
+# Active Plan: Content Factory Sprint 11 Guest CRM Foundation
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-14-content-factory-sprint-11-guest-crm.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Add the backend foundation for patient and guest story CRM records inside Content Factory.
+
+**Recovered design:** `docs/content-factory-design.md`
+
+**Preserved market research:** `docs/content-factory-market-context-report.md`
+
+**Detailed design:** `docs/superpowers/specs/2026-05-14-content-factory-sprint-11-guest-crm-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-14-content-factory-sprint-11-guest-crm.md`
+
+**Backlog:** `docs/BACKLOG.md`
+
+**Milestones:**
+
+1. Add a dedicated `cf_guest_story` data model and migration.
+2. Add Pydantic schemas for guest story create, update, and response contracts.
+3. Add a focused guest story service for create, read, list, and update operations.
+4. Add `/api/content-factory/guests` REST endpoints with Content Factory access control.
+5. Add backend tests and update durable repository docs.
+
+**Implementation status:**
+
+- In progress on branch `codex/content-factory-sprint-11-guest-crm`.
+- Sprint 1 through Sprint 10 work is merged to `main`.
+- Sprint 11 starts from the preserved research recommendation to model patient/guest CRM as a separate entity, not as ordinary publication fields.
+
+**Definition of done:**
+
+- `cf_guest_story` exists with pipeline status, owner, due date, source, screening, consent, boundary, gift, follow-up, and Content Factory link fields.
+- `/api/content-factory/guests` supports list, create, get, and update.
+- All guest endpoints require Content Factory access.
+- No hard delete, external integrations, consent-document uploads, or frontend guest workspace are added in this sprint.
+- Focused backend tests and `git diff --check` pass.
+
+**Validation commands:**
+
+```bash
+cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_content_factory_guest_stories_api.py tests/test_cf_guest_story_service.py tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py -q
+git diff --check
+```
+
+**Latest verification result:**
+
+- Not yet run for Sprint 11 implementation.
+
+---
+
 # Active Plan: Content Factory Sprint 10 Effectiveness Analytics
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-14-content-factory-sprint-10-effectiveness.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.

@@ -1,5 +1,20 @@
 # Test Plan
 
+## Content Factory Sprint 11 Guest CRM Foundation
+
+### Automated
+
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_content_factory_guest_stories_api.py tests/test_cf_guest_story_service.py tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py -q`
+- `git diff --check`
+
+### Manual
+
+1. After the frontend guest workspace exists, create a guest story and confirm the API stores owner, status, source, consent status, anonymity level, allowed channels, sensitive topics, and follow-up fields.
+2. Confirm a Content Factory user can list, create, open, and update guest stories.
+3. Confirm a user without Content Factory access is blocked by the existing protected API dependency.
+4. Confirm linked bundle and publication IDs remain optional.
+5. Confirm no hard delete route exists for guest stories.
+
 ## Content Factory Sprint 10 Effectiveness Analytics
 
 ### Automated
