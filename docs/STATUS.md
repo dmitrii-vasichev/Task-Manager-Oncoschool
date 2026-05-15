@@ -2,7 +2,7 @@
 
 ## Content Factory Sprint 33 RLS Migration Safety
 
-- Current phase: implemented and verified on branch `codex/content-factory-sprint-33-rls-migration-safety`; pending merge to `main` and push
+- Current phase: implemented, verified, and merged to local `main`; pending push to `origin/main`
 - Source: Sprint 32 kept migration 038's RLS registry synchronized with all application tables, including tables created by later migrations. Fresh database migration needs the bootstrap RLS loop to tolerate those future tables.
 - Design: `docs/superpowers/specs/2026-05-15-content-factory-sprint-33-rls-migration-safety-design.md`
 - Plan: `docs/superpowers/plans/2026-05-15-content-factory-sprint-33-rls-migration-safety.md`
@@ -13,6 +13,7 @@
   - Added failing regression test `test_rls_migration_bootstrap_tolerates_future_tables`.
   - Updated migration 038 bootstrap loop to use `ALTER TABLE IF EXISTS`.
   - Focused RLS migration verification passed after the fix.
+  - Merged Sprint 33 into local `main`.
 - Key decisions:
   - Keep the complete RLS registry in migration 038 so `Base.metadata` coverage remains visible.
   - Keep the future-table event trigger unchanged.

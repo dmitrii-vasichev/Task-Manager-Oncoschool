@@ -16,8 +16,8 @@
 
 **Implementation status:**
 
-- Implemented and verified on branch `codex/content-factory-sprint-33-rls-migration-safety`.
-- Pending merge to `main` and push.
+- Implemented, verified, and merged to `main`.
+- Pending push to `origin/main`.
 - Sprint 1 through Sprint 32 work is merged to `main`.
 
 **Definition of done:**
