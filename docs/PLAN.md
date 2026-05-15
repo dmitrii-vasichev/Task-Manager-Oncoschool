@@ -25,9 +25,8 @@
 
 **Implementation status:**
 
-- Implemented, verified, and merged to `main`.
-- Pending push to `origin/main`.
-- Sprint 1 through Sprint 31 work is merged to `main`.
+- Implemented, verified, merged to `main`, and pushed.
+- Sprint 1 through Sprint 32 work is merged to `main`.
 - Sprint 32 makes Sprint 31 channel adaptations durable without adding AI or publishing integrations.
 
 **Definition of done:**

@@ -57,8 +57,8 @@
 - [x] Run focused backend and frontend verification.
 - [x] Run full frontend verification.
 - [x] Update durable docs with verification results.
-- [ ] Commit, merge to `main`, and push.
-- [ ] Mark Sprint 32 as pushed in docs, commit, and push the final docs update.
+- [x] Commit, merge to `main`, and push.
+- [x] Mark Sprint 32 as pushed in docs, commit, and push the final docs update.
 
 ## Self-Review
 
