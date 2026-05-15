@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/shared/Toast";
 import { ContentFactoryBundleDialog } from "@/components/content-factory/ContentFactoryBundleDialog";
+import { ContentFactoryPlanningMatrix } from "@/components/content-factory/ContentFactoryPlanningMatrix";
 import { ContentFactoryPublicationDialog } from "@/components/content-factory/ContentFactoryPublicationDialog";
 import { ContentFactoryStatusBadge } from "@/components/content-factory/ContentFactoryStatusBadge";
 import { api } from "@/lib/api";
@@ -24,8 +25,11 @@ import {
   CF_PRODUCT_STREAM_LABELS,
   CF_PUBLICATION_STATUS_LABELS,
   CF_PUBLICATION_STATUSES,
+  buildContentFactoryPlanningMatrix,
   formatContentFactoryPublicationCount,
   getContentFactoryDisplayName,
+  summarizeContentFactoryPlanningMatrix,
+  type ContentFactoryPlanningMatrixCell,
 } from "@/lib/contentFactoryUtils";
 import type {
   CFBundle,
@@ -77,7 +81,7 @@ function DetailLoadingSkeleton() {
 export default function ContentFactoryBundleDetailPage() {
   const params = useParams();
   const id = params.id as string;
-  const { toastError } = useToast();
+  const { toastError, toastSuccess } = useToast();
   const [bundle, setBundle] = useState<CFBundle | null>(null);
   const [publications, setPublications] = useState<CFPublication[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -88,6 +92,7 @@ export default function ContentFactoryBundleDetailPage() {
   const [funnelTemplates, setFunnelTemplates] = useState<CFFunnelTemplate[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [createPublicationOpen, setCreatePublicationOpen] = useState(false);
+  const [creatingSlotKey, setCreatingSlotKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const latestRequestSeqRef = useRef(0);
 
@@ -155,6 +160,32 @@ export default function ContentFactoryBundleDetailPage() {
     () => new Map(funnelTemplates.map((template) => [template.id, template.name])),
     [funnelTemplates],
   );
+  const selectedFunnelTemplate = useMemo(
+    () =>
+      funnelTemplates.find((template) => template.id === bundle?.funnel_template_id) ??
+      null,
+    [bundle?.funnel_template_id, funnelTemplates],
+  );
+  const planningMatrix = useMemo(
+    () =>
+      bundle
+        ? buildContentFactoryPlanningMatrix({
+            bundle,
+            funnelTemplate: selectedFunnelTemplate,
+            publications,
+            platforms,
+            formats,
+          })
+        : null,
+    [bundle, formats, platforms, publications, selectedFunnelTemplate],
+  );
+  const planningSummary = useMemo(
+    () =>
+      planningMatrix
+        ? summarizeContentFactoryPlanningMatrix(planningMatrix)
+        : { expected: 0, ready: 0, missing: 0, extra: 0 },
+    [planningMatrix],
+  );
 
   const publicationsByStatus = useMemo(
     () =>
@@ -167,6 +198,35 @@ export default function ContentFactoryBundleDetailPage() {
 
   async function handleSaved() {
     await fetchData();
+  }
+
+  async function handleCreatePlanningSlot(
+    cell: ContentFactoryPlanningMatrixCell<CFPublication>,
+  ) {
+    if (!bundle) return;
+    setCreatingSlotKey(cell.key);
+    try {
+      await api.createCFPublicationForBundle(bundle.id, {
+        bundle_id: bundle.id,
+        platform_id: cell.platform.id,
+        format_id: cell.format.id,
+        responsible_id: bundle.owner_id,
+        title: cell.title ?? `${cell.format.display_name}: ${cell.platform.display_name}`,
+        body_text: "",
+        scheduled_at: cell.scheduled_at,
+        status: "draft",
+        utm: {
+          cf_planning_matrix_source: "funnel_template",
+          cf_planning_matrix_slot: cell.key,
+        },
+      });
+      toastSuccess("Черновик публикации создан");
+      await fetchData();
+    } catch (err) {
+      toastError(err instanceof Error ? err.message : "Не удалось создать публикацию");
+    } finally {
+      setCreatingSlotKey(null);
+    }
   }
 
   if (loading) {
@@ -255,6 +315,16 @@ export default function ContentFactoryBundleDetailPage() {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-4">
+          {planningMatrix && (
+            <ContentFactoryPlanningMatrix
+              matrix={planningMatrix}
+              summary={planningSummary}
+              eventDate={bundle.event_date}
+              creatingSlotKey={creatingSlotKey}
+              onCreateSlot={(cell) => void handleCreatePlanningSlot(cell)}
+            />
+          )}
+
           <section className="rounded-lg border border-border/70 bg-card shadow-sm">
             <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3">
               <FileText className="h-4 w-4 text-muted-foreground" />

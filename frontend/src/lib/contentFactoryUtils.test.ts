@@ -23,6 +23,7 @@ const {
   buildContentFactoryPublishPackage,
   buildContentFactoryPublicationVariantHandoff,
   buildContentFactoryPublicationVariants,
+  buildContentFactoryPlanningMatrix,
   buildContentFactorySegmentUsageRows,
   buildContentFactoryUtm,
   canAccessContentFactory,
@@ -60,6 +61,7 @@ const {
   isContentFactoryGuestStoryActive,
   summarizeContentFactoryEffectiveness,
   summarizeContentFactoryGuestStories,
+  summarizeContentFactoryPlanningMatrix,
   summarizeContentFactoryCalendar,
   summarizeContentFactoryPublicationIndex,
   summarizeContentFactoryReviewQueue,
@@ -484,6 +486,117 @@ test("dashboard summary sorts upcoming and published publication lists", () => {
     summary.recentlyPublished.map((publication) => publication.id),
     ["new-published", "old-published"],
   );
+});
+
+test("planning matrix builds expected slots from funnel template and matches publications", () => {
+  const matrix = buildContentFactoryPlanningMatrix({
+    bundle: {
+      id: "bundle-live",
+      event_date: "2026-06-10T16:00:00Z",
+      owner_id: "owner-1",
+    },
+    funnelTemplate: {
+      id: "template-live",
+      name: "Воронка эфира",
+      template_publications: [
+        {
+          format_code: "announcement",
+          offset_days: -7,
+          default_platforms: ["telegram", "vk"],
+        },
+        {
+          format_code: "live",
+          offset_hours: 0,
+          default_platforms: ["telegram"],
+        },
+      ],
+    },
+    publications: [
+      {
+        id: "pub-announcement-telegram",
+        platform_id: "platform-telegram",
+        format_id: "format-announcement",
+        status: "scheduled",
+        scheduled_at: "2026-06-03T16:00:00Z",
+        title: "Анонс эфира",
+      },
+      {
+        id: "pub-extra",
+        platform_id: "platform-email",
+        format_id: "format-digest",
+        status: "draft",
+        scheduled_at: null,
+        title: "Письмо вне шаблона",
+      },
+    ],
+    platforms: [
+      { id: "platform-telegram", code: "telegram", display_name: "Telegram" },
+      { id: "platform-vk", code: "vk", display_name: "ВК" },
+      { id: "platform-email", code: "email", display_name: "Email" },
+    ],
+    formats: [
+      { id: "format-announcement", code: "announcement", display_name: "Анонс" },
+      { id: "format-live", code: "live", display_name: "Эфир" },
+      { id: "format-digest", code: "digest", display_name: "Дайджест" },
+    ],
+  });
+
+  assert.deepEqual(
+    matrix.platforms.map((platform) => platform.code),
+    ["telegram", "vk"],
+  );
+  assert.equal(matrix.rows.length, 2);
+  assert.equal(matrix.rows[0]?.label, "Анонс");
+  assert.equal(matrix.rows[0]?.scheduled_at, "2026-06-03T16:00:00.000Z");
+  assert.equal(
+    matrix.rows[0]?.cells.find((cell) => cell.platform.code === "telegram")
+      ?.publication?.id,
+    "pub-announcement-telegram",
+  );
+  assert.equal(
+    matrix.rows[0]?.cells.find((cell) => cell.platform.code === "vk")?.state,
+    "missing",
+  );
+  assert.equal(matrix.extraPublications[0]?.id, "pub-extra");
+
+  const summary = summarizeContentFactoryPlanningMatrix(matrix);
+
+  assert.equal(summary.expected, 3);
+  assert.equal(summary.ready, 1);
+  assert.equal(summary.missing, 2);
+  assert.equal(summary.extra, 1);
+});
+
+test("planning matrix ignores invalid template slots and supports campaigns without event dates", () => {
+  const matrix = buildContentFactoryPlanningMatrix({
+    bundle: { id: "bundle-no-date", event_date: null, owner_id: "owner-1" },
+    funnelTemplate: {
+      id: "template-live",
+      name: "Воронка эфира",
+      template_publications: [
+        {
+          format_code: "announcement",
+          offset_days: -7,
+          default_platforms: ["telegram", "unknown"],
+        },
+        { format_code: "unknown", default_platforms: ["telegram"] },
+      ],
+    },
+    publications: [],
+    platforms: [
+      { id: "platform-telegram", code: "telegram", display_name: "Telegram" },
+    ],
+    formats: [
+      { id: "format-announcement", code: "announcement", display_name: "Анонс" },
+    ],
+  });
+
+  assert.equal(matrix.rows.length, 1);
+  assert.equal(matrix.rows[0]?.scheduled_at, null);
+  assert.deepEqual(matrix.warnings, [
+    "В шаблоне есть неизвестная площадка: unknown",
+    "В шаблоне есть неизвестный формат: unknown",
+  ]);
 });
 
 test("groupPublicationsByDate sorts date groups and keeps unscheduled last", () => {

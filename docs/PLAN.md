@@ -1,3 +1,62 @@
+# Active Plan: Content Factory Sprint 43 Planning Matrix
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-43-planning-matrix.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Add a campaign-level cross-channel planning matrix that shows expected channel publications, existing records, missing slots, and quick creation shortcuts.
+
+**Detailed design:** `docs/superpowers/specs/2026-05-15-content-factory-sprint-43-planning-matrix-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-15-content-factory-sprint-43-planning-matrix.md`
+
+**Milestones:**
+
+1. Add helper tests and helper functions for planning matrix slots, matching, warnings, extras, and summary counts.
+2. Add a campaign planning matrix component and bundle detail page wiring.
+3. Add quick creation for missing matrix cells through the existing publication API.
+4. Run focused and full frontend verification and update durable repo docs.
+
+**Implementation status:**
+
+- Implemented, verified, merged to `main`, and pushed.
+- Sprint 1 through Sprint 43 work is merged to `main` and pushed.
+
+**Definition of done:**
+
+- Campaign detail pages show `Матрица каналов` above the publication list.
+- The matrix uses the campaign funnel template to show expected platform/format cells.
+- Existing publications are matched into the matrix without replacing publication records as the source of truth.
+- Missing cells expose a `Создать` shortcut that creates a draft publication with planning UTM markers.
+- Extra publications outside the template are visible.
+- Invalid template references are shown as warnings instead of crashing the page.
+- No backend schema or API changes are added.
+- Verification commands pass and docs are updated.
+
+**Validation commands:**
+
+```bash
+cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- RED confirmed: helper tests failed before implementation because `buildContentFactoryPlanningMatrix` did not exist.
+- RED confirmed: source-guard tests failed before implementation because `ContentFactoryPlanningMatrix` did not exist.
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts` passed: 71 tests, with existing Node module-type warning.
+- `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 38 tests, with existing Node module-type warning.
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 109 tests, with existing Node module-type warning.
+- `cd frontend && npm test` passed: 201 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/bundles/[id]`.
+- `git diff --check` passed.
+
+---
+
 # Active Plan: Content Factory Sprint 42.1 Import Table UX
 
 > **For agentic workers:** Keep this follow-up tightly scoped. The goal is to make Sprint 42's clipboard import honest and less confusing before starting Sprint 43.

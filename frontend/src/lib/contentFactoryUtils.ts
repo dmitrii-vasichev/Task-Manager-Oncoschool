@@ -3,6 +3,7 @@ import type {
   CFBundleStatus,
   CFExternalSegment,
   CFFormat,
+  CFFunnelTemplate,
   CFGuestAnonymityLevel,
   CFGuestConsentStatus,
   CFGuestGiftStatus,
@@ -19,6 +20,7 @@ import type {
   CFNosology,
   CFPlatform,
   CFProductStream,
+  CFPublication,
   CFPublicationCreateRequest,
   CFPublicationSegmentTarget,
   CFPublicationUpdateRequest,
@@ -191,6 +193,75 @@ export type ContentFactoryPublicationPlanImportOptions = {
     format_id?: string;
     responsible_id?: string;
   };
+};
+
+type PlanningTemplatePublication = {
+  format_code?: unknown;
+  platform_code?: unknown;
+  default_platforms?: unknown;
+  offset_days?: unknown;
+  offset_hours?: unknown;
+  title?: unknown;
+  label?: unknown;
+};
+
+export type ContentFactoryPlanningMatrixCellState = "filled" | "missing";
+
+export type ContentFactoryPlanningMatrixCell<
+  TPublication extends Pick<
+    CFPublication,
+    "id" | "platform_id" | "format_id" | "scheduled_at" | "status" | "title"
+  > = Pick<
+    CFPublication,
+    "id" | "platform_id" | "format_id" | "scheduled_at" | "status" | "title"
+  >,
+> = {
+  key: string;
+  platform: Pick<CFPlatform, "id" | "code" | "display_name">;
+  format: Pick<CFFormat, "id" | "code" | "display_name">;
+  title: string | null;
+  scheduled_at: string | null;
+  publication: TPublication | null;
+  state: ContentFactoryPlanningMatrixCellState;
+};
+
+export type ContentFactoryPlanningMatrixRow<
+  TPublication extends Pick<
+    CFPublication,
+    "id" | "platform_id" | "format_id" | "scheduled_at" | "status" | "title"
+  > = Pick<
+    CFPublication,
+    "id" | "platform_id" | "format_id" | "scheduled_at" | "status" | "title"
+  >,
+> = {
+  key: string;
+  label: string;
+  format: Pick<CFFormat, "id" | "code" | "display_name">;
+  scheduled_at: string | null;
+  offsetLabel: string;
+  cells: Array<ContentFactoryPlanningMatrixCell<TPublication>>;
+};
+
+export type ContentFactoryPlanningMatrix<
+  TPublication extends Pick<
+    CFPublication,
+    "id" | "platform_id" | "format_id" | "scheduled_at" | "status" | "title"
+  > = Pick<
+    CFPublication,
+    "id" | "platform_id" | "format_id" | "scheduled_at" | "status" | "title"
+  >,
+> = {
+  rows: Array<ContentFactoryPlanningMatrixRow<TPublication>>;
+  platforms: Array<Pick<CFPlatform, "id" | "code" | "display_name">>;
+  extraPublications: TPublication[];
+  warnings: string[];
+};
+
+export type ContentFactoryPlanningMatrixSummary = {
+  expected: number;
+  ready: number;
+  missing: number;
+  extra: number;
 };
 
 type PublicationMetricInsightLike = Pick<
@@ -2912,6 +2983,193 @@ export function filterContentFactoryEffectivenessRows<
 
     return haystack.includes(search);
   });
+}
+
+function isPlanningTemplatePublication(
+  value: unknown,
+): value is PlanningTemplatePublication {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function planningString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function planningNumber(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function planningOffsetLabel(offsetDays: number, offsetHours: number): string {
+  if (offsetDays === 0 && offsetHours === 0) return "В день события";
+  if (offsetDays !== 0) {
+    const direction = offsetDays < 0 ? "до" : "после";
+    const abs = Math.abs(offsetDays);
+    return `${abs} ${abs === 1 ? "день" : "дн."} ${direction}`;
+  }
+  const direction = offsetHours < 0 ? "до" : "после";
+  const abs = Math.abs(offsetHours);
+  return `${abs} ч ${direction}`;
+}
+
+function planningSlotDate(
+  eventDate: string | null | undefined,
+  offsetDays: number,
+  offsetHours: number,
+): string | null {
+  const eventTime = dateTime(eventDate);
+  if (eventTime === null) return null;
+  const offsetMs =
+    offsetDays * 24 * 60 * 60 * 1000 + offsetHours * 60 * 60 * 1000;
+  return new Date(eventTime + offsetMs).toISOString();
+}
+
+function publicationDistanceFromSlot(
+  scheduledAt: string | null | undefined,
+  slotScheduledAt: string | null,
+): number {
+  const slotTime = dateTime(slotScheduledAt);
+  if (slotTime === null) return 0;
+  const publicationTime = dateTime(scheduledAt);
+  if (publicationTime === null) return Number.MAX_SAFE_INTEGER;
+  return Math.abs(publicationTime - slotTime);
+}
+
+export function buildContentFactoryPlanningMatrix<
+  TPublication extends Pick<
+    CFPublication,
+    "id" | "platform_id" | "format_id" | "scheduled_at" | "status" | "title"
+  >,
+>({
+  bundle,
+  funnelTemplate,
+  publications,
+  platforms,
+  formats,
+}: {
+  bundle: Pick<CFBundle, "id" | "event_date" | "owner_id">;
+  funnelTemplate: Pick<CFFunnelTemplate, "id" | "name" | "template_publications"> | null;
+  publications: TPublication[];
+  platforms: Array<Pick<CFPlatform, "id" | "code" | "display_name">>;
+  formats: Array<Pick<CFFormat, "id" | "code" | "display_name">>;
+}): ContentFactoryPlanningMatrix<TPublication> {
+  const platformsByCode = new Map(platforms.map((platform) => [platform.code, platform]));
+  const formatsByCode = new Map(formats.map((format) => [format.code, format]));
+  const matchedPublicationIds = new Set<string>();
+  const warnings: string[] = [];
+  const platformOrder = new Map<string, Pick<CFPlatform, "id" | "code" | "display_name">>();
+  const rows: Array<ContentFactoryPlanningMatrixRow<TPublication>> = [];
+
+  for (let index = 0; index < (funnelTemplate?.template_publications ?? []).length; index += 1) {
+    const rawItem = funnelTemplate?.template_publications[index];
+    if (!isPlanningTemplatePublication(rawItem)) continue;
+
+    const formatCode = planningString(rawItem.format_code);
+    const format = formatCode ? formatsByCode.get(formatCode) ?? null : null;
+    if (!formatCode || !format) {
+      warnings.push(
+        `В шаблоне есть неизвестный формат: ${formatCode ?? "не указан"}`,
+      );
+      continue;
+    }
+
+    const platformCodes = Array.isArray(rawItem.default_platforms)
+      ? rawItem.default_platforms
+          .map((platformCode) => planningString(platformCode))
+          .filter((platformCode): platformCode is string => Boolean(platformCode))
+      : [planningString(rawItem.platform_code)].filter(
+          (platformCode): platformCode is string => Boolean(platformCode),
+        );
+
+    const validPlatforms = platformCodes
+      .map((platformCode) => {
+        const platform = platformsByCode.get(platformCode);
+        if (!platform) {
+          warnings.push(`В шаблоне есть неизвестная площадка: ${platformCode}`);
+          return null;
+        }
+        platformOrder.set(platform.code, platform);
+        return platform;
+      })
+      .filter(
+        (platform): platform is Pick<CFPlatform, "id" | "code" | "display_name"> =>
+          Boolean(platform),
+      );
+
+    if (validPlatforms.length === 0) continue;
+
+    const offsetDays = planningNumber(rawItem.offset_days);
+    const offsetHours = planningNumber(rawItem.offset_hours);
+    const scheduledAt = planningSlotDate(bundle.event_date, offsetDays, offsetHours);
+    const title = planningString(rawItem.title);
+    const rowKey = `${index}-${format.code}-${offsetDays}-${offsetHours}`;
+
+    const cells = validPlatforms.map((platform) => {
+      const publication =
+        publications
+          .filter(
+            (candidate) =>
+              !matchedPublicationIds.has(candidate.id) &&
+              candidate.platform_id === platform.id &&
+              candidate.format_id === format.id,
+          )
+          .sort(
+            (left, right) =>
+              publicationDistanceFromSlot(left.scheduled_at, scheduledAt) -
+              publicationDistanceFromSlot(right.scheduled_at, scheduledAt),
+          )[0] ?? null;
+
+      if (publication) matchedPublicationIds.add(publication.id);
+
+      const state: ContentFactoryPlanningMatrixCellState = publication
+        ? "filled"
+        : "missing";
+
+      return {
+        key: `${rowKey}-${platform.code}`,
+        platform,
+        format,
+        title,
+        scheduled_at: scheduledAt,
+        publication,
+        state,
+      };
+    });
+
+    rows.push({
+      key: rowKey,
+      label: planningString(rawItem.label) ?? format.display_name,
+      format,
+      scheduled_at: scheduledAt,
+      offsetLabel: planningOffsetLabel(offsetDays, offsetHours),
+      cells,
+    });
+  }
+
+  return {
+    rows,
+    platforms: Array.from(platformOrder.values()),
+    extraPublications: publications.filter(
+      (publication) => !matchedPublicationIds.has(publication.id),
+    ),
+    warnings,
+  };
+}
+
+export function summarizeContentFactoryPlanningMatrix(
+  matrix: ContentFactoryPlanningMatrix,
+): ContentFactoryPlanningMatrixSummary {
+  const cells = matrix.rows.flatMap((row) => row.cells);
+  return {
+    expected: cells.length,
+    ready: cells.filter((cell) => cell.state === "filled").length,
+    missing: cells.filter((cell) => cell.state === "missing").length,
+    extra: matrix.extraPublications.length,
+  };
 }
 
 export function groupPublicationsByDate<T extends PublicationScheduleLike>(

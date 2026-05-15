@@ -1,5 +1,30 @@
 # Test Plan
 
+## Content Factory Sprint 43 Planning Matrix
+
+### Automated
+
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Open `/content-factory/bundles/:id` for a campaign with a funnel template.
+2. Confirm `Матрица каналов` appears above the publication list.
+3. Confirm summary counters show expected, created, missing, and outside-template counts.
+4. Confirm rows correspond to the campaign template formats and offsets.
+5. Confirm platform columns correspond to the template `default_platforms`.
+6. Confirm existing publications appear as linked cells with publication status.
+7. Click `Создать` on a missing cell.
+8. Confirm a draft publication is created and appears in the matrix and publication list.
+9. Open the created publication and confirm platform, format, schedule, responsible user, status, and planning UTM markers.
+10. Open a campaign without an event date and confirm the matrix remains readable with `Дата события не задана`.
+11. Open a campaign without a funnel template and confirm the empty state explains how to add a template or create publications manually.
+
 ## Content Factory Sprint 42.1 Import Table UX
 
 ### Automated

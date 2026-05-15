@@ -1,5 +1,46 @@
 # Status
 
+## Content Factory Sprint 43 Planning Matrix
+
+- Current phase: implemented, verified, merged to `main`, and pushed
+- Source: Wave B now needs to scale campaign planning from imported spreadsheet rows to a campaign-level view of expected channel coverage.
+- Design: `docs/superpowers/specs/2026-05-15-content-factory-sprint-43-planning-matrix-design.md`
+- Plan: `docs/superpowers/plans/2026-05-15-content-factory-sprint-43-planning-matrix.md`
+- Scope: frontend-only planning-matrix helpers, campaign detail matrix UI, quick creation for missing template slots, source guards, helper tests, durable docs, and frontend verification
+- Latest progress:
+  - Created branch `codex/content-factory-sprint-43-planning-matrix`.
+  - Inspected the campaign detail page, publication model, funnel template seed data, and reference admin behavior.
+  - Wrote Sprint 43 design and implementation plan.
+  - Added failing helper tests for template slot expansion, publication matching, missing cells, warnings, extra publications, and summary counts.
+  - Added `buildContentFactoryPlanningMatrix` and `summarizeContentFactoryPlanningMatrix`.
+  - Added a failing source guard for the campaign planning matrix UI and quick-create wiring.
+  - Added `ContentFactoryPlanningMatrix`.
+  - Wired `Матрица каналов` into campaign detail pages above the publication list.
+  - Added quick creation for missing matrix cells through `api.createCFPublicationForBundle`.
+  - Focused helper, source-guard, and TypeScript verification passed after implementation.
+  - Full frontend verification passed.
+  - Merged Sprint 43 into local `main`.
+  - Pushed Sprint 43 to `origin/main`.
+- Key decisions:
+  - Keep Sprint 43 frontend-only and use existing publications as the source of truth.
+  - Use `funnel_template.template_publications` as the expected channel plan.
+  - Match existing publications by platform and format, preferring the closest scheduled date when duplicate formats exist.
+  - Create missing cells as draft publications owned by the campaign owner.
+  - Store `cf_planning_matrix_source` and `cf_planning_matrix_slot` in UTM for traceability.
+- Next actions:
+  - Start Sprint 44: publishing queue foundation with audit, retry, and manual fallback.
+- Latest verification:
+  - RED confirmed: `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts` failed before implementation because `buildContentFactoryPlanningMatrix` did not exist.
+  - RED confirmed: `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` failed before implementation because `ContentFactoryPlanningMatrix` did not exist.
+  - `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts` passed: 71 tests, with existing Node module-type warning.
+  - `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 38 tests, with existing Node module-type warning.
+  - `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 109 tests, with existing Node module-type warning.
+  - `cd frontend && npm test` passed: 201 tests, with existing Node module-type warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/content-factory/bundles/[id]`.
+  - `git diff --check` passed.
+
 ## Content Factory Sprint 42.1 Import Table UX
 
 - Current phase: implemented, verified, merged to `main`, and pushed

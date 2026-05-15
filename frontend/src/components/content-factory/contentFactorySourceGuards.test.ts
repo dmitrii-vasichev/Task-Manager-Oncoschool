@@ -357,6 +357,34 @@ test("workspace routes use bundle and publication APIs", () => {
   assert.match(versionListSource, /version\.notes/);
 });
 
+test("bundle detail route exposes campaign planning matrix", () => {
+  assert.equal(
+    sourceExists("components/content-factory/ContentFactoryPlanningMatrix.tsx"),
+    true,
+  );
+
+  const source = readSource("app/content-factory/bundles/[id]/page.tsx");
+  const matrixSource = readSource(
+    "components/content-factory/ContentFactoryPlanningMatrix.tsx",
+  );
+  const utilsSource = readSource("lib/contentFactoryUtils.ts");
+
+  assert.match(source, /ContentFactoryPlanningMatrix/);
+  assert.match(source, /buildContentFactoryPlanningMatrix/);
+  assert.match(source, /summarizeContentFactoryPlanningMatrix/);
+  assert.match(source, /api\.createCFPublicationForBundle/);
+  assert.match(source, /cf_planning_matrix_source/);
+  assert.match(matrixSource, /Матрица каналов/);
+  assert.match(matrixSource, /Ожидаемые публикации/);
+  assert.match(matrixSource, /Не хватает/);
+  assert.match(matrixSource, /Вне шаблона/);
+  assert.match(matrixSource, /Создать/);
+  assert.match(matrixSource, /\/content-factory\/publications\/\$\{cell\.publication\.id\}/);
+  assert.match(utilsSource, /ContentFactoryPlanningMatrix/);
+  assert.match(utilsSource, /buildContentFactoryPlanningMatrix/);
+  assert.match(utilsSource, /summarizeContentFactoryPlanningMatrix/);
+});
+
 test("publication detail route exposes Sprint 5 outcomes panels", () => {
   const source = readSource("app/content-factory/publications/[id]/page.tsx");
 
