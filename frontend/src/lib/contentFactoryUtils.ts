@@ -557,6 +557,44 @@ export type ContentFactoryEffectivenessFilters = {
   platformId?: "all" | string | null;
 };
 
+type PlatformCapabilitiesLike = {
+  capabilities?: Record<string, unknown> | null;
+} | null | undefined;
+
+type PublicationOperationsPublicationLike = {
+  status: CFPublicationStatus | string;
+  scheduled_at: string | null;
+  actual_published_at?: string | null;
+  platform_post_url?: string | null;
+  platform_post_id?: string | null;
+};
+
+type PublicationOperationsMetricLike = {
+  id?: string;
+  captured_at?: string | null;
+};
+
+export type ContentFactoryPlatformCapabilities = {
+  canPublishManually: boolean;
+  canPublishViaApi: boolean;
+  canCollectMetricsManually: boolean;
+  canCollectMetricsViaApi: boolean;
+  canStorePostUrl: boolean;
+  publicationModeLabel: string;
+  metricsModeLabel: string;
+};
+
+export type ContentFactoryPublicationOperationsSummary = {
+  capabilities: ContentFactoryPlatformCapabilities;
+  publishFactLabel: string;
+  missingPublishedAt: boolean;
+  missingPostUrl: boolean;
+  hasPostReference: boolean;
+  needsMetricEvidence: boolean;
+  metricEvidenceCount: number;
+  metricEvidenceLabel: string;
+};
+
 export type ContentFactorySegmentSummary = {
   total: number;
   active: number;
@@ -1110,6 +1148,184 @@ function getMetricHealth<TMetric extends EffectivenessMetricLike>(
   const latestMetricTime = dateTime(metrics[0]?.captured_at);
   if (latestMetricTime === null) return "stale";
   return nowTime - latestMetricTime <= freshnessMs ? "fresh" : "stale";
+}
+
+function normalizeCapabilityKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function asCapabilityRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function booleanCapabilityValue(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value > 0;
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "y", "enabled", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "n", "disabled", "off"].includes(normalized)) {
+    return false;
+  }
+  return null;
+}
+
+function readCapabilityFlag(
+  capabilities: Record<string, unknown>,
+  keys: string[],
+  fallback: boolean,
+): boolean {
+  const normalizedKeys = new Set(keys.map(normalizeCapabilityKey));
+  for (const [key, value] of Object.entries(capabilities)) {
+    if (!normalizedKeys.has(normalizeCapabilityKey(key))) continue;
+    const booleanValue = booleanCapabilityValue(value);
+    if (booleanValue !== null) return booleanValue;
+  }
+  return fallback;
+}
+
+function publicationModeLabel(manual: boolean, api: boolean): string {
+  if (manual && api) return "Смешанная публикация";
+  if (api) return "API-публикация";
+  if (manual) return "Ручная публикация";
+  return "Публикация не настроена";
+}
+
+function metricsModeLabel(manual: boolean, api: boolean): string {
+  if (manual && api) return "Ручной и API-сбор метрик";
+  if (api) return "API-метрики";
+  if (manual) return "Ручной сбор метрик";
+  return "Метрики не настроены";
+}
+
+export function getContentFactoryPlatformCapabilities(
+  platform: PlatformCapabilitiesLike,
+): ContentFactoryPlatformCapabilities {
+  const capabilities = asCapabilityRecord(platform?.capabilities);
+  const canPublishManually = readCapabilityFlag(
+    capabilities,
+    ["manual_publish", "manualPublish", "can_publish_manually"],
+    true,
+  );
+  const canPublishViaApi = readCapabilityFlag(
+    capabilities,
+    [
+      "api_publish",
+      "apiPublish",
+      "publish_api",
+      "can_publish_api",
+      "can_api_publish",
+      "supports_api_publish",
+      "auto_publish",
+    ],
+    false,
+  );
+  const canCollectMetricsManually = readCapabilityFlag(
+    capabilities,
+    ["manual_metrics", "manualMetrics", "can_collect_metrics_manually"],
+    true,
+  );
+  const canCollectMetricsViaApi = readCapabilityFlag(
+    capabilities,
+    [
+      "api_metrics",
+      "apiMetrics",
+      "metrics_api",
+      "can_metrics_api",
+      "can_api_metrics",
+      "supports_metrics_api",
+      "collect_metrics_api",
+    ],
+    false,
+  );
+  const canStorePostUrl = readCapabilityFlag(
+    capabilities,
+    ["supports_post_url", "post_url", "postUrl", "can_store_post_url"],
+    true,
+  );
+
+  return {
+    canPublishManually,
+    canPublishViaApi,
+    canCollectMetricsManually,
+    canCollectMetricsViaApi,
+    canStorePostUrl,
+    publicationModeLabel: publicationModeLabel(
+      canPublishManually,
+      canPublishViaApi,
+    ),
+    metricsModeLabel: metricsModeLabel(
+      canCollectMetricsManually,
+      canCollectMetricsViaApi,
+    ),
+  };
+}
+
+function publicationMetricNoun(count: number): string {
+  const lastDigit = count % 10;
+  const lastTwoDigits = count % 100;
+  if (lastDigit === 1 && lastTwoDigits !== 11) return "метрика";
+  if (
+    lastDigit >= 2 &&
+    lastDigit <= 4 &&
+    (lastTwoDigits < 12 || lastTwoDigits > 14)
+  ) {
+    return "метрики";
+  }
+  return "метрик";
+}
+
+function formatMetricEvidenceLabel(count: number): string {
+  if (count === 0) return "Метрик пока нет";
+  return `${count} ${publicationMetricNoun(count)}`;
+}
+
+function getPublicationFactLabel(
+  publication: PublicationOperationsPublicationLike,
+  nowTime: number,
+): string {
+  if (publication.status === "cancelled") return "Публикация отменена";
+  if (publication.status === "failed") return "Нужна проверка ошибки";
+  if (publication.status === "published") {
+    return publication.actual_published_at
+      ? "Факт публикации заполнен"
+      : "Опубликовано, но факт не заполнен";
+  }
+  const scheduledTime = dateTime(publication.scheduled_at);
+  if (scheduledTime !== null && scheduledTime < nowTime) return "План просрочен";
+  if (publication.status === "scheduled") return "Ожидает публикации";
+  return "В подготовке";
+}
+
+export function getContentFactoryPublicationOperations(
+  publication: PublicationOperationsPublicationLike,
+  platform: PlatformCapabilitiesLike,
+  metrics: PublicationOperationsMetricLike[],
+  now: Date | string = new Date(),
+): ContentFactoryPublicationOperationsSummary {
+  const capabilities = getContentFactoryPlatformCapabilities(platform);
+  const isPublished = publication.status === "published";
+  const metricEvidenceCount = metrics.length;
+  const hasPostReference = Boolean(
+    publication.platform_post_url?.trim() || publication.platform_post_id?.trim(),
+  );
+
+  return {
+    capabilities,
+    publishFactLabel: getPublicationFactLabel(publication, dateInputTime(now)),
+    missingPublishedAt: isPublished && !publication.actual_published_at,
+    missingPostUrl:
+      isPublished &&
+      capabilities.canStorePostUrl &&
+      !publication.platform_post_url?.trim(),
+    hasPostReference,
+    needsMetricEvidence: isPublished && metricEvidenceCount === 0,
+    metricEvidenceCount,
+    metricEvidenceLabel: formatMetricEvidenceLabel(metricEvidenceCount),
+  };
 }
 
 export function buildContentFactoryEffectivenessRows<

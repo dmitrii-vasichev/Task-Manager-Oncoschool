@@ -34,6 +34,8 @@ const {
   getAvailableContentFactorySegments,
   getContentFactoryGuestAttention,
   getContentFactoryDisplayName,
+  getContentFactoryPlatformCapabilities,
+  getContentFactoryPublicationOperations,
   getContentFactoryReferenceLabel,
   getContentFactoryRetroTitle,
   getContentFactoryReviewQueueGroups,
@@ -603,6 +605,91 @@ test("buildContentFactoryUtm composes campaign context", () => {
       cf_cta: "register",
     },
   );
+});
+
+test("publication operations normalize platform capability labels", () => {
+  assert.equal(typeof getContentFactoryPlatformCapabilities, "function");
+
+  const apiReady = getContentFactoryPlatformCapabilities({
+    capabilities: {
+      api_publish: true,
+      api_metrics: true,
+      manual_publish: false,
+      manual_metrics: false,
+      supports_post_url: true,
+    },
+  });
+
+  assert.equal(apiReady.canPublishManually, false);
+  assert.equal(apiReady.canPublishViaApi, true);
+  assert.equal(apiReady.canCollectMetricsManually, false);
+  assert.equal(apiReady.canCollectMetricsViaApi, true);
+  assert.equal(apiReady.canStorePostUrl, true);
+  assert.equal(apiReady.publicationModeLabel, "API-публикация");
+  assert.equal(apiReady.metricsModeLabel, "API-метрики");
+
+  const fallback = getContentFactoryPlatformCapabilities(null);
+
+  assert.equal(fallback.canPublishManually, true);
+  assert.equal(fallback.canPublishViaApi, false);
+  assert.equal(fallback.canCollectMetricsManually, true);
+  assert.equal(fallback.canCollectMetricsViaApi, false);
+  assert.equal(fallback.canStorePostUrl, true);
+  assert.equal(fallback.publicationModeLabel, "Ручная публикация");
+  assert.equal(fallback.metricsModeLabel, "Ручной сбор метрик");
+});
+
+test("publication operations summarize publish fact and metric evidence", () => {
+  assert.equal(typeof getContentFactoryPublicationOperations, "function");
+
+  const incomplete = getContentFactoryPublicationOperations(
+    {
+      status: "published",
+      scheduled_at: "2026-05-14T10:00:00Z",
+      actual_published_at: null,
+      platform_post_url: null,
+      platform_post_id: null,
+    },
+    {
+      capabilities: {
+        manual_publish: true,
+        manual_metrics: true,
+        supports_post_url: true,
+      },
+    },
+    [],
+    new Date("2026-05-14T12:00:00Z"),
+  );
+
+  assert.equal(incomplete.publishFactLabel, "Опубликовано, но факт не заполнен");
+  assert.equal(incomplete.missingPublishedAt, true);
+  assert.equal(incomplete.missingPostUrl, true);
+  assert.equal(incomplete.needsMetricEvidence, true);
+  assert.equal(incomplete.metricEvidenceLabel, "Метрик пока нет");
+
+  const complete = getContentFactoryPublicationOperations(
+    {
+      status: "published",
+      scheduled_at: "2026-05-14T10:00:00Z",
+      actual_published_at: "2026-05-14T11:00:00Z",
+      platform_post_url: "https://t.me/oncoschool/123",
+      platform_post_id: "123",
+    },
+    null,
+    [
+      {
+        id: "metric-1",
+        captured_at: "2026-05-14T12:00:00Z",
+      },
+    ],
+    new Date("2026-05-14T12:00:00Z"),
+  );
+
+  assert.equal(complete.publishFactLabel, "Факт публикации заполнен");
+  assert.equal(complete.missingPublishedAt, false);
+  assert.equal(complete.missingPostUrl, false);
+  assert.equal(complete.needsMetricEvidence, false);
+  assert.equal(complete.metricEvidenceLabel, "1 метрика");
 });
 
 test("formatContentFactoryMetricValue renders numeric and text metrics", () => {

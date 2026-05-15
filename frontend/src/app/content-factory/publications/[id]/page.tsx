@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   CalendarClock,
   Edit3,
-  ExternalLink,
   FileText,
   Link2,
   RefreshCw,
@@ -16,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/shared/Toast";
 import { ContentFactoryMetricHistory } from "@/components/content-factory/ContentFactoryMetricHistory";
+import { ContentFactoryPublicationOperationsPanel } from "@/components/content-factory/ContentFactoryPublicationOperationsPanel";
 import { ContentFactoryPublicationDialog } from "@/components/content-factory/ContentFactoryPublicationDialog";
 import { ContentFactoryPublicationVersionList } from "@/components/content-factory/ContentFactoryPublicationVersionList";
 import { ContentFactorySegmentTargetsPanel } from "@/components/content-factory/ContentFactorySegmentTargetsPanel";
@@ -184,6 +184,8 @@ export default function ContentFactoryPublicationDetailPage() {
   }
 
   const platformName = getContentFactoryDisplayName(publication.platform_id, platforms);
+  const platform =
+    platforms.find((item) => item.id === publication.platform_id) ?? null;
   const formatName = getContentFactoryDisplayName(publication.format_id, formats);
   const rubricName = getContentFactoryDisplayName(publication.rubric_id, rubrics);
   const nosologyName = getContentFactoryDisplayName(
@@ -304,6 +306,13 @@ export default function ContentFactoryPublicationDetailPage() {
         </div>
 
         <aside className="space-y-4">
+          <ContentFactoryPublicationOperationsPanel
+            publication={publication}
+            platform={platform}
+            metrics={metrics}
+            onSaved={handleSaved}
+          />
+
           <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm">
             <h2 className="text-sm font-semibold text-foreground">
               Детали публикации
@@ -317,42 +326,12 @@ export default function ContentFactoryPublicationDetailPage() {
                 </dd>
               </div>
               <div>
-                <dt className="text-xs uppercase text-muted-foreground">Опубликовано</dt>
-                <dd className="mt-1 text-foreground">
-                  {formatDateTime(publication.actual_published_at)}
-                </dd>
-              </div>
-              <div>
                 <dt className="text-xs uppercase text-muted-foreground">Рубрика</dt>
                 <dd className="mt-1 text-foreground">{rubricName}</dd>
               </div>
               <div>
                 <dt className="text-xs uppercase text-muted-foreground">Нозология</dt>
                 <dd className="mt-1 text-foreground">{nosologyName}</dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase text-muted-foreground">ID поста</dt>
-                <dd className="mt-1 text-foreground">
-                  {publication.platform_post_id || "Не указан"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase text-muted-foreground">Ссылка на пост</dt>
-                <dd className="mt-1">
-                  {publication.platform_post_url ? (
-                    <a
-                      href={publication.platform_post_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex items-center gap-1.5 text-primary hover:underline"
-                    >
-                      Открыть
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </a>
-                  ) : (
-                    <span className="text-foreground">Не указан</span>
-                  )}
-                </dd>
               </div>
               {publication.cancelled_reason && (
                 <div>

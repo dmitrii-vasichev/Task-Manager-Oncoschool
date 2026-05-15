@@ -210,6 +210,23 @@ test("publication detail route exposes Sprint 5 outcomes panels", () => {
   assert.match(source, /ContentFactoryUtmHelper/);
 });
 
+test("publication detail route exposes publication operations panel", () => {
+  const source = readSource("app/content-factory/publications/[id]/page.tsx");
+  const panelSource = readSource(
+    "components/content-factory/ContentFactoryPublicationOperationsPanel.tsx",
+  );
+  const utilsSource = readSource("lib/contentFactoryUtils.ts");
+
+  assert.match(source, /ContentFactoryPublicationOperationsPanel/);
+  assert.match(source, /platform={platform}/);
+  assert.match(panelSource, /Публикация и статистика/);
+  assert.match(panelSource, /Отметить как опубликовано/);
+  assert.match(panelSource, /api\.updateCFPublication/);
+  assert.match(panelSource, /platform_post_url/);
+  assert.match(utilsSource, /getContentFactoryPlatformCapabilities/);
+  assert.match(utilsSource, /getContentFactoryPublicationOperations/);
+});
+
 test("review queue route groups publications by workflow status", () => {
   const source = readSource("app/content-factory/review/page.tsx");
 
