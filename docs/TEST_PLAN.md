@@ -1,5 +1,29 @@
 # Test Plan
 
+## Content Factory Sprint 26 Publication Workflow Actions
+
+### Automated
+
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Open a publication detail page.
+2. Confirm the right sidebar shows `Быстрые действия`.
+3. Open a publication in `Нужен текст` and confirm actions include `Передать на дизайн`, `На фактчек`, and `Отменить`.
+4. Click an enabled action and confirm the status badge refreshes after save.
+5. Open an approved publication without a planned date and confirm `Поставить в календарь` is disabled with `Сначала укажите плановую дату`.
+6. Add a planned date through the edit dialog and confirm `Поставить в календарь` becomes available.
+7. Open a published publication and confirm quick actions are replaced by the explanatory empty state.
+8. Confirm the existing `Факт публикации` dialog still handles actual publication date, post URL, and post ID.
+9. Confirm API errors show toast feedback and do not leave buttons stuck in a loading state.
+10. Confirm desktop and mobile layouts stay readable and do not overlap text.
+
 ## Content Factory Sprint 25 Review Queue Triage
 
 ### Automated

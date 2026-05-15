@@ -748,6 +748,23 @@ export type ContentFactoryPublicationOperationsSummary = {
   metricEvidenceLabel: string;
 };
 
+export type ContentFactoryPublicationWorkflowActionTone =
+  | "primary"
+  | "default"
+  | "warning"
+  | "danger"
+  | "muted";
+
+export type ContentFactoryPublicationWorkflowAction = {
+  key: string;
+  targetStatus: CFPublicationStatus;
+  label: string;
+  description: string;
+  tone: ContentFactoryPublicationWorkflowActionTone;
+  disabled: boolean;
+  disabledReason: string | null;
+};
+
 export type ContentFactoryPublicationReadinessStatus =
   | "ready"
   | "missing"
@@ -774,6 +791,11 @@ type PublicationReadinessPublicationLike =
     body_text?: string | null;
     utm?: Record<string, unknown> | null;
   };
+
+type PublicationWorkflowPublicationLike = {
+  status: CFPublicationStatus | string;
+  scheduled_at?: string | null;
+};
 
 type PublicationReadinessSegmentTargetLike = {
   external_segment_id?: string | null;
@@ -1563,6 +1585,223 @@ export function getContentFactoryPublicationOperations(
     metricEvidenceCount,
     metricEvidenceLabel: formatMetricEvidenceLabel(metricEvidenceCount),
   };
+}
+
+function workflowAction({
+  key,
+  targetStatus,
+  label,
+  description,
+  tone = "default",
+  disabled = false,
+  disabledReason = null,
+}: {
+  key: string;
+  targetStatus: CFPublicationStatus;
+  label: string;
+  description: string;
+  tone?: ContentFactoryPublicationWorkflowActionTone;
+  disabled?: boolean;
+  disabledReason?: string | null;
+}): ContentFactoryPublicationWorkflowAction {
+  return {
+    key,
+    targetStatus,
+    label,
+    description,
+    tone,
+    disabled,
+    disabledReason,
+  };
+}
+
+export function getContentFactoryPublicationWorkflowActions(
+  publication: PublicationWorkflowPublicationLike,
+): ContentFactoryPublicationWorkflowAction[] {
+  switch (publication.status) {
+    case "draft":
+      return [
+        workflowAction({
+          key: "send_to_production",
+          targetStatus: "needs_copy",
+          label: "Отправить в производство",
+          description: "Передать публикацию команде на подготовку текста.",
+          tone: "primary",
+        }),
+        workflowAction({
+          key: "cancel",
+          targetStatus: "cancelled",
+          label: "Отменить",
+          description: "Снять публикацию с рабочего плана.",
+          tone: "danger",
+        }),
+      ];
+    case "needs_copy":
+      return [
+        workflowAction({
+          key: "send_to_design",
+          targetStatus: "needs_design",
+          label: "Передать на дизайн",
+          description: "Текст готов, нужны визуалы или материалы.",
+        }),
+        workflowAction({
+          key: "send_to_factcheck",
+          targetStatus: "factcheck",
+          label: "На фактчек",
+          description: "Отправить материал на проверку фактов.",
+          tone: "primary",
+        }),
+        workflowAction({
+          key: "cancel",
+          targetStatus: "cancelled",
+          label: "Отменить",
+          description: "Снять публикацию с рабочего плана.",
+          tone: "danger",
+        }),
+      ];
+    case "needs_design":
+      return [
+        workflowAction({
+          key: "send_to_factcheck",
+          targetStatus: "factcheck",
+          label: "На фактчек",
+          description: "Визуалы готовы, проверить факты и формулировки.",
+          tone: "primary",
+        }),
+        workflowAction({
+          key: "cancel",
+          targetStatus: "cancelled",
+          label: "Отменить",
+          description: "Снять публикацию с рабочего плана.",
+          tone: "danger",
+        }),
+      ];
+    case "factcheck":
+      return [
+        workflowAction({
+          key: "send_to_doctor",
+          targetStatus: "doctor_review",
+          label: "На проверку врача",
+          description: "Передать медицинскую часть на согласование.",
+          tone: "primary",
+        }),
+        workflowAction({
+          key: "return_to_copy",
+          targetStatus: "needs_copy",
+          label: "Вернуть в текст",
+          description: "Нужны правки текста после проверки фактов.",
+          tone: "warning",
+        }),
+        workflowAction({
+          key: "cancel",
+          targetStatus: "cancelled",
+          label: "Отменить",
+          description: "Снять публикацию с рабочего плана.",
+          tone: "danger",
+        }),
+      ];
+    case "doctor_review":
+      return [
+        workflowAction({
+          key: "approve",
+          targetStatus: "approved",
+          label: "Одобрить",
+          description: "Медицинское согласование пройдено.",
+          tone: "primary",
+        }),
+        workflowAction({
+          key: "return_to_copy",
+          targetStatus: "needs_copy",
+          label: "Вернуть в текст",
+          description: "Нужны правки текста после проверки врача.",
+          tone: "warning",
+        }),
+        workflowAction({
+          key: "cancel",
+          targetStatus: "cancelled",
+          label: "Отменить",
+          description: "Снять публикацию с рабочего плана.",
+          tone: "danger",
+        }),
+      ];
+    case "approved": {
+      const missingSchedule = dateTime(publication.scheduled_at) === null;
+      return [
+        workflowAction({
+          key: "schedule",
+          targetStatus: "scheduled",
+          label: "Поставить в календарь",
+          description: "Перевести одобренную публикацию в план выхода.",
+          tone: "primary",
+          disabled: missingSchedule,
+          disabledReason: missingSchedule
+            ? "Сначала укажите плановую дату"
+            : null,
+        }),
+        workflowAction({
+          key: "return_to_doctor",
+          targetStatus: "doctor_review",
+          label: "Вернуть врачу",
+          description: "Нужно дополнительное медицинское согласование.",
+          tone: "warning",
+        }),
+        workflowAction({
+          key: "cancel",
+          targetStatus: "cancelled",
+          label: "Отменить",
+          description: "Снять публикацию с рабочего плана.",
+          tone: "danger",
+        }),
+      ];
+    }
+    case "scheduled":
+      return [
+        workflowAction({
+          key: "return_to_approval",
+          targetStatus: "approved",
+          label: "Вернуть к одобрению",
+          description: "Снять из календаря и вернуть на финальное согласование.",
+          tone: "warning",
+        }),
+        workflowAction({
+          key: "cancel",
+          targetStatus: "cancelled",
+          label: "Отменить",
+          description: "Снять публикацию с рабочего плана.",
+          tone: "danger",
+        }),
+      ];
+    case "failed":
+      return [
+        workflowAction({
+          key: "return_to_production",
+          targetStatus: "needs_copy",
+          label: "Вернуть в производство",
+          description: "Вернуть материал в работу после ошибки публикации.",
+          tone: "primary",
+        }),
+        workflowAction({
+          key: "cancel",
+          targetStatus: "cancelled",
+          label: "Отменить",
+          description: "Зафиксировать, что публикация больше не нужна.",
+          tone: "danger",
+        }),
+      ];
+    case "cancelled":
+      return [
+        workflowAction({
+          key: "restore_to_draft",
+          targetStatus: "draft",
+          label: "Вернуть в черновик",
+          description: "Возобновить работу над отмененной публикацией.",
+          tone: "primary",
+        }),
+      ];
+    case "published":
+    default:
+      return [];
+  }
 }
 
 const READINESS_STATUS_LABELS: Record<

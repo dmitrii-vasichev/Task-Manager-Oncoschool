@@ -44,6 +44,7 @@ const {
   getContentFactoryPlatformCapabilities,
   getContentFactoryPublicationOperations,
   getContentFactoryPublicationReadiness,
+  getContentFactoryPublicationWorkflowActions,
   getContentFactoryReferenceLabel,
   getContentFactoryRetroTitle,
   getContentFactoryReviewQueueGroups,
@@ -1000,6 +1001,55 @@ test("publication readiness checklist explains missing and after-publish steps",
       ["publish_fact", "Нужно заполнить"],
       ["metrics", "Нужно заполнить"],
     ],
+  );
+});
+
+test("publication workflow actions expose readable next status steps", () => {
+  assert.deepEqual(
+    getContentFactoryPublicationWorkflowActions({
+      status: "needs_copy",
+      scheduled_at: null,
+    }).map((action) => [
+      action.key,
+      action.targetStatus,
+      action.label,
+      action.tone,
+      action.disabled,
+    ]),
+    [
+      ["send_to_design", "needs_design", "Передать на дизайн", "default", false],
+      ["send_to_factcheck", "factcheck", "На фактчек", "primary", false],
+      ["cancel", "cancelled", "Отменить", "danger", false],
+    ],
+  );
+});
+
+test("publication workflow actions guard scheduling and published state", () => {
+  const approvedWithoutDate = getContentFactoryPublicationWorkflowActions({
+    status: "approved",
+    scheduled_at: null,
+  });
+
+  assert.deepEqual(
+    approvedWithoutDate.map((action) => [
+      action.key,
+      action.targetStatus,
+      action.disabled,
+      action.disabledReason,
+    ]),
+    [
+      ["schedule", "scheduled", true, "Сначала укажите плановую дату"],
+      ["return_to_doctor", "doctor_review", false, null],
+      ["cancel", "cancelled", false, null],
+    ],
+  );
+
+  assert.equal(
+    getContentFactoryPublicationWorkflowActions({
+      status: "published",
+      scheduled_at: "2026-05-20T10:00:00Z",
+    }).length,
+    0,
   );
 });
 

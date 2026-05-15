@@ -18,6 +18,7 @@ import { ContentFactoryMetricHistory } from "@/components/content-factory/Conten
 import { ContentFactoryPublicationOperationsPanel } from "@/components/content-factory/ContentFactoryPublicationOperationsPanel";
 import { ContentFactoryPublicationDialog } from "@/components/content-factory/ContentFactoryPublicationDialog";
 import { ContentFactoryPublicationPublishPackage } from "@/components/content-factory/ContentFactoryPublicationPublishPackage";
+import { ContentFactoryPublicationWorkflowActionsPanel } from "@/components/content-factory/ContentFactoryPublicationWorkflowActionsPanel";
 import { ContentFactoryPublicationVersionList } from "@/components/content-factory/ContentFactoryPublicationVersionList";
 import { ContentFactorySegmentTargetsPanel } from "@/components/content-factory/ContentFactorySegmentTargetsPanel";
 import { ContentFactoryStatusBadge } from "@/components/content-factory/ContentFactoryStatusBadge";
@@ -317,6 +318,11 @@ export default function ContentFactoryPublicationDetailPage() {
         </div>
 
         <aside className="space-y-4">
+          <ContentFactoryPublicationWorkflowActionsPanel
+            publication={publication}
+            onSaved={handleSaved}
+          />
+
           <ContentFactoryPublicationOperationsPanel
             publication={publication}
             platform={platform}

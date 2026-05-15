@@ -1,3 +1,67 @@
+# Active Plan: Content Factory Sprint 26 Publication Workflow Actions
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-26-publication-workflow-actions.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Add quick workflow status actions to the Content Factory publication detail page.
+
+**Recovered design:** `docs/content-factory-design.md`
+
+**Preserved market research:** `docs/content-factory-market-context-report.md`
+
+**Detailed design:** `docs/superpowers/specs/2026-05-15-content-factory-sprint-26-publication-workflow-actions-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-15-content-factory-sprint-26-publication-workflow-actions.md`
+
+**Backlog:** `docs/BACKLOG.md`
+
+**Milestones:**
+
+1. Add helper tests and source guards for publication workflow actions.
+2. Add `getContentFactoryPublicationWorkflowActions`.
+3. Add `ContentFactoryPublicationWorkflowActionsPanel`.
+4. Wire the panel into `/content-factory/publications/[id]`.
+5. Update publication status through the existing `api.updateCFPublication` endpoint.
+6. Run frontend verification and update durable repo docs.
+
+**Implementation status:**
+
+- Implemented and full frontend verification passed on branch `codex/content-factory-sprint-26-publication-workflow-actions`.
+- Sprint 1 through Sprint 25 work is merged to `main`.
+- Sprint 26 builds on the Sprint 25 review triage screen by letting users execute workflow moves from the publication detail page.
+
+**Definition of done:**
+
+- Publication detail pages show a `Быстрые действия` panel in the right sidebar.
+- Available actions depend on the current publication status.
+- Actions use readable Russian labels such as `На фактчек`, `На проверку врача`, `Одобрить`, `Поставить в календарь`, and `Отменить`.
+- The scheduling action is visible but disabled when `scheduled_at` is missing, with `Сначала укажите плановую дату`.
+- Published publications do not show quick status changes and instead explain that facts and metrics are handled below.
+- Enabled actions call the existing publication update API, refresh the detail page, and show toast feedback.
+- No backend schema, endpoint, approval comments, notifications, automatic publishing, or platform integration is added.
+- Verification commands pass and docs are updated.
+
+**Validation commands:**
+
+```bash
+cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 84 tests, with existing Node module-type warnings.
+- `cd frontend && npm test` passed: 175 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+- `git diff --check` passed.
+
+---
+
 # Active Plan: Content Factory Sprint 25 Review Queue Triage
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-25-review-triage.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.

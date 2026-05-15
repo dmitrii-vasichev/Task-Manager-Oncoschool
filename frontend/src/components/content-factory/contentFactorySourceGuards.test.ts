@@ -273,11 +273,20 @@ test("publication detail route exposes publication operations panel", () => {
   const panelSource = readSource(
     "components/content-factory/ContentFactoryPublicationOperationsPanel.tsx",
   );
+  const workflowPanelSource = readSource(
+    "components/content-factory/ContentFactoryPublicationWorkflowActionsPanel.tsx",
+  );
   const utilsSource = readSource("lib/contentFactoryUtils.ts");
 
   assert.match(source, /ContentFactoryPublicationOperationsPanel/);
+  assert.match(source, /ContentFactoryPublicationWorkflowActionsPanel/);
   assert.match(source, /platform={platform}/);
   assert.match(source, /segmentTargets={segmentTargets}/);
+  assert.match(workflowPanelSource, /Быстрые действия/);
+  assert.match(workflowPanelSource, /getContentFactoryPublicationWorkflowActions/);
+  assert.match(workflowPanelSource, /api\.updateCFPublication/);
+  assert.match(workflowPanelSource, /targetStatus/);
+  assert.match(workflowPanelSource, /Сначала укажите плановую дату/);
   assert.match(panelSource, /Публикация и статистика/);
   assert.match(panelSource, /Чек-лист готовности/);
   assert.match(panelSource, /getContentFactoryPublicationReadiness/);
@@ -290,6 +299,8 @@ test("publication detail route exposes publication operations panel", () => {
   assert.match(panelSource, /Отметить как опубликовано/);
   assert.match(panelSource, /api\.updateCFPublication/);
   assert.match(panelSource, /platform_post_url/);
+  assert.match(utilsSource, /ContentFactoryPublicationWorkflowAction/);
+  assert.match(utilsSource, /getContentFactoryPublicationWorkflowActions/);
   assert.match(utilsSource, /getContentFactoryPlatformCapabilities/);
   assert.match(utilsSource, /getContentFactoryPublicationOperations/);
   assert.match(utilsSource, /getContentFactoryPublicationReadiness/);

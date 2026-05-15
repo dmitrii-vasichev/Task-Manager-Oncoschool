@@ -1,5 +1,38 @@
 # Status
 
+## Content Factory Sprint 26 Publication Workflow Actions
+
+- Current phase: implemented and full frontend verification passed on branch `codex/content-factory-sprint-26-publication-workflow-actions`
+- Source: Sprint 25 made the review queue actionable, but moving a publication forward still required opening the full edit dialog and choosing a raw workflow status from a generic dropdown.
+- Deep research: `docs/content-factory-market-context-report.md`
+- Design: `docs/superpowers/specs/2026-05-15-content-factory-sprint-26-publication-workflow-actions-design.md`
+- Plan: `docs/superpowers/plans/2026-05-15-content-factory-sprint-26-publication-workflow-actions.md`
+- Scope: frontend-only workflow action helper, sidebar quick-action panel, existing publication update API wiring, source guards, helper tests, and frontend verification
+- Latest progress:
+  - Confirmed local `main` was clean and created branch `codex/content-factory-sprint-26-publication-workflow-actions`.
+  - Wrote Sprint 26 design and implementation plan.
+  - Added failing helper tests for workflow action mapping, disabled scheduling, and published terminal state.
+  - Added failing source guards for the workflow action panel and publication detail route wiring.
+  - Added `getContentFactoryPublicationWorkflowActions`.
+  - Added `ContentFactoryPublicationWorkflowActionsPanel`.
+  - Wired the panel into `/content-factory/publications/[id]` before the publication operations panel.
+  - Focused frontend test command passed after implementation: 84 tests, with existing Node module-type warnings.
+  - Full frontend verification passed after implementation.
+- Key decisions:
+  - Keep Sprint 26 frontend-only and use existing `api.updateCFPublication`.
+  - Keep publishing fact capture in the existing `Факт публикации` dialog because it needs actual date and post reference.
+  - Keep backend transition validation, approval comments, notifications, bulk changes, automatic publishing, and platform integrations out of scope.
+- Next actions:
+  - Merge and push Sprint 26.
+  - Run authenticated manual QA against real publication detail records when useful.
+- Latest verification:
+  - `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 84 tests, with existing Node module-type warnings.
+  - `cd frontend && npm test` passed: 175 tests, with existing Node module-type warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+  - `git diff --check` passed.
+
 ## Content Factory Sprint 25 Review Queue Triage
 
 - Current phase: implemented, verified, merged to `main`, and pushed
