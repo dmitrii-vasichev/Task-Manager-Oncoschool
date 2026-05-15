@@ -2,7 +2,7 @@
 
 ## Content Factory Sprint 36 Readiness Adaptations
 
-- Current phase: implemented and verified on branch `codex/content-factory-sprint-36-readiness-adaptations`
+- Current phase: implemented, verified, and merged to `main`
 - Source: Sprint 34 and Sprint 35 made adaptation coverage and handoff explicit, but the main publication readiness checklist still ignores channel adaptation readiness.
 - Design: `docs/superpowers/specs/2026-05-15-content-factory-sprint-36-readiness-adaptations-design.md`
 - Plan: `docs/superpowers/plans/2026-05-15-content-factory-sprint-36-readiness-adaptations.md`
@@ -15,12 +15,13 @@
   - Added optional adaptation coverage support to `getContentFactoryPublicationReadiness`.
   - Wired saved variants into `ContentFactoryPublicationOperationsPanel`.
   - Focused and full frontend verification passed after implementation.
+  - Merged Sprint 36 into local `main`.
 - Key decisions:
   - Keep adaptation editing and copying in the dedicated `Адаптации` panel.
   - Add only a compact readiness row to the main operations checklist.
   - Require every expected channel to be saved and current before the checklist item becomes ready.
 - Next actions:
-  - Merge Sprint 36 into `main` and push when ready.
+  - Push Sprint 36 to `origin/main`.
 - Latest verification:
   - RED confirmed: `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` failed before implementation because adaptation readiness was not part of the operations checklist.
   - `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 99 tests, with existing Node module-type warnings.
