@@ -12,6 +12,9 @@ from app.db.schemas import (
     CFPublicationSegmentTargetCreate,
     CFPublicationUpdate,
 )
+from app.services.content_factory.publication_service import (
+    PublicationWorkflowTransitionError,
+)
 
 
 def cf_member(role="member", has_cf=True):
@@ -178,6 +181,32 @@ async def test_update_publication_404(monkeypatch):
     assert exc.value.status_code == 404
     _, kwargs = pubs_api.publication_service.update.await_args
     assert "approval_event" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_update_publication_rejects_invalid_workflow_transition(monkeypatch):
+    session = AsyncMock()
+    monkeypatch.setattr(
+        pubs_api.publication_service,
+        "update",
+        AsyncMock(
+            side_effect=PublicationWorkflowTransitionError(
+                "Недопустимый переход статуса: Черновик -> Опубликовано"
+            )
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await pubs_api.update_publication(
+            publication_id=uuid.uuid4(),
+            data=CFPublicationUpdate(status="published"),
+            member=cf_member(),
+            session=session,
+        )
+
+    assert exc.value.status_code == 400
+    assert exc.value.detail == "Недопустимый переход статуса: Черновик -> Опубликовано"
+    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

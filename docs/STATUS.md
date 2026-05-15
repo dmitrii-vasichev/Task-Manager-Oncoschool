@@ -1,5 +1,41 @@
 # Status
 
+## Content Factory Sprint 28 Workflow Guardrails
+
+- Current phase: implemented and full verification passed on branch; pending commit, merge to `main`, and push
+- Source: Sprint 26 added quick publication workflow actions and Sprint 27 recorded status moves in publication history, but the backend still accepted arbitrary status jumps through the generic PATCH endpoint.
+- Deep research: `docs/content-factory-market-context-report.md`
+- Design: `docs/superpowers/specs/2026-05-15-content-factory-sprint-28-workflow-guardrails-design.md`
+- Plan: `docs/superpowers/plans/2026-05-15-content-factory-sprint-28-workflow-guardrails.md`
+- Scope: backend workflow transition validation, publication PATCH 400 mapping, frontend publish-fact button guard, focused backend tests, frontend helper/source-guard tests, and frontend verification
+- Latest progress:
+  - Confirmed local `main` was clean and created branch `codex/content-factory-sprint-28-workflow-guardrails`.
+  - Wrote Sprint 28 design and implementation plan.
+  - Added failing backend tests for invalid `draft -> published`, invalid `approved -> scheduled` without date, and valid `approved -> scheduled` with same-payload date.
+  - Added a failing API test for HTTP 400 workflow validation errors.
+  - Added failing frontend helper and source-guard tests for publish-fact availability.
+  - Added `PublicationWorkflowTransitionError`, allowed transition mapping, and schedule guard in `PublicationService.update`.
+  - Updated the publication PATCH route to return HTTP 400 for workflow validation failures.
+  - Added `canSavePublishFact` and `publishFactDisabledReason` to publication operations summaries.
+  - Disabled the publish fact button until the publication is approved, scheduled, or published.
+  - Focused backend and frontend verification passed after implementation.
+  - Full frontend verification passed after implementation.
+- Key decisions:
+  - Keep transition rules service-side so all clients share the same workflow guardrail.
+  - Allow `approved -> published` for manual publishing without forcing every record through `scheduled`.
+  - Keep role-specific permissions, transition comments, notifications, and auto-publishing out of scope.
+- Next actions:
+  - Commit, merge to `main`, and push.
+  - Run authenticated manual QA against real publication workflow records when useful.
+- Latest verification:
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_cf_publication_service.py tests/test_content_factory_publications_api.py -q` passed: 18 tests, with existing AsyncMock/pytest-asyncio warnings.
+  - `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 85 tests, with existing Node module-type warnings.
+  - `cd frontend && npm test` passed: 176 tests, with existing Node module-type warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+  - `git diff --check` passed.
+
 ## Content Factory Sprint 27 Publication Workflow History
 
 - Current phase: implemented, verified, merged to `main`, and pushed

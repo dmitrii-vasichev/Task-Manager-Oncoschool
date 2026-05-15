@@ -17,7 +17,10 @@ from app.db.schemas import (
     CFPublicationUpdate,
     CFPublicationVersionResponse,
 )
-from app.services.content_factory.publication_service import PublicationService
+from app.services.content_factory.publication_service import (
+    PublicationService,
+    PublicationWorkflowTransitionError,
+)
 
 publication_service = PublicationService
 
@@ -107,10 +110,13 @@ async def update_publication(
     member: TeamMember = Depends(require_cf_access),
     session: AsyncSession = Depends(get_session),
 ):
-    pub = await publication_service.update(
-        session, publication_id, data,
-        editor_id=member.id,
-    )
+    try:
+        pub = await publication_service.update(
+            session, publication_id, data,
+            editor_id=member.id,
+        )
+    except PublicationWorkflowTransitionError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if pub is None:
         raise HTTPException(status_code=404, detail="Публикация не найдена")
     await session.commit()

@@ -1,5 +1,30 @@
 # Test Plan
 
+## Content Factory Sprint 28 Workflow Guardrails
+
+### Automated
+
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_cf_publication_service.py tests/test_content_factory_publications_api.py -q`
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Open a draft publication detail page.
+2. Confirm the publish fact button is disabled.
+3. Confirm the disabled reason says `Сначала доведите публикацию до одобрения или календаря.`
+4. Use quick actions to move the publication to `approved`.
+5. Confirm the publish fact dialog can open for the approved publication.
+6. Save publication fact data and confirm the record becomes `published`.
+7. Open a scheduled publication and confirm publication fact can be saved.
+8. Try a direct API PATCH from `draft` to `published` and confirm HTTP 400.
+9. Try `approved -> scheduled` without `scheduled_at` and confirm HTTP 400.
+10. Set a planned date and move to `scheduled`; confirm the transition succeeds and appears in history.
+
 ## Content Factory Sprint 27 Publication Workflow History
 
 ### Automated

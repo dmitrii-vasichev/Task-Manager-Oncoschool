@@ -740,6 +740,8 @@ export type ContentFactoryPlatformCapabilities = {
 export type ContentFactoryPublicationOperationsSummary = {
   capabilities: ContentFactoryPlatformCapabilities;
   publishFactLabel: string;
+  canSavePublishFact: boolean;
+  publishFactDisabledReason: string | null;
   missingPublishedAt: boolean;
   missingPostUrl: boolean;
   hasPostReference: boolean;
@@ -1559,6 +1561,10 @@ function getPublicationFactLabel(
   return "В подготовке";
 }
 
+function canSavePublicationFact(status: CFPublicationStatus | string): boolean {
+  return status === "approved" || status === "scheduled" || status === "published";
+}
+
 export function getContentFactoryPublicationOperations(
   publication: PublicationOperationsPublicationLike,
   platform: PlatformCapabilitiesLike,
@@ -1567,6 +1573,7 @@ export function getContentFactoryPublicationOperations(
 ): ContentFactoryPublicationOperationsSummary {
   const capabilities = getContentFactoryPlatformCapabilities(platform);
   const isPublished = publication.status === "published";
+  const canSavePublishFact = canSavePublicationFact(publication.status);
   const metricEvidenceCount = metrics.length;
   const hasPostReference = Boolean(
     publication.platform_post_url?.trim() || publication.platform_post_id?.trim(),
@@ -1575,6 +1582,10 @@ export function getContentFactoryPublicationOperations(
   return {
     capabilities,
     publishFactLabel: getPublicationFactLabel(publication, dateInputTime(now)),
+    canSavePublishFact,
+    publishFactDisabledReason: canSavePublishFact
+      ? null
+      : "Сначала доведите публикацию до одобрения или календаря.",
     missingPublishedAt: isPublished && !publication.actual_published_at,
     missingPostUrl:
       isPublished &&

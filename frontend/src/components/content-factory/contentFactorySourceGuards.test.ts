@@ -303,6 +303,8 @@ test("publication detail route exposes publication operations panel", () => {
   assert.match(utilsSource, /Факт выхода/);
   assert.match(utilsSource, /Первые метрики/);
   assert.match(panelSource, /Отметить как опубликовано/);
+  assert.match(panelSource, /canSavePublishFact/);
+  assert.match(panelSource, /publishFactDisabledReason/);
   assert.match(panelSource, /api\.updateCFPublication/);
   assert.match(panelSource, /platform_post_url/);
   assert.match(utilsSource, /ContentFactoryPublicationWorkflowAction/);

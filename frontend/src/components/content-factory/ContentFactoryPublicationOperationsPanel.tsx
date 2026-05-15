@@ -146,6 +146,13 @@ export function ContentFactoryPublicationOperationsPanel({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!operations.canSavePublishFact) {
+      toastError(
+        operations.publishFactDisabledReason ??
+          "Факт публикации пока нельзя сохранить",
+      );
+      return;
+    }
     const publishedAtIso = fromDateTimeLocalValue(actualPublishedAt);
     if (!publishedAtIso) {
       toastError("Укажите дату и время публикации");
@@ -299,11 +306,20 @@ export function ContentFactoryPublicationOperationsPanel({
           type="button"
           size="sm"
           className="h-8 w-full gap-1.5 rounded-md px-3 text-xs"
-          onClick={() => setDialogOpen(true)}
+          disabled={!operations.canSavePublishFact}
+          onClick={() => {
+            if (!operations.canSavePublishFact) return;
+            setDialogOpen(true);
+          }}
         >
           <Activity className="h-3.5 w-3.5" />
           {actionLabel}
         </Button>
+        {operations.publishFactDisabledReason ? (
+          <p className="text-xs leading-5 text-muted-foreground">
+            {operations.publishFactDisabledReason}
+          </p>
+        ) : null}
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

@@ -14,6 +14,10 @@ if TYPE_CHECKING:
     from app.db.models import CFPublicationSegmentTarget
 
 
+class PublicationWorkflowTransitionError(ValueError):
+    """Raised when a publication status move breaks the editorial workflow."""
+
+
 CF_PUBLICATION_STATUS_LABELS = {
     "draft": "Черновик",
     "needs_copy": "Нужен текст",
@@ -40,6 +44,19 @@ CF_PUBLICATION_STATUS_APPROVAL_EVENTS = {
     "cancelled": "rolled_back",
 }
 
+CF_PUBLICATION_ALLOWED_STATUS_TRANSITIONS = {
+    "draft": {"needs_copy", "cancelled"},
+    "needs_copy": {"needs_design", "factcheck", "cancelled"},
+    "needs_design": {"factcheck", "cancelled"},
+    "factcheck": {"doctor_review", "needs_copy", "cancelled"},
+    "doctor_review": {"approved", "needs_copy", "cancelled"},
+    "approved": {"scheduled", "doctor_review", "cancelled", "published"},
+    "scheduled": {"approved", "cancelled", "published"},
+    "failed": {"needs_copy", "cancelled"},
+    "cancelled": {"draft"},
+    "published": set(),
+}
+
 
 def _status_label(status: str | None) -> str:
     if not status:
@@ -51,6 +68,37 @@ def _approval_event_for_status(status: str | None) -> str:
     if not status:
         return "reviewed"
     return CF_PUBLICATION_STATUS_APPROVAL_EVENTS.get(status, "reviewed")
+
+
+def _validate_status_transition(
+    old_status: str | None,
+    new_status: str | None,
+    changes: dict,
+    current_scheduled_at,
+) -> None:
+    if not new_status or new_status == old_status:
+        return
+
+    allowed_targets = CF_PUBLICATION_ALLOWED_STATUS_TRANSITIONS.get(
+        old_status or "",
+        set(),
+    )
+    if new_status not in allowed_targets:
+        raise PublicationWorkflowTransitionError(
+            f"Недопустимый переход статуса: "
+            f"{_status_label(old_status)} -> {_status_label(new_status)}"
+        )
+
+    if old_status == "approved" and new_status == "scheduled":
+        scheduled_at = (
+            changes["scheduled_at"]
+            if "scheduled_at" in changes
+            else current_scheduled_at
+        )
+        if scheduled_at is None:
+            raise PublicationWorkflowTransitionError(
+                "Укажите плановую дату перед переводом в календарь"
+            )
 
 
 class PublicationService:
@@ -156,6 +204,13 @@ class PublicationService:
 
         changes = payload.model_dump(exclude_unset=True)
         old_status = pub.status
+        new_status = changes.get("status")
+        _validate_status_transition(
+            old_status,
+            new_status,
+            changes,
+            getattr(pub, "scheduled_at", None),
+        )
         body_changed = "body_text" in changes and changes["body_text"] != pub.body_text
         status_changed = "status" in changes and changes["status"] != old_status
 

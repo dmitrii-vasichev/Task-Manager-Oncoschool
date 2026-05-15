@@ -1,3 +1,70 @@
+# Active Plan: Content Factory Sprint 28 Workflow Guardrails
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-28-workflow-guardrails.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Add backend and frontend guardrails so publication status changes follow the intended editorial workflow.
+
+**Recovered design:** `docs/content-factory-design.md`
+
+**Preserved market research:** `docs/content-factory-market-context-report.md`
+
+**Detailed design:** `docs/superpowers/specs/2026-05-15-content-factory-sprint-28-workflow-guardrails-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-15-content-factory-sprint-28-workflow-guardrails.md`
+
+**Backlog:** `docs/BACKLOG.md`
+
+**Milestones:**
+
+1. Add backend tests for invalid and valid publication workflow transitions.
+2. Add a service-level transition map and schedule guard.
+3. Map workflow validation failures to HTTP 400 in the publication PATCH route.
+4. Add frontend publish-fact availability to publication operations summaries.
+5. Disable the publish fact dialog button until the publication is approved, scheduled, or published.
+6. Run focused backend, frontend, build, and docs verification.
+
+**Implementation status:**
+
+- Implemented and verified on branch `codex/content-factory-sprint-28-workflow-guardrails`.
+- Pending commit, merge to `main`, and push.
+- Sprint 1 through Sprint 27 work is merged to `main`.
+- Sprint 28 builds on Sprint 26 quick actions and Sprint 27 history by preventing accidental workflow jumps.
+
+**Definition of done:**
+
+- Invalid publication status jumps such as `draft -> published` are rejected by the backend.
+- `approved -> scheduled` is rejected unless a planned date exists or is supplied in the same PATCH payload.
+- Valid status moves continue to create publication history through Sprint 27 behavior.
+- The publication PATCH route returns HTTP 400 with a readable Russian detail for workflow validation failures.
+- The publish fact button is disabled for early workflow states and shows a readable reason.
+- Approved, scheduled, and published records can save or update publication facts.
+- No new database migration, table, role system, approval comments, notification, or external platform integration is added.
+- Verification commands pass and docs are updated.
+
+**Validation commands:**
+
+```bash
+cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_cf_publication_service.py tests/test_content_factory_publications_api.py -q
+cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_cf_publication_service.py tests/test_content_factory_publications_api.py -q` passed: 18 tests, with existing AsyncMock/pytest-asyncio warnings.
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 85 tests, with existing Node module-type warnings.
+- `cd frontend && npm test` passed: 176 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+- `git diff --check` passed.
+
+---
+
 # Active Plan: Content Factory Sprint 27 Publication Workflow History
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-27-publication-workflow-history.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.

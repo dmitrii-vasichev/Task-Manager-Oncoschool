@@ -1,9 +1,13 @@
 import uuid
 import unittest
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock
 from types import SimpleNamespace
 
-from app.services.content_factory.publication_service import PublicationService
+from app.services.content_factory.publication_service import (
+    PublicationService,
+    PublicationWorkflowTransitionError,
+)
 from app.db.schemas import CFPublicationCreate, CFPublicationUpdate
 
 
@@ -147,6 +151,90 @@ class TestPublicationService(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.responsible_id, responsible_id)
         self.assertEqual(result.version_number, 1)
         session.add.assert_not_called()
+
+    async def test_update_publication_rejects_invalid_status_jump(self):
+        session = AsyncMock()
+        publication = SimpleNamespace(
+            id=uuid.uuid4(),
+            bundle_id=uuid.uuid4(),
+            body_text="draft",
+            version_number=1,
+            status="draft",
+            scheduled_at=None,
+            title="t",
+        )
+        PublicationService.get = AsyncMock(return_value=publication)
+
+        with self.assertRaisesRegex(
+            PublicationWorkflowTransitionError,
+            "Недопустимый переход статуса: Черновик -> Опубликовано",
+        ):
+            await PublicationService.update(
+                session,
+                publication.id,
+                CFPublicationUpdate(status="published"),
+                editor_id=uuid.uuid4(),
+            )
+
+        self.assertEqual(publication.status, "draft")
+        session.add.assert_not_called()
+        session.flush.assert_not_called()
+
+    async def test_update_publication_rejects_scheduling_without_planned_date(self):
+        session = AsyncMock()
+        publication = SimpleNamespace(
+            id=uuid.uuid4(),
+            bundle_id=uuid.uuid4(),
+            body_text="approved",
+            version_number=1,
+            status="approved",
+            scheduled_at=None,
+            title="t",
+        )
+        PublicationService.get = AsyncMock(return_value=publication)
+
+        with self.assertRaisesRegex(
+            PublicationWorkflowTransitionError,
+            "Укажите плановую дату перед переводом в календарь",
+        ):
+            await PublicationService.update(
+                session,
+                publication.id,
+                CFPublicationUpdate(status="scheduled"),
+                editor_id=uuid.uuid4(),
+            )
+
+        self.assertEqual(publication.status, "approved")
+        session.add.assert_not_called()
+        session.flush.assert_not_called()
+
+    async def test_update_publication_allows_scheduling_with_same_payload_date(self):
+        session = AsyncMock()
+        planned_at = datetime(2026, 5, 20, 10, 0, tzinfo=UTC)
+        publication = SimpleNamespace(
+            id=uuid.uuid4(),
+            bundle_id=uuid.uuid4(),
+            body_text="approved",
+            version_number=1,
+            status="approved",
+            scheduled_at=None,
+            title="t",
+        )
+        PublicationService.get = AsyncMock(return_value=publication)
+
+        result = await PublicationService.update(
+            session,
+            publication.id,
+            CFPublicationUpdate(status="scheduled", scheduled_at=planned_at),
+            editor_id=uuid.uuid4(),
+        )
+
+        self.assertEqual(result.status, "scheduled")
+        self.assertEqual(result.scheduled_at, planned_at)
+        self.assertEqual(result.version_number, 2)
+        version = session.add.call_args.args[0]
+        self.assertEqual(version.approval_event, "scheduled")
+        self.assertEqual(version.notes, "Статус: Одобрено -> Запланировано")
 
 
 if __name__ == "__main__":

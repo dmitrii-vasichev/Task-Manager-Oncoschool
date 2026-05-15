@@ -950,6 +950,45 @@ test("publication operations summarize publish fact and metric evidence", () => 
   assert.equal(complete.metricEvidenceLabel, "1 метрика");
 });
 
+test("publication operations gate manual publish fact by workflow status", () => {
+  const draft = getContentFactoryPublicationOperations(
+    {
+      status: "draft",
+      scheduled_at: null,
+      actual_published_at: null,
+      platform_post_url: null,
+      platform_post_id: null,
+    },
+    null,
+    [],
+    new Date("2026-05-14T12:00:00Z"),
+  );
+
+  assert.equal(draft.canSavePublishFact, false);
+  assert.equal(
+    draft.publishFactDisabledReason,
+    "Сначала доведите публикацию до одобрения или календаря.",
+  );
+
+  for (const status of ["approved", "scheduled", "published"] as const) {
+    const operations = getContentFactoryPublicationOperations(
+      {
+        status,
+        scheduled_at: "2026-05-20T10:00:00Z",
+        actual_published_at: status === "published" ? "2026-05-20T11:00:00Z" : null,
+        platform_post_url: null,
+        platform_post_id: null,
+      },
+      null,
+      [],
+      new Date("2026-05-14T12:00:00Z"),
+    );
+
+    assert.equal(operations.canSavePublishFact, true);
+    assert.equal(operations.publishFactDisabledReason, null);
+  }
+});
+
 test("publication readiness checklist explains missing and after-publish steps", () => {
   const draftItems = getContentFactoryPublicationReadiness(
     {
