@@ -24,8 +24,8 @@
 
 **Implementation status:**
 
-- Implemented and verified on branch `codex/content-factory-sprint-17-stage-timeline`.
-- Sprint 1 through Sprint 16 work is merged to `main`.
+- Implemented, verified, merged to `main`, and pushed.
+- Sprint 1 through Sprint 17 work is merged to `main`.
 - Sprint 17 builds on the Sprint 14 activity journal and Sprint 16 threaded activity.
 
 **Definition of done:**

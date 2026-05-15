@@ -48,7 +48,7 @@
 - [x] Run full frontend tests, typecheck, lint, and build.
 - [x] Run `git diff --check`.
 - [x] Update status docs with final verification.
-- [ ] Commit, merge to `main`, and push.
+- [x] Commit, merge to `main`, and push.
 
 ## Validation Commands
 
