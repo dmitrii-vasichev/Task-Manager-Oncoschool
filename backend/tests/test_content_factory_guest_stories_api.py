@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.content_factory import guests as guests_api
-from app.db.schemas import CFGuestStoryCreate, CFGuestStoryUpdate
+from app.db.schemas import CFGuestStoryCreate, CFGuestStoryEventCreate, CFGuestStoryUpdate
 
 
 def cf_member(has_cf=True):
@@ -53,6 +53,22 @@ def make_guest_story(**overrides):
     return SimpleNamespace(**base)
 
 
+def make_guest_story_event(**overrides):
+    base = {
+        "id": uuid.uuid4(),
+        "guest_story_id": uuid.uuid4(),
+        "actor_id": uuid.uuid4(),
+        "event_type": "comment",
+        "body": "Попросили согласовать город.",
+        "old_value": None,
+        "new_value": None,
+        "payload": {},
+        "created_at": datetime.now(UTC),
+    }
+    base.update(overrides)
+    return SimpleNamespace(**base)
+
+
 def guest_story_create():
     return CFGuestStoryCreate(
         display_name="Patient story candidate",
@@ -87,6 +103,8 @@ async def test_list_guest_stories(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_create_guest_story(monkeypatch):
+    member = cf_member()
+    payload = guest_story_create()
     guest_story = make_guest_story()
     monkeypatch.setattr(
         guests_api.guest_story_service,
@@ -96,13 +114,18 @@ async def test_create_guest_story(monkeypatch):
     session = AsyncMock()
 
     result = await guests_api.create_guest_story(
-        data=guest_story_create(),
-        member=cf_member(),
+        data=payload,
+        member=member,
         session=session,
     )
 
     assert result is guest_story
     session.commit.assert_awaited()
+    guests_api.guest_story_service.create.assert_awaited_with(
+        session,
+        payload,
+        actor_id=member.id,
+    )
 
 
 @pytest.mark.asyncio
@@ -160,4 +183,86 @@ async def test_update_guest_story_persists(monkeypatch):
     )
 
     assert result is guest_story
+    session.commit.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_list_guest_story_events(monkeypatch):
+    guest_story = make_guest_story()
+    event = make_guest_story_event(guest_story_id=guest_story.id)
+    monkeypatch.setattr(
+        guests_api.guest_story_service,
+        "get",
+        AsyncMock(return_value=guest_story),
+    )
+    monkeypatch.setattr(
+        guests_api.guest_story_service,
+        "list_events",
+        AsyncMock(return_value=[event]),
+    )
+    session = AsyncMock()
+
+    result = await guests_api.list_guest_story_events(
+        guest_story_id=guest_story.id,
+        member=cf_member(),
+        session=session,
+    )
+
+    assert result == [event]
+    guests_api.guest_story_service.list_events.assert_awaited_with(session, guest_story.id)
+
+
+@pytest.mark.asyncio
+async def test_list_guest_story_events_404(monkeypatch):
+    monkeypatch.setattr(
+        guests_api.guest_story_service,
+        "get",
+        AsyncMock(return_value=None),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await guests_api.list_guest_story_events(
+            guest_story_id=uuid.uuid4(),
+            member=cf_member(),
+            session=AsyncMock(),
+        )
+
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_guest_story_event_persists(monkeypatch):
+    member = cf_member()
+    guest_story = make_guest_story()
+    event = make_guest_story_event(
+        guest_story_id=guest_story.id,
+        actor_id=member.id,
+        body="Гость просит не называть город.",
+    )
+    monkeypatch.setattr(
+        guests_api.guest_story_service,
+        "get",
+        AsyncMock(return_value=guest_story),
+    )
+    monkeypatch.setattr(
+        guests_api.guest_story_service,
+        "create_comment",
+        AsyncMock(return_value=event),
+    )
+    session = AsyncMock()
+
+    result = await guests_api.create_guest_story_event(
+        guest_story_id=guest_story.id,
+        data=CFGuestStoryEventCreate(body="Гость просит не называть город."),
+        member=member,
+        session=session,
+    )
+
+    assert result is event
+    guests_api.guest_story_service.create_comment.assert_awaited_with(
+        session,
+        guest_story_id=guest_story.id,
+        actor_id=member.id,
+        body="Гость просит не называть город.",
+    )
     session.commit.assert_awaited()

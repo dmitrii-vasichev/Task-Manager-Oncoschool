@@ -62,6 +62,13 @@ class TestContentFactoryCoreModels(unittest.TestCase):
         self.assertTrue(hasattr(models.CFGuestStory, "consent_status"))
         self.assertTrue(hasattr(models.CFGuestStory, "allowed_channels"))
 
+    def test_cf_guest_story_event_exists(self):
+        self.assertEqual(models.CFGuestStoryEvent.__tablename__, "cf_guest_story_event")
+        self.assertTrue(hasattr(models.CFGuestStoryEvent, "guest_story_id"))
+        self.assertTrue(hasattr(models.CFGuestStoryEvent, "event_type"))
+        self.assertTrue(hasattr(models.CFGuestStoryEvent, "body"))
+        self.assertTrue(hasattr(models.CFGuestStoryEvent, "payload"))
+
     def test_relationships_configure(self):
         configure_mappers()
         # Bundle ↔ publications
@@ -70,6 +77,8 @@ class TestContentFactoryCoreModels(unittest.TestCase):
         self.assertIn("versions", models.CFPublication.__mapper__.relationships)
         # External segment ↔ snapshots
         self.assertIn("snapshots", models.CFExternalSegment.__mapper__.relationships)
+        # Guest story ↔ activity events
+        self.assertIn("events", models.CFGuestStory.__mapper__.relationships)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 ## Content Factory Sprint 14 Guest Activity
 
-- Current phase: planning started on branch `codex/content-factory-sprint-14-guest-activity`
+- Current phase: implemented and verified on branch `codex/content-factory-sprint-14-guest-activity`
 - Source: user approval to continue development after Sprint 13, preserved Content Factory research, restored Content Factory design doc, and the guest story detail page
 - Deep research: `docs/content-factory-market-context-report.md`
 - Design: `docs/superpowers/specs/2026-05-14-content-factory-sprint-14-guest-activity-design.md`
@@ -14,17 +14,33 @@
   - Reviewed existing guest story backend service/router/schemas/models, task/idea/project event patterns, and guest detail frontend.
   - Wrote Sprint 14 design and implementation plan.
   - Made Sprint 14 the active repository plan.
+  - Added `cf_guest_story_event` model and Alembic revision `043_content_factory_guest_story_events`.
+  - Added guest story event create/response schemas with blank-comment validation.
+  - Added guest story event service methods for list, generic event creation, and manual comments.
+  - Updated guest story create/update to record created and watched-field change events.
+  - Added `/api/content-factory/guests/{guest_story_id}/events` list/create endpoints.
+  - Added frontend guest story event types and API client methods.
+  - Added `ContentFactoryGuestActivityPanel` to the guest detail page.
+  - Added backend and frontend tests/source guards.
+  - Ran Sprint 14 backend and frontend verification successfully.
 - Key decisions:
   - Use a dedicated `cf_guest_story_event` table instead of overloading the guest story JSON fields.
   - Allow manual comment creation from the frontend; reserve system event types for backend-generated events.
   - Auto-log only high-signal watched fields in this sprint: status, consent state, gift state, and follow-up date.
   - Keep reminders, uploads, threaded comments, editing/deleting events, and import history out of scope.
 - Next actions:
-  - Write failing backend tests.
-  - Add event model, schema, migration, service methods, API endpoints, frontend types/API, activity panel, and route integration.
-  - Run backend/frontend verification and update docs with results.
+  - Commit Sprint 14 implementation.
+  - Merge and push after final status checks.
+  - Run authenticated manual QA against real guest story activity after deployment.
 - Latest verification:
-  - Not yet run for Sprint 14 implementation.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_content_factory_guest_stories_api.py tests/test_cf_guest_story_service.py tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py -q` passed: 51 tests, with the existing pytest-asyncio fixture-loop deprecation warning.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test alembic heads` returned one head: `043_content_factory_guest_story_events`.
+  - `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryApiSourceGuards.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 32 tests, with existing Node module-type warnings.
+  - `cd frontend && npm test` passed: 153 tests, with existing Node module-type warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/content-factory/guests/[id]`.
+  - `git diff --check` passed.
 
 ## Content Factory Sprint 13 Guest Detail
 

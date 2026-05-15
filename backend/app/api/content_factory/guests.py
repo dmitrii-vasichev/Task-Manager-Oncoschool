@@ -10,6 +10,8 @@ from app.db.database import get_session
 from app.db.models import TeamMember
 from app.db.schemas import (
     CFGuestStoryCreate,
+    CFGuestStoryEventCreate,
+    CFGuestStoryEventResponse,
     CFGuestStoryResponse,
     CFGuestStoryUpdate,
 )
@@ -49,7 +51,7 @@ async def create_guest_story(
     member: TeamMember = Depends(require_cf_access),
     session: AsyncSession = Depends(get_session),
 ):
-    guest_story = await guest_story_service.create(session, data)
+    guest_story = await guest_story_service.create(session, data, actor_id=member.id)
     await session.commit()
     return guest_story
 
@@ -73,8 +75,49 @@ async def update_guest_story(
     member: TeamMember = Depends(require_cf_access),
     session: AsyncSession = Depends(get_session),
 ):
-    guest_story = await guest_story_service.update(session, guest_story_id, data)
+    guest_story = await guest_story_service.update(
+        session,
+        guest_story_id,
+        data,
+        actor_id=member.id,
+    )
     if guest_story is None:
         raise HTTPException(status_code=404, detail="История гостя не найдена")
     await session.commit()
     return guest_story
+
+
+@router.get("/{guest_story_id}/events", response_model=list[CFGuestStoryEventResponse])
+async def list_guest_story_events(
+    guest_story_id: uuid.UUID,
+    member: TeamMember = Depends(require_cf_access),
+    session: AsyncSession = Depends(get_session),
+):
+    guest_story = await guest_story_service.get(session, guest_story_id)
+    if guest_story is None:
+        raise HTTPException(status_code=404, detail="История гостя не найдена")
+    return await guest_story_service.list_events(session, guest_story_id)
+
+
+@router.post(
+    "/{guest_story_id}/events",
+    response_model=CFGuestStoryEventResponse,
+    status_code=201,
+)
+async def create_guest_story_event(
+    guest_story_id: uuid.UUID,
+    data: CFGuestStoryEventCreate,
+    member: TeamMember = Depends(require_cf_access),
+    session: AsyncSession = Depends(get_session),
+):
+    guest_story = await guest_story_service.get(session, guest_story_id)
+    if guest_story is None:
+        raise HTTPException(status_code=404, detail="История гостя не найдена")
+    event = await guest_story_service.create_comment(
+        session,
+        guest_story_id=guest_story_id,
+        actor_id=member.id,
+        body=data.body,
+    )
+    await session.commit()
+    return event

@@ -122,6 +122,8 @@ import type {
   CFRetroNoteUpdateRequest,
   CFRetroListParams,
   CFGuestStory,
+  CFGuestStoryEvent,
+  CFGuestStoryEventCreateRequest,
   CFGuestStoryCreateRequest,
   CFGuestStoryUpdateRequest,
   CFGuestStoryListParams,
@@ -988,6 +990,25 @@ class ApiClient {
       method: "PATCH",
       body: JSON.stringify(data),
     });
+  }
+
+  async getCFGuestStoryEvents(id: string): Promise<CFGuestStoryEvent[]> {
+    return this.request<CFGuestStoryEvent[]>(
+      `/api/content-factory/guests/${id}/events`
+    );
+  }
+
+  async createCFGuestStoryEvent(
+    id: string,
+    data: CFGuestStoryEventCreateRequest
+  ): Promise<CFGuestStoryEvent> {
+    return this.request<CFGuestStoryEvent>(
+      `/api/content-factory/guests/${id}/events`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
   }
 
   // ==================== Task Updates ====================

@@ -92,13 +92,19 @@ test("content factory API client exposes guest story endpoints", () => {
   assert.match(typesSource, /export interface CFGuestStoryCreateRequest/);
   assert.match(typesSource, /export interface CFGuestStoryUpdateRequest/);
   assert.match(typesSource, /export interface CFGuestStoryListParams/);
+  assert.match(typesSource, /export type CFGuestStoryEventType/);
+  assert.match(typesSource, /export interface CFGuestStoryEvent/);
+  assert.match(typesSource, /export interface CFGuestStoryEventCreateRequest/);
   assert.match(apiSource, /async getCFGuestStories/);
   assert.match(apiSource, /async getCFGuestStory/);
   assert.match(apiSource, /async createCFGuestStory/);
   assert.match(apiSource, /async updateCFGuestStory/);
+  assert.match(apiSource, /async getCFGuestStoryEvents/);
+  assert.match(apiSource, /async createCFGuestStoryEvent/);
   assert.match(apiSource, /\/api\/content-factory\/guests\$\{query\}/);
   assert.match(apiSource, /\/api\/content-factory\/guests",/);
   assert.match(apiSource, /\/api\/content-factory\/guests\/\$\{id\}/);
+  assert.match(apiSource, /\/api\/content-factory\/guests\/\$\{id\}\/events/);
 });
 
 test("permission service exposes content factory access helper", () => {

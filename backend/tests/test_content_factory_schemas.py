@@ -1,6 +1,6 @@
-import uuid
 import unittest
-from datetime import date
+import uuid
+from datetime import UTC, date, datetime
 
 from pydantic import ValidationError
 
@@ -114,6 +114,30 @@ class TestCFCoreSchemas(unittest.TestCase):
                 owner_id=uuid.uuid4(),
                 status="not_a_stage",
             )
+
+    def test_cf_guest_story_event_create_requires_body(self):
+        with self.assertRaises(ValidationError):
+            schemas.CFGuestStoryEventCreate(body="")
+        with self.assertRaises(ValidationError):
+            schemas.CFGuestStoryEventCreate(body="   ")
+
+    def test_cf_guest_story_event_create_trims_body(self):
+        event = schemas.CFGuestStoryEventCreate(body="  Комментарий  ")
+        self.assertEqual(event.body, "Комментарий")
+
+    def test_cf_guest_story_event_response(self):
+        event = schemas.CFGuestStoryEventResponse(
+            id=uuid.uuid4(),
+            guest_story_id=uuid.uuid4(),
+            actor_id=uuid.uuid4(),
+            event_type="comment",
+            body="Попросили согласовать город.",
+            old_value=None,
+            new_value=None,
+            payload={},
+            created_at=datetime(2026, 5, 14, tzinfo=UTC),
+        )
+        self.assertEqual(event.event_type, "comment")
 
 
 if __name__ == "__main__":

@@ -92,6 +92,7 @@ class TestGuestStoryService(unittest.IsolatedAsyncioTestCase):
             allowed_channels=["telegram"],
         )
         session = AsyncMock()
+        session.add = Mock()
         session.flush = AsyncMock()
 
         with patch.object(GuestStoryService, "get", AsyncMock(return_value=story)):
@@ -102,6 +103,74 @@ class TestGuestStoryService(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.allowed_channels, ["telegram"])
         self.assertEqual(result.display_name, "Old")
         session.flush.assert_awaited()
+
+    async def test_create_comment_event(self):
+        session = AsyncMock()
+        session.add = Mock()
+        session.flush = AsyncMock()
+        session.refresh = AsyncMock()
+        guest_story_id = uuid.uuid4()
+        actor_id = uuid.uuid4()
+
+        result = await GuestStoryService.create_comment(
+            session,
+            guest_story_id=guest_story_id,
+            actor_id=actor_id,
+            body="Гость просит не указывать город.",
+        )
+
+        self.assertEqual(result.guest_story_id, guest_story_id)
+        self.assertEqual(result.actor_id, actor_id)
+        self.assertEqual(result.event_type, "comment")
+        self.assertEqual(result.body, "Гость просит не указывать город.")
+        session.add.assert_called_once()
+        session.flush.assert_awaited()
+        session.refresh.assert_awaited_with(result)
+
+    async def test_update_guest_story_logs_watched_changes(self):
+        actor_id = uuid.uuid4()
+        story = SimpleNamespace(
+            id=uuid.uuid4(),
+            display_name="Old",
+            status="sourced",
+            consent_status="not_started",
+            gift_status="not_required",
+            follow_up_due_at=None,
+        )
+        payload = CFGuestStoryUpdate(
+            status="consent_sent",
+            consent_status="sent",
+            gift_status="pending",
+            follow_up_due_at=datetime(2026, 5, 16, tzinfo=UTC),
+        )
+        session = AsyncMock()
+        session.add = Mock()
+        session.flush = AsyncMock()
+
+        with patch.object(GuestStoryService, "get", AsyncMock(return_value=story)):
+            result = await GuestStoryService.update(
+                session,
+                story.id,
+                payload,
+                actor_id=actor_id,
+            )
+
+        self.assertEqual(result.status, "consent_sent")
+        event_types = [
+            call.args[0].event_type for call in session.add.call_args_list
+        ]
+        self.assertEqual(
+            event_types,
+            [
+                "status_changed",
+                "consent_changed",
+                "gift_changed",
+                "follow_up_changed",
+            ],
+        )
+        self.assertTrue(
+            all(call.args[0].actor_id == actor_id for call in session.add.call_args_list)
+        )
 
 
 if __name__ == "__main__":

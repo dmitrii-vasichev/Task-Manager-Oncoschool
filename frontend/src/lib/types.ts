@@ -171,6 +171,13 @@ export type CFGuestAnonymityLevel =
   | "anonymous"
   | "pseudonym";
 export type CFGuestGiftStatus = "not_required" | "pending" | "sent" | "received";
+export type CFGuestStoryEventType =
+  | "created"
+  | "comment"
+  | "status_changed"
+  | "consent_changed"
+  | "gift_changed"
+  | "follow_up_changed";
 
 export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   new: "Новые",
@@ -1491,6 +1498,22 @@ export interface CFGuestStory {
   follow_up_due_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface CFGuestStoryEvent {
+  id: string;
+  guest_story_id: string;
+  actor_id: string | null;
+  event_type: CFGuestStoryEventType;
+  body: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface CFGuestStoryEventCreateRequest {
+  body: string;
 }
 
 export interface CFGuestStoryCreateRequest {

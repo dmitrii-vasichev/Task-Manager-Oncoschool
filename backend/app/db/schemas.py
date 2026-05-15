@@ -107,6 +107,14 @@ CFGuestAnonymityLevelType = Literal[
     "full_name", "first_name", "anonymous", "pseudonym"
 ]
 CFGuestGiftStatusType = Literal["not_required", "pending", "sent", "received"]
+CFGuestStoryEventType = Literal[
+    "created",
+    "comment",
+    "status_changed",
+    "consent_changed",
+    "gift_changed",
+    "follow_up_changed",
+]
 MeetingAIProcessingStatusType = Literal[
     "idle",
     "queued",
@@ -1671,4 +1679,29 @@ class CFGuestStoryResponse(CFGuestStoryBase):
     id: uuid.UUID
     created_at: datetime
     updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CFGuestStoryEventCreate(BaseModel):
+    body: str = Field(..., min_length=1, max_length=4000)
+
+    @field_validator("body")
+    @classmethod
+    def validate_body(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("body must not be blank")
+        return stripped
+
+
+class CFGuestStoryEventResponse(BaseModel):
+    id: uuid.UUID
+    guest_story_id: uuid.UUID
+    actor_id: uuid.UUID | None
+    event_type: CFGuestStoryEventType
+    body: str | None
+    old_value: str | None
+    new_value: str | None
+    payload: dict[str, object] = Field(default_factory=dict)
+    created_at: datetime
     model_config = ConfigDict(from_attributes=True)

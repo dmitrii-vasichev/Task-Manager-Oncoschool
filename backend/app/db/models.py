@@ -1810,3 +1810,34 @@ class CFGuestStory(Base):
     follow_up_due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    events: Mapped[list["CFGuestStoryEvent"]] = relationship(
+        back_populates="guest_story", cascade="all, delete-orphan"
+    )
+
+
+class CFGuestStoryEvent(Base):
+    __tablename__ = "cf_guest_story_event"
+    __table_args__ = (
+        Index("ix_cf_guest_story_event_story_created", "guest_story_id", "created_at"),
+        Index("ix_cf_guest_story_event_type", "event_type"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    guest_story_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cf_guest_story.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("team_members.id"), nullable=True
+    )
+    event_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    old_value: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    new_value: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    guest_story: Mapped["CFGuestStory"] = relationship(back_populates="events")
+    actor: Mapped["TeamMember | None"] = relationship()

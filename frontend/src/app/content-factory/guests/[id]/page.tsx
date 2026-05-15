@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/components/shared/Toast";
+import { ContentFactoryGuestActivityPanel } from "@/components/content-factory/ContentFactoryGuestActivityPanel";
 import { ContentFactoryGuestStoryDetailPanels } from "@/components/content-factory/ContentFactoryGuestStoryDetailPanels";
 import { ContentFactoryGuestStoryDialog } from "@/components/content-factory/ContentFactoryGuestStoryDialog";
 import { usePageTitle } from "@/hooks/usePageTitle";
@@ -22,6 +23,7 @@ import {
 import type {
   CFBundle,
   CFGuestStory,
+  CFGuestStoryEvent,
   CFNosology,
   CFPublication,
   TeamMember,
@@ -63,6 +65,7 @@ export default function ContentFactoryGuestDetailPage() {
   const [bundles, setBundles] = useState<CFBundle[]>([]);
   const [publications, setPublications] = useState<CFPublication[]>([]);
   const [nosologies, setNosologies] = useState<CFNosology[]>([]);
+  const [events, setEvents] = useState<CFGuestStoryEvent[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const latestRequestSeqRef = useRef(0);
@@ -74,9 +77,24 @@ export default function ContentFactoryGuestDetailPage() {
 
     setLoading(true);
     try {
-      const [storyRes, memberRes, bundleRes, publicationRes, nosologyRes] =
+      const [
+        storyRes,
+        eventRes,
+        memberRes,
+        bundleRes,
+        publicationRes,
+        nosologyRes,
+      ] =
         await Promise.all([
           api.getCFGuestStory(id),
+          api.getCFGuestStoryEvents(id).catch((err) => {
+            toastError(
+              err instanceof Error
+                ? err.message
+                : "Не удалось загрузить журнал истории",
+            );
+            return [] as CFGuestStoryEvent[];
+          }),
           api.getTeam().catch(() => [] as TeamMember[]),
           api.getCFBundles({ limit: 500 }).catch(() => [] as CFBundle[]),
           api.getCFPublications({ limit: 500 }).catch(
@@ -88,6 +106,7 @@ export default function ContentFactoryGuestDetailPage() {
         ]);
       if (!isLatestRequest()) return;
       setStory(storyRes);
+      setEvents(eventRes);
       setMembers(memberRes);
       setBundles(bundleRes);
       setPublications(publicationRes);
@@ -209,6 +228,13 @@ export default function ContentFactoryGuestDetailPage() {
         bundles={bundles}
         publications={publications}
         nosologies={nosologies}
+      />
+
+      <ContentFactoryGuestActivityPanel
+        guestStoryId={story.id}
+        events={events}
+        members={members}
+        onEventCreated={fetchData}
       />
 
       <ContentFactoryGuestStoryDialog

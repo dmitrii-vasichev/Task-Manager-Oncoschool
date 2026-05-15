@@ -24,7 +24,7 @@
 
 **Implementation status:**
 
-- Planning started on branch `codex/content-factory-sprint-14-guest-activity`.
+- Implemented and verified on branch `codex/content-factory-sprint-14-guest-activity`.
 - Sprint 1 through Sprint 13 work is merged to `main`.
 - Sprint 14 builds on the Sprint 13 guest story detail page.
 
@@ -51,7 +51,14 @@ git diff --check
 
 **Latest verification result:**
 
-- Not yet run for Sprint 14 implementation.
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_content_factory_guest_stories_api.py tests/test_cf_guest_story_service.py tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py -q` passed: 51 tests, with the existing pytest-asyncio fixture-loop deprecation warning.
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test alembic heads` returned one head: `043_content_factory_guest_story_events`.
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryApiSourceGuards.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 32 tests, with existing Node module-type warnings.
+- `cd frontend && npm test` passed: 153 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/guests/[id]`.
+- `git diff --check` passed.
 
 ---
 

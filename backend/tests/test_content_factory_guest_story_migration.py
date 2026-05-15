@@ -7,6 +7,12 @@ MIGRATION = (
     / "versions"
     / "042_content_factory_guest_story.py"
 )
+EVENT_MIGRATION = (
+    Path(__file__).resolve().parents[1]
+    / "alembic"
+    / "versions"
+    / "043_content_factory_guest_story_events.py"
+)
 
 
 def test_guest_story_migration_creates_table_and_consent_columns():
@@ -38,3 +44,21 @@ def test_guest_story_migration_indexes_and_downgrade():
     assert '"ix_cf_guest_story_publication"' in source
     assert '"ix_cf_guest_story_stage_due"' in source
     assert 'op.drop_table("cf_guest_story")' in source
+
+
+def test_guest_story_event_migration_creates_table_and_indexes():
+    source = EVENT_MIGRATION.read_text()
+
+    assert 'revision: str = "043_content_factory_guest_story_events"' in source
+    assert 'down_revision: Union[str, None] = "042_content_factory_guest_story"' in source
+    assert '"cf_guest_story_event"' in source
+    assert '"guest_story_id"' in source
+    assert '"actor_id"' in source
+    assert '"event_type"' in source
+    assert '"body"' in source
+    assert '"old_value"' in source
+    assert '"new_value"' in source
+    assert '"payload"' in source
+    assert '"ix_cf_guest_story_event_story_created"' in source
+    assert '"ix_cf_guest_story_event_type"' in source
+    assert 'op.drop_table("cf_guest_story_event")' in source
