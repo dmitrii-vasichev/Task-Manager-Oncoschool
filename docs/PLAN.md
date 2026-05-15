@@ -1,3 +1,57 @@
+# Active Plan: Content Factory Sprint 38 Help Overview
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-38-help-overview.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Expand the global Content Factory help page into a detailed onboarding overview and operating-model explanation.
+
+**Detailed design:** `docs/superpowers/specs/2026-05-15-content-factory-sprint-38-help-overview-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-15-content-factory-sprint-38-help-overview.md`
+
+**Milestones:**
+
+1. Add a failing source-guard test for the expanded help structure.
+2. Expand `/content-factory/help` with research basis, operating model, current capability, planned automation, first-use path, sections, and glossary.
+3. Run focused and full frontend verification and update durable repo docs.
+
+**Implementation status:**
+
+- Implemented, verified, merged to `main`, and pushed.
+- Sprint 1 through Sprint 38 work is merged to `main` and pushed.
+
+**Definition of done:**
+
+- The help page explains why Content Factory exists.
+- The help page explains the operating model from campaign to retrospective learning.
+- The help page clearly separates current manual/semi-automated functionality from future automation.
+- The help page gives a low-friction first-use path for users who are new to the module.
+- Existing section links and glossary remain available.
+- No backend schema or API changes are added.
+- Verification commands pass and docs are updated.
+
+**Validation commands:**
+
+```bash
+cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- RED confirmed: focused source-guard tests failed before implementation because the help page did not contain the expanded overview structure.
+- `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 33 tests, with existing Node module-type warning.
+- `cd frontend && npm test` passed: 192 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/help`.
+- `git diff --check` passed.
+
+---
+
 # Active Plan: Content Factory Completion Roadmap
 
 > **For agentic workers:** Use `docs/content-factory-roadmap.md` as the source of truth for the next Content Factory waves. Before implementing any roadmap block, expand it into a sprint-level design under `docs/superpowers/specs/` and an implementation plan under `docs/superpowers/plans/`.

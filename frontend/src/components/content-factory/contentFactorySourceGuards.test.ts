@@ -125,6 +125,22 @@ test("content factory help route explains the workspace", () => {
   assert.match(source, /интеграц/);
 });
 
+test("content factory overview help explains operating model and automation boundaries", () => {
+  const source = readSource("app/content-factory/help/page.tsx");
+
+  assert.match(source, /Почему это сделано именно так/);
+  assert.match(source, /Как работает операционная модель/);
+  assert.match(source, /Что уже можно делать сейчас/);
+  assert.match(source, /Что будет автоматизировано позже/);
+  assert.match(source, /Как начать без страха/);
+  assert.match(source, /Excel/);
+  assert.match(source, /автопубликац/i);
+  assert.match(
+    source,
+    /кампания -> публикации -> адаптации -> проверка -> публикация -> метрики -> выводы/,
+  );
+});
+
 test("dashboard and calendar routes exist", () => {
   assert.match(
     readSource("app/content-factory/dashboard/page.tsx"),

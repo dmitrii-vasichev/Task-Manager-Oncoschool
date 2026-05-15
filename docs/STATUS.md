@@ -1,5 +1,36 @@
 # Status
 
+## Content Factory Sprint 38 Help Overview
+
+- Current phase: implemented, verified, merged to `main`, and pushed
+- Source: Sprint 37 established the completion roadmap and made detailed help the next product wave before adding more automation.
+- Design: `docs/superpowers/specs/2026-05-15-content-factory-sprint-38-help-overview-design.md`
+- Plan: `docs/superpowers/plans/2026-05-15-content-factory-sprint-38-help-overview.md`
+- Scope: frontend-only global help page expansion, source guard, durable docs, and frontend verification
+- Latest progress:
+  - Created branch `codex/content-factory-sprint-38-help-overview`.
+  - Wrote Sprint 38 design and implementation plan.
+  - Added a failing source-guard test for the expanded help structure.
+  - Expanded `/content-factory/help` with research basis, operating model, current capabilities, planned automation, first-use path, section directory, and enriched glossary.
+  - Focused source-guard verification passed after implementation.
+  - Full frontend verification passed.
+  - Merged Sprint 38 into local `main`.
+  - Pushed Sprint 38 to `origin/main`.
+- Key decisions:
+  - Keep Sprint 38 global and explanatory; detailed per-section help remains split across Sprint 39 through Sprint 41.
+  - Clearly tell users what is manual today and what will be automated later.
+  - Keep the help page in the existing `/content-factory/help` route.
+- Next actions:
+  - Start Sprint 39: detailed help for calendar, publications, adaptations, and readiness.
+- Latest verification:
+  - RED confirmed: `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` failed before implementation because the help page did not contain the expanded overview structure.
+  - `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 33 tests, with existing Node module-type warning.
+  - `cd frontend && npm test` passed: 192 tests, with existing Node module-type warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/content-factory/help`.
+  - `git diff --check` passed.
+
 ## Content Factory Completion Roadmap / Sprint 37
 
 - Current phase: documented and verified

@@ -4,8 +4,6 @@
 
 ### Next
 
-- Execute Sprint 37: master roadmap and help architecture.
-- Execute Sprint 38: detailed help overview and Content Factory operating model.
 - Execute Sprint 39: detailed help for calendar, publications, adaptations, and readiness.
 - Execute Sprint 40: detailed help for campaigns, review queue, and audiences.
 - Execute Sprint 41: detailed help for metrics, effectiveness, retrospectives, and references.

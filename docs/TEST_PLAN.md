@@ -1,5 +1,27 @@
 # Test Plan
 
+## Content Factory Sprint 38 Help Overview
+
+### Automated
+
+- `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Open `/content-factory/help`.
+2. Confirm the page explains what Content Factory is and why it exists.
+3. Confirm the page explains that the design is based on deep research, campaign workspaces, approval workflow, custom/manual channels, taxonomy-first planning, and the manual Excel workflow.
+4. Confirm the operating model reads as campaign, publications, adaptations, review, publication, metrics, and retrospective learning.
+5. Confirm current capabilities are clearly separated from future automation.
+6. Confirm the first-use path feels low-friction and does not require integrations.
+7. Confirm section links still lead to the existing Content Factory pages.
+8. Confirm the layout is readable on desktop and mobile without overlapping text.
+
 ## Content Factory Completion Roadmap
 
 ### Automated

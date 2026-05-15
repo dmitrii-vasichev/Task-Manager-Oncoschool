@@ -1,64 +1,289 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, CheckCircle2, Info, Workflow } from "lucide-react";
+import {
+  BookOpen,
+  CheckCircle2,
+  ClipboardCheck,
+  Compass,
+  Info,
+  Lightbulb,
+  Rocket,
+  ShieldCheck,
+  Sparkles,
+  Target,
+  Workflow,
+} from "lucide-react";
 import { CONTENT_FACTORY_SECTIONS } from "@/lib/contentFactoryUi";
 
-const WORKFLOW_STEPS = [
-  "Создаём кампанию: цель, аудитория, материалы, ответственный и сроки.",
-  "Готовим публикации под разные площадки и форматы.",
-  "Проводим текст, дизайн, фактчек, врачебную проверку и одобрение.",
-  "Для гостей и пациентских историй фиксируем отбор, согласие, границы и follow-up.",
-  "Публикуем вручную или полуавтоматически, фиксируем ссылку и UTM.",
-  "Вносим замеры метрик по окнам 3 часа, 24 часа, 72 часа, 7 дней и финал.",
-  "Проводим ретроспективу и сохраняем решения для следующих кампаний.",
+const RESEARCH_PILLARS = [
+  {
+    title: "Кампании вместо разрозненных постов",
+    text: "Один эфир, запуск, пациентская история или сезонный инфоповод собирается в общий рабочий блок: цель, аудитории, материалы, публикации, UTM, метрики и выводы.",
+  },
+  {
+    title: "Публикации живут отдельно по каналам",
+    text: "Telegram, VK, Dzen, Max, email и push требуют разных текстов, сроков, ссылок, ограничений и метрик. Поэтому канал - не копия, а самостоятельная рабочая единица.",
+  },
+  {
+    title: "Медицинский контент требует проверки",
+    text: "Для Онкошколы важны фактчек, врачебное согласование, версия текста и понятная история решений. Это снижает риск ошибок и спорных формулировок.",
+  },
+  {
+    title: "Автоматизация подключается постепенно",
+    text: "Исследование показало, что для русских каналов надежнее сначала построить content operations layer, а не обещать автопубликацию там, где API может быть нестабильным.",
+  },
+];
+
+const OPERATING_MODEL = [
+  {
+    title: "Кампания",
+    text: "Фиксируем общий смысл: событие, тему, продуктовый поток, цель, исходные материалы и ответственного.",
+  },
+  {
+    title: "Публикации",
+    text: "Создаем конкретные материалы под площадки, даты, форматы, аудитории, UTM и статусы производства.",
+  },
+  {
+    title: "Адаптации",
+    text: "Готовим отдельные версии текста под Telegram, VK, email, push, Max и Dzen, чтобы не публиковать один универсальный текст везде.",
+  },
+  {
+    title: "Проверка",
+    text: "Проводим текст, дизайн, фактчек, врачебную проверку и финальное одобрение до выхода.",
+  },
+  {
+    title: "Публикация",
+    text: "Сейчас можно вручную опубликовать материал, скопировать готовый пакет и записать ссылку, дату и внешний ID.",
+  },
+  {
+    title: "Метрики",
+    text: "Добавляем замеры вручную или через импорт: 3 часа, 24 часа, 72 часа, 7 дней, финал или кастомное окно.",
+  },
+  {
+    title: "Выводы",
+    text: "Сохраняем ретроспективу: что сработало, что сломалось, какие решения команда берет в следующие кампании.",
+  },
+];
+
+const CURRENT_CAPABILITIES = [
+  "Создать кампанию и связать с ней публикации.",
+  "Запланировать публикацию по площадке, формату, дате, статусу, рубрике, нозологии и ответственному.",
+  "Подготовить исходный текст, UTM, аудитории и чек-лист готовности.",
+  "Сохранить адаптации под несколько каналов и увидеть, какие версии готовы, отсутствуют или устарели.",
+  "Вести гостей и истории: от отбора и согласия до публикации, подарка и follow-up.",
+  "Скопировать готовый пакет для ручной публикации.",
+  "Зафиксировать факт публикации: ссылку, дату и внешний ID.",
+  "Добавить метрики вручную или через быстрый paste-import.",
+  "Посмотреть сводку метрик, эффективность, аналитику аудиторий и ретроспективы.",
+];
+
+const FUTURE_AUTOMATION = [
+  "Импорт публикационного плана из Excel или табличной вставки с предварительной проверкой строк.",
+  "Матрица планирования внутри кампании: какие каналы уже заведены, а каких публикаций еще не хватает.",
+  "Очередь публикации с аудитом, статусами, повторами и безопасным ручным fallback.",
+  "Первая автопубликация там, где API и доступы достаточно стабильны, вероятно Telegram.",
+  "Следующие интеграции по практической ценности: VK, метрики Telegram/VK, GetCourse-конверсии, email-отчеты.",
+  "Автоматический сбор ссылок, внешних ID и метрик там, где это надежнее ручной фиксации.",
+];
+
+const FIRST_SAFE_PATH = [
+  "Начните с кампании: назовите смысловой блок и зафиксируйте цель.",
+  "Добавьте одну публикацию: площадка, формат, дата, ответственный и статус.",
+  "Заполните текст и UTM настолько, насколько они уже известны.",
+  "Откройте адаптации и сохраните хотя бы один канал, который реально будете публиковать.",
+  "Доведите публикацию до одобрения или календаря через быстрые действия.",
+  "Опубликуйте вручную, вставьте ссылку и дату факта.",
+  "Через 24 часа внесите первые метрики и сохраните вывод в ретроспективе.",
 ];
 
 const GLOSSARY = [
-  "Кампания — общий смысловой блок: событие, инфоповод, запуск или серия публикаций.",
-  "Публикация — конкретный пост, письмо, сторис или другой материал под площадку и формат.",
-  "Аудитория — внешний сегмент людей, который можно привязать к публикации и затем анализировать.",
-  "Гость или история — отдельный путь кандидата: от отбора и согласия до публикации, подарка и follow-up.",
-  "Ретроспектива — короткий разбор того, что сработало, что сломалось и что команда меняет дальше.",
+  "Кампания: общий смысловой блок, например эфир, запуск, пациентская история, сезонная тема или серия материалов.",
+  "Публикация: конкретный пост, письмо, push, карточка или другой материал под одну площадку и один формат.",
+  "Адаптация: версия текста под конкретный канал, с учетом длины, первого экрана, CTA, UTM и ограничений площадки.",
+  "Аудитория: внешний сегмент людей, который можно привязать к публикации и затем анализировать.",
+  "Гости и истории: отдельный путь кандидата, согласия, границ публичности, публикации и последующего контакта.",
+  "Готовность: чек-лист, который показывает, хватает ли текста, статуса, даты, адаптаций, факта публикации и метрик.",
+  "Факт публикации: ссылка, дата выхода и внешний идентификатор, которые подтверждают, что материал действительно опубликован.",
+  "Метрика: замер результата в конкретное окно времени, например просмотры за 24 часа или регистрации за 7 дней.",
+  "Ретроспектива: зафиксированный разбор того, что сработало, что сломалось и что команда меняет дальше.",
 ];
 
 export default function ContentFactoryHelpPage() {
-  return (
-    <div className="space-y-4 animate-in fade-in duration-300">
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <BookOpen className="h-5 w-5" />
-        </span>
-        <div className="min-w-0">
-          <h1 className="text-xl font-semibold leading-7 text-foreground">
-            Что такое Контент-фабрика
-          </h1>
-          <p className="text-sm leading-6 text-muted-foreground">
-            Это рабочее пространство для планирования, производства, проверки,
-            публикации, измерения и разбора контента Онкошколы.
-          </p>
-        </div>
-      </div>
+  const lifecycleText =
+    "кампания -> публикации -> адаптации -> проверка -> публикация -> метрики -> выводы";
 
-      <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm">
+  return (
+    <div className="space-y-5 animate-in fade-in duration-300">
+      <section className="rounded-lg border border-border/70 bg-card px-4 py-5 shadow-sm sm:px-5">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(280px,0.6fr)]">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <BookOpen className="h-5 w-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                  Справка
+                </p>
+                <h1 className="mt-1 text-2xl font-semibold leading-8 text-foreground">
+                  Что такое Контент-фабрика
+                </h1>
+              </div>
+            </div>
+            <p className="mt-4 max-w-4xl text-sm leading-6 text-muted-foreground">
+              Контент-фабрика - это рабочее пространство для планирования,
+              производства, проверки, публикации, измерения и разбора контента
+              Онкошколы. Она заменяет рассыпанные таблицы, заметки, сообщения и
+              ручные списки единым операционным журналом: от идеи кампании до
+              метрик и выводов.
+            </p>
+            <p className="mt-3 max-w-4xl text-sm leading-6 text-muted-foreground">
+              Это не просто календарь и не попытка сразу стать автопубликатором во
+              все социальные сети. Сначала система помогает команде не терять
+              смыслы, статусы, аудитории, версии, проверки, ссылки и результаты.
+              Автоматизация добавляется поэтапно там, где она надежна и реально
+              экономит ручной труд.
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+              <Compass className="h-4 w-4" />
+              Главная логика
+            </div>
+            <p className="mt-3 text-sm leading-6 text-foreground">
+              {lifecycleText}
+            </p>
+            <p className="mt-3 text-xs leading-5 text-muted-foreground">
+              Если в этом пути есть разрыв, команда видит риск заранее: не готов
+              текст, нет адаптации, не пройдена проверка, нет ссылки или не
+              заведены метрики.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm sm:px-5">
+        <div className="flex items-center gap-2">
+          <Lightbulb className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold text-foreground">
+            Почему это сделано именно так
+          </h2>
+        </div>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          Структура основана на deep research, разборе рынка контент-календарей,
+          campaign workspaces, approval workflow, custom/manual channel workflows,
+          taxonomy-first planning и ручного Excel-процесса команды. Лучшие
+          практики взяты не как копия чужого SaaS, а как объяснение, какие блоки
+          нужны внутренней медицинской редакции.
+        </p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {RESEARCH_PILLARS.map((pillar) => (
+            <div key={pillar.title} className="border-l-2 border-primary/30 pl-3">
+              <h3 className="text-sm font-semibold text-foreground">
+                {pillar.title}
+              </h3>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                {pillar.text}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm sm:px-5">
         <div className="flex items-center gap-2">
           <Workflow className="h-4 w-4 text-primary" />
-          <h2 className="text-sm font-semibold text-foreground">Как устроен процесс</h2>
+          <h2 className="text-sm font-semibold text-foreground">
+            Как работает операционная модель
+          </h2>
         </div>
-        <ol className="mt-3 grid gap-2 md:grid-cols-2">
-          {WORKFLOW_STEPS.map((step, index) => (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-7">
+          {OPERATING_MODEL.map((step, index) => (
+            <div
+              key={step.title}
+              className="rounded-lg border border-border/70 bg-background px-3 py-3"
+            >
+              <span className="text-xs font-semibold text-primary">
+                {index + 1}
+              </span>
+              <h3 className="mt-1 text-sm font-semibold text-foreground">
+                {step.title}
+              </h3>
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                {step.text}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div className="grid gap-5 xl:grid-cols-2">
+        <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm sm:px-5">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground">
+              Что уже можно делать сейчас
+            </h2>
+          </div>
+          <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
+            {CURRENT_CAPABILITIES.map((item) => (
+              <li key={item} className="flex gap-2">
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm sm:px-5">
+          <div className="flex items-center gap-2">
+            <Rocket className="h-4 w-4 text-primary" />
+            <h2 className="text-sm font-semibold text-foreground">
+              Что будет автоматизировано позже
+            </h2>
+          </div>
+          <ul className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
+            {FUTURE_AUTOMATION.map((item) => (
+              <li key={item} className="flex gap-2">
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+
+      <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm sm:px-5">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold text-foreground">
+            Как начать без страха
+          </h2>
+        </div>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          Не нужно сразу заполнять всю систему идеально. Первый полезный сценарий:
+          завести одну кампанию, одну публикацию, одну адаптацию, один факт
+          публикации и один замер метрик. Этого достаточно, чтобы увидеть полный
+          цикл и понять, где ручная работа начнет сокращаться.
+        </p>
+        <ol className="mt-4 grid gap-2 md:grid-cols-2">
+          {FIRST_SAFE_PATH.map((step, index) => (
             <li
               key={step}
-              className="rounded-md bg-muted/30 px-3 py-2 text-sm leading-6 text-muted-foreground"
+              className="flex gap-3 rounded-md bg-muted/30 px-3 py-2 text-sm leading-6 text-muted-foreground"
             >
-              <span className="mr-2 font-semibold text-foreground">{index + 1}.</span>
-              {step}
+              <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                {index + 1}
+              </span>
+              <span>{step}</span>
             </li>
           ))}
         </ol>
       </section>
 
-      <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm">
+      <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm sm:px-5">
         <div className="flex items-center gap-2">
           <Info className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold text-foreground">Разделы</h2>
@@ -83,8 +308,13 @@ export default function ContentFactoryHelpPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-foreground">Основные понятия</h2>
+      <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm sm:px-5">
+        <div className="flex items-center gap-2">
+          <Target className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold text-foreground">
+            Основные понятия
+          </h2>
+        </div>
         <ul className="mt-3 grid gap-2 md:grid-cols-2">
           {GLOSSARY.map((item) => (
             <li
@@ -97,31 +327,45 @@ export default function ContentFactoryHelpPage() {
         </ul>
       </section>
 
-      <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm">
+      <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm sm:px-5">
         <div className="flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4 text-primary" />
+          <ClipboardCheck className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold text-foreground">
             Что важно помнить
           </h2>
         </div>
         <div className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground">
           <p>
-            Кампания связывает общий смысл, публикации, аудитории, UTM, метрики и
-            ретроспективу. Публикация остаётся самостоятельной, потому что у каждого
-            канала свои сроки, формат, ссылка и результат.
+            Кампания связывает общий смысл, публикации, аудитории, UTM, метрики
+            и ретроспективу. Публикация остается самостоятельной, потому что у
+            каждого канала свои сроки, формат, ссылка, ограничения и результат.
           </p>
           <p>
-            Сейчас часть данных вводится вручную: ссылки на посты, замеры метрик,
-            выводы ретроспектив. Это осознанно: сначала команда получает понятный
-            журнал работы, а интеграции подключаются только там, где они стабильны и
-            действительно экономят время.
+            Ручные действия сейчас не являются слабостью системы. Это честный
+            первый слой: команда получает понятный журнал работы, а интеграции
+            подключаются там, где они стабильны, прозрачны и дают меньше риска,
+            чем ручной процесс.
           </p>
           <p>
-            Автопубликация и интеграции с внешними платформами отложены до следующих
-            этапов. Контент-фабрика уже помогает не терять статусы, аудитории,
-            версии текстов, проверки и решения команды.
+            Если раздел кажется избыточным, его задача не усложнить работу, а
+            сделать явными вещи, которые раньше жили в голове, в Excel, в чатах
+            или в разных сервисах.
           </p>
         </div>
+      </section>
+
+      <section className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-4 shadow-sm sm:px-5">
+        <div className="flex items-center gap-2 text-primary">
+          <Sparkles className="h-4 w-4" />
+          <h2 className="text-sm font-semibold">Куда двигаться дальше</h2>
+        </div>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          После этой общей справки следующие шаги: подробная помощь по календарю,
+          публикациям, адаптациям и готовности; затем по кампаниям, проверке,
+          аудиториям, метрикам, эффективности, ретроспективам и справочникам.
+          После объяснения текущего каркаса можно безопасно переходить к импорту
+          плана из Excel, матрице каналов, очереди публикации и интеграциям.
+        </p>
       </section>
     </div>
   );
