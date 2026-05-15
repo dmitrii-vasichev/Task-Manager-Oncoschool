@@ -24,8 +24,8 @@
 
 **Implementation status:**
 
-- Implemented and verified on branch `codex/content-factory-sprint-31-publication-variants`.
-- Pending merge to `main` and push.
+- Implemented, verified, and merged to `main`.
+- Pending push to `origin/main`.
 - Sprint 1 through Sprint 30 work is merged to `main`.
 - Sprint 31 introduces manual channel adaptations before backend variant persistence or AI generation.
 
