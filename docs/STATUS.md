@@ -2,7 +2,7 @@
 
 ## Content Factory Sprint 32 Saved Publication Variants
 
-- Current phase: implemented and verified on branch `codex/content-factory-sprint-32-saved-variants`; pending merge to `main` and push
+- Current phase: implemented, verified, and merged to local `main`; pending push to `origin/main`
 - Source: Sprint 31 created copy-ready channel adaptations, but edited variants are not durable and cannot be resumed after refresh.
 - Deep research: `docs/content-factory-market-context-report.md`
 - Design: `docs/superpowers/specs/2026-05-15-content-factory-sprint-32-saved-publication-variants-design.md`
@@ -19,13 +19,13 @@
   - Turned `ContentFactoryPublicationVariants` into an editor with generated defaults, saved channel state, notes, reset, save, and copy.
   - Focused backend and frontend verification passed after implementation.
   - Full frontend verification passed after implementation.
+  - Merged Sprint 32 into local `main`.
 - Key decisions:
   - Store one saved variant per publication/channel.
   - Keep deterministic Sprint 31 drafts as defaults for unsaved channels.
   - Track `source_version_number` so saved adaptations can be compared with the publication body version later.
   - Defer AI generation, variant history, approval workflow, delete/archive, and platform posting APIs.
 - Next actions:
-  - Merge Sprint 32 into `main`.
   - Push Sprint 32 to `origin/main`.
 - Latest verification:
   - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_supabase_rls_migration.py::test_rls_migration_covers_every_application_table tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py tests/test_cf_publication_service.py tests/test_content_factory_publications_api.py -q` passed: 69 tests, with existing pytest-asyncio/AsyncMock warnings.
