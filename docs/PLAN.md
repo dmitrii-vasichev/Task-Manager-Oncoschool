@@ -17,8 +17,8 @@
 
 **Implementation status:**
 
-- Implemented and verified on branch `codex/content-factory-sprint-35-variant-handoff`.
-- Sprint 1 through Sprint 34 work is merged to `main` and pushed.
+- Implemented, verified, and merged to `main`.
+- Sprint 1 through Sprint 35 work is merged to `main`.
 
 **Definition of done:**
 
