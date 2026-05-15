@@ -25,7 +25,7 @@
 
 **Implementation status:**
 
-- Implemented and verified on branch `codex/content-factory-sprint-23-publish-package`.
+- Implemented, verified, merged to `main`, and pushed.
 - Sprint 1 through Sprint 22 work is merged to `main`.
 - Sprint 23 builds on publication creation, UTM, audience targeting, readiness, fact capture, and manual metrics by making manual publishing hand-off copy-ready.
 

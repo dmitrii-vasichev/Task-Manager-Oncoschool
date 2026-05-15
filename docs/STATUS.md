@@ -2,7 +2,7 @@
 
 ## Content Factory Sprint 23 Publish Package
 
-- Current phase: implemented and full frontend verification passed
+- Current phase: implemented, verified, merged to `main`, and pushed
 - Source: the publication detail page now has creation, UTM, audience targeting, readiness, publication fact capture, and manual metrics. The remaining manual publishing gap is hand-off: users still need to gather text, media, UTM, schedule, campaign, and audience context from several panels before posting.
 - Deep research: `docs/content-factory-market-context-report.md`
 - Design: `docs/superpowers/specs/2026-05-15-content-factory-sprint-23-publish-package-design.md`
@@ -22,7 +22,7 @@
   - Treat the package as a manual hand-off aid, not as automatic publishing.
   - Keep backend validation, external platform integrations, media upload/storage, and automatic metric collection out of scope.
 - Next actions:
-  - Commit, merge to `main`, and push.
+  - Run authenticated manual QA against real publication hand-off records when useful.
 - Latest verification:
   - `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 78 tests, with existing Node module-type warnings.
   - `cd frontend && npm test` passed: 169 tests, with existing Node module-type warnings.
