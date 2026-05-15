@@ -49,6 +49,7 @@ const {
   getContentFactoryRetroTitle,
   getContentFactoryReviewQueueGroups,
   getContentFactoryReviewQueueItemSignal,
+  parseContentFactoryMetricImportRows,
   groupPublicationsByDate,
   isContentFactoryGuestFollowUpDue,
   isContentFactoryGuestStoryActive,
@@ -987,6 +988,71 @@ test("publication operations gate manual publish fact by workflow status", () =>
     assert.equal(operations.canSavePublishFact, true);
     assert.equal(operations.publishFactDisabledReason, null);
   }
+});
+
+test("metric paste import parses header and localized rows", () => {
+  const preview = parseContentFactoryMetricImportRows(`
+Окно | Метрика | Значение | Источник | Доверие | Заметка
+24 часа | Просмотры | 1 200,5 | TGStat | Высокое | экспорт из TGStat
+7d | Регистрации | 34 | GetCourse | Среднее | ручной отчёт
+`);
+
+  assert.equal(preview.validRows.length, 2);
+  assert.equal(preview.invalidRows.length, 0);
+  assert.deepEqual(
+    preview.validRows.map((row) => row.payload),
+    [
+      {
+        window: "24h",
+        metric_name: "Просмотры",
+        metric_value: 1200.5,
+        metric_value_text: null,
+        source: "tgstat",
+        source_method: "импорт из буфера",
+        confidence: "high",
+        note: "экспорт из TGStat",
+      },
+      {
+        window: "7d",
+        metric_name: "Регистрации",
+        metric_value: 34,
+        metric_value_text: null,
+        source: "getcourse",
+        source_method: "импорт из буфера",
+        confidence: "medium",
+        note: "ручной отчёт",
+      },
+    ],
+  );
+});
+
+test("metric paste import defaults source confidence and detects invalid rows", () => {
+  const preview = parseContentFactoryMetricImportRows(`
+72h;Клики;42
+bad;Охват;100
+24h;;10
+24h;Просмотры;abc
+`);
+
+  assert.equal(preview.validRows.length, 1);
+  assert.deepEqual(preview.validRows[0]?.payload, {
+    window: "72h",
+    metric_name: "Клики",
+    metric_value: 42,
+    metric_value_text: null,
+    source: "import",
+    source_method: "импорт из буфера",
+    confidence: "medium",
+    note: null,
+  });
+  assert.deepEqual(
+    preview.invalidRows.map((row) => [row.lineNumber, row.error]),
+    [
+      [3, "Неизвестное окно измерения"],
+      [4, "Укажите название метрики"],
+      [5, "Значение метрики должно быть числом"],
+    ],
+  );
 });
 
 test("publication readiness checklist explains missing and after-publish steps", () => {

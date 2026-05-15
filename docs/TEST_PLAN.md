@@ -1,5 +1,29 @@
 # Test Plan
 
+## Content Factory Sprint 29 Metric Paste Import
+
+### Automated
+
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Open a publication detail page.
+2. In the `Метрики` panel, click `Импорт`.
+3. Paste rows such as `24h | Просмотры | 1200 | TGStat | Высокое | экспорт`.
+4. Confirm the preview shows valid rows and parsed labels.
+5. Paste a header row and confirm it is ignored.
+6. Paste invalid rows with bad window, missing metric name, or non-numeric value and confirm readable errors appear.
+7. Click `Импортировать` and confirm valid rows are saved.
+8. Confirm the dialog closes after save and the metric history refreshes.
+9. Confirm manually adding one metric through `Добавить метрику` still works.
+10. Confirm desktop and mobile layouts stay readable and do not overlap text.
+
 ## Content Factory Sprint 28 Workflow Guardrails
 
 ### Automated

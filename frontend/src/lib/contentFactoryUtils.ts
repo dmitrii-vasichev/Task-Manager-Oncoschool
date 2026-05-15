@@ -14,6 +14,7 @@ import type {
   CFConfidence,
   CFMetricSource,
   CFMetricSnapshot,
+  CFMetricSnapshotCreateRequest,
   CFMetricWindow,
   CFPlatform,
   CFProductStream,
@@ -125,6 +126,34 @@ export const CONTENT_FACTORY_METRIC_PRESETS = [
   "Комментарии",
   "Репосты",
 ];
+
+export type ContentFactoryMetricImportPayload = Omit<
+  CFMetricSnapshotCreateRequest,
+  "publication_id" | "captured_by_id" | "raw_payload"
+> & {
+  window: CFMetricWindow;
+  metric_name: string;
+  metric_value: number | null;
+  metric_value_text: string | null;
+  source: CFMetricSource;
+  source_method: string | null;
+  confidence: CFConfidence;
+  note: string | null;
+};
+
+export type ContentFactoryMetricImportRow = {
+  lineNumber: number;
+  raw: string;
+  columns: string[];
+  payload: ContentFactoryMetricImportPayload | null;
+  error: string | null;
+};
+
+export type ContentFactoryMetricImportPreview = {
+  rows: ContentFactoryMetricImportRow[];
+  validRows: ContentFactoryMetricImportRow[];
+  invalidRows: ContentFactoryMetricImportRow[];
+};
 
 export const CF_GUEST_ROLE_LABELS: Record<CFGuestStoryRole, string> = {
   patient: "Пациент",
@@ -2778,6 +2807,241 @@ export function formatContentFactoryMetricValue(metric: MetricValueLike): string
   })
     .format(numericValue)
     .replace(/\u00a0/g, " ");
+}
+
+const METRIC_IMPORT_WINDOW_ALIASES: Record<string, CFMetricWindow> = {
+  "3h": "3h",
+  "3 h": "3h",
+  "3ч": "3h",
+  "3 ч": "3h",
+  "3 часа": "3h",
+  "через 3 часа": "3h",
+  "24h": "24h",
+  "24 h": "24h",
+  "24ч": "24h",
+  "24 ч": "24h",
+  "24 часа": "24h",
+  "через 24 часа": "24h",
+  "72h": "72h",
+  "72 h": "72h",
+  "72ч": "72h",
+  "72 ч": "72h",
+  "72 часа": "72h",
+  "через 72 часа": "72h",
+  "7d": "7d",
+  "7 d": "7d",
+  "7д": "7d",
+  "7 д": "7d",
+  "7 дней": "7d",
+  "через 7 дней": "7d",
+  final: "final",
+  "final cut": "final",
+  финал: "final",
+  финальный: "final",
+  "финальный срез": "final",
+  custom: "custom",
+  другое: "custom",
+  кастом: "custom",
+};
+
+const METRIC_IMPORT_SOURCE_ALIASES: Record<string, CFMetricSource> = {
+  manual: "manual",
+  вручную: "manual",
+  ручной: "manual",
+  api: "api",
+  tgstat: "tgstat",
+  "tg stat": "tgstat",
+  telemetr: "telemetr",
+  телеметр: "telemetr",
+  vk: "vk_api",
+  "vk api": "vk_api",
+  vk_api: "vk_api",
+  вк: "vk_api",
+  email: "email_provider",
+  "email provider": "email_provider",
+  "email-платформа": "email_provider",
+  getcourse: "getcourse",
+  "get course": "getcourse",
+  геткурс: "getcourse",
+  parser: "parser",
+  парсер: "parser",
+  import: "import",
+  импорт: "import",
+};
+
+const METRIC_IMPORT_CONFIDENCE_ALIASES: Record<string, CFConfidence> = {
+  high: "high",
+  высокий: "high",
+  высокое: "high",
+  medium: "medium",
+  средний: "medium",
+  среднее: "medium",
+  normal: "medium",
+  low: "low",
+  низкий: "low",
+  низкое: "low",
+};
+
+function normalizeMetricImportToken(value: string): string {
+  return value.trim().replace(/\s+/g, " ").replace(/ё/g, "е").toLowerCase();
+}
+
+function detectMetricImportDelimiter(line: string): string {
+  const delimiters = ["\t", "|", ";", ","];
+  return delimiters.reduce((best, delimiter) => {
+    const count = line.split(delimiter).length - 1;
+    const bestCount = line.split(best).length - 1;
+    return count > bestCount ? delimiter : best;
+  }, "\t");
+}
+
+function isMetricImportHeader(columns: string[]): boolean {
+  const normalized = columns.map(normalizeMetricImportToken);
+  return normalized.some((column) =>
+    ["window", "окно", "метрика", "metric", "metric name", "значение"].includes(
+      column,
+    ),
+  );
+}
+
+function parseMetricImportNumber(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.replace(/[\s\u00a0]/g, "").replace(",", ".");
+  const parsed = Number(normalized);
+  if (Number.isNaN(parsed)) {
+    throw new Error("Значение метрики должно быть числом");
+  }
+  return parsed;
+}
+
+function normalizeMetricImportWindow(value: string): CFMetricWindow | null {
+  return METRIC_IMPORT_WINDOW_ALIASES[normalizeMetricImportToken(value)] ?? null;
+}
+
+function normalizeMetricImportSource(value: string): CFMetricSource | null {
+  const normalized = normalizeMetricImportToken(value);
+  if (!normalized) return "import";
+  return METRIC_IMPORT_SOURCE_ALIASES[normalized] ?? null;
+}
+
+function normalizeMetricImportConfidence(value: string): CFConfidence | null {
+  const normalized = normalizeMetricImportToken(value);
+  if (!normalized) return "medium";
+  return METRIC_IMPORT_CONFIDENCE_ALIASES[normalized] ?? null;
+}
+
+export function parseContentFactoryMetricImportRows(
+  input: string,
+): ContentFactoryMetricImportPreview {
+  const rows: ContentFactoryMetricImportRow[] = [];
+  let headerChecked = false;
+
+  input.split(/\r?\n/).forEach((rawLine, index) => {
+    const raw = rawLine.trim();
+    if (!raw) return;
+
+    const delimiter = detectMetricImportDelimiter(raw);
+    const columns = raw.split(delimiter).map((column) => column.trim());
+    if (!headerChecked) {
+      headerChecked = true;
+      if (isMetricImportHeader(columns)) return;
+    }
+
+    const lineNumber = index + 1;
+    const [windowColumn = "", metricNameColumn = "", valueColumn = ""] = columns;
+    const sourceColumn = columns[3] ?? "";
+    const confidenceColumn = columns[4] ?? "";
+    const noteColumn = columns.slice(5).join(delimiter).trim();
+
+    const window = normalizeMetricImportWindow(windowColumn);
+    if (!window) {
+      rows.push({
+        lineNumber,
+        raw,
+        columns,
+        payload: null,
+        error: "Неизвестное окно измерения",
+      });
+      return;
+    }
+
+    const metricName = metricNameColumn.trim();
+    if (!metricName) {
+      rows.push({
+        lineNumber,
+        raw,
+        columns,
+        payload: null,
+        error: "Укажите название метрики",
+      });
+      return;
+    }
+
+    let metricValue: number | null;
+    try {
+      metricValue = parseMetricImportNumber(valueColumn);
+    } catch (err) {
+      rows.push({
+        lineNumber,
+        raw,
+        columns,
+        payload: null,
+        error:
+          err instanceof Error
+            ? err.message
+            : "Значение метрики должно быть числом",
+      });
+      return;
+    }
+
+    const source = normalizeMetricImportSource(sourceColumn);
+    if (!source) {
+      rows.push({
+        lineNumber,
+        raw,
+        columns,
+        payload: null,
+        error: "Неизвестный источник метрики",
+      });
+      return;
+    }
+
+    const confidence = normalizeMetricImportConfidence(confidenceColumn);
+    if (!confidence) {
+      rows.push({
+        lineNumber,
+        raw,
+        columns,
+        payload: null,
+        error: "Неизвестный уровень доверия",
+      });
+      return;
+    }
+
+    rows.push({
+      lineNumber,
+      raw,
+      columns,
+      payload: {
+        window,
+        metric_name: metricName,
+        metric_value: metricValue,
+        metric_value_text: null,
+        source,
+        source_method: "импорт из буфера",
+        confidence,
+        note: noteColumn || null,
+      },
+      error: null,
+    });
+  });
+
+  return {
+    rows,
+    validRows: rows.filter((row) => row.payload !== null),
+    invalidRows: rows.filter((row) => row.error !== null),
+  };
 }
 
 export function getAvailableContentFactorySegments<

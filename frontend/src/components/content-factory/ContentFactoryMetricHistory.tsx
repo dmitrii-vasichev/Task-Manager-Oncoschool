@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Activity, Clock3, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ContentFactoryMetricDialog } from "@/components/content-factory/ContentFactoryMetricDialog";
+import { ContentFactoryMetricImportDialog } from "@/components/content-factory/ContentFactoryMetricImportDialog";
 import {
   CF_CONFIDENCE_LABELS,
   CF_METRIC_SOURCE_LABELS,
@@ -35,6 +36,7 @@ export function ContentFactoryMetricHistory({
   onRecorded: () => void | Promise<void>;
 }) {
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const memberNames = useMemo(
     () => new Map(members.map((member) => [member.id, member.full_name])),
     [members],
@@ -57,15 +59,26 @@ export function ContentFactoryMetricHistory({
           <h2 className="text-sm font-semibold text-foreground">Метрики</h2>
           <span className="text-xs text-muted-foreground">{metrics.length}</span>
         </div>
-        <Button
-          type="button"
-          size="sm"
-          className="h-8 gap-1.5 rounded-md px-3 text-xs"
-          onClick={() => setDialogOpen(true)}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Добавить метрику
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5 rounded-md px-3 text-xs"
+            onClick={() => setImportDialogOpen(true)}
+          >
+            Импорт
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            className="h-8 gap-1.5 rounded-md px-3 text-xs"
+            onClick={() => setDialogOpen(true)}
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Добавить метрику
+          </Button>
+        </div>
       </div>
 
       {sortedMetrics.length === 0 ? (
@@ -118,6 +131,12 @@ export function ContentFactoryMetricHistory({
         onOpenChange={setDialogOpen}
         publicationId={publicationId}
         onRecorded={onRecorded}
+      />
+      <ContentFactoryMetricImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        publicationId={publicationId}
+        onImported={onRecorded}
       />
     </section>
   );

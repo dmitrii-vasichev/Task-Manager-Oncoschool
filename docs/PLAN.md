@@ -1,3 +1,69 @@
+# Active Plan: Content Factory Sprint 29 Metric Paste Import
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-29-metric-import.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Add a frontend-only paste import flow for publication metric snapshots.
+
+**Recovered design:** `docs/content-factory-design.md`
+
+**Preserved market research:** `docs/content-factory-market-context-report.md`
+
+**Detailed design:** `docs/superpowers/specs/2026-05-15-content-factory-sprint-29-metric-import-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-15-content-factory-sprint-29-metric-import.md`
+
+**Backlog:** `docs/BACKLOG.md`
+
+**Milestones:**
+
+1. Add parser tests for pasted metric rows, defaults, headers, and readable errors.
+2. Add source guards for the import dialog and metric history wiring.
+3. Add `parseContentFactoryMetricImportRows`.
+4. Add `ContentFactoryMetricImportDialog`.
+5. Wire the `Импорт` action into the metric history panel.
+6. Run frontend verification and update durable repo docs.
+
+**Implementation status:**
+
+- Implemented and verified on branch `codex/content-factory-sprint-29-metric-import`.
+- Pending commit, merge to `main`, and push.
+- Sprint 1 through Sprint 28 work is merged to `main`.
+- Sprint 29 builds on manual metric capture by letting users paste several metric rows from dashboards or spreadsheets without waiting for unstable platform API integrations.
+
+**Definition of done:**
+
+- The metric history panel exposes an `Импорт` action.
+- The import dialog accepts pasted metric rows with tab, pipe, semicolon, or comma delimiters.
+- The first header row is skipped when it contains labels such as `Окно` and `Метрика`.
+- Metric windows, sources, and confidence values support Russian and English aliases.
+- Numeric values support spaces and comma decimals.
+- Valid rows show a preview and can be saved sequentially through existing `api.recordCFMetric`.
+- Invalid rows stay visible with readable error text.
+- No backend bulk endpoint, file upload, XLSX parser, deduplication, rollback, or external platform API integration is added.
+- Verification commands pass and docs are updated.
+
+**Validation commands:**
+
+```bash
+cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 87 tests, with existing Node module-type warnings.
+- `cd frontend && npm test` passed: 178 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+- `git diff --check` passed.
+
+---
+
 # Active Plan: Content Factory Sprint 28 Workflow Guardrails
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-28-workflow-guardrails.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.

@@ -345,6 +345,11 @@ test("metric capture surfaces use readable labels and presets", () => {
   const historySource = readSource(
     "components/content-factory/ContentFactoryMetricHistory.tsx",
   );
+  const importDialogSource = sourceExists(
+    "components/content-factory/ContentFactoryMetricImportDialog.tsx",
+  )
+    ? readSource("components/content-factory/ContentFactoryMetricImportDialog.tsx")
+    : "";
   const effectivenessSource = readSource(
     "components/content-factory/ContentFactoryEffectivenessTable.tsx",
   );
@@ -362,6 +367,14 @@ test("metric capture surfaces use readable labels and presets", () => {
   assert.match(historySource, /CF_METRIC_WINDOW_LABELS/);
   assert.match(historySource, /CF_METRIC_SOURCE_LABELS/);
   assert.match(historySource, /CF_CONFIDENCE_LABELS/);
+  assert.equal(
+    sourceExists("components/content-factory/ContentFactoryMetricImportDialog.tsx"),
+    true,
+  );
+  assert.match(historySource, /ContentFactoryMetricImportDialog/);
+  assert.match(historySource, /Импорт/);
+  assert.match(importDialogSource, /parseContentFactoryMetricImportRows/);
+  assert.match(importDialogSource, /api\.recordCFMetric/);
   assert.doesNotMatch(historySource, /доверие \{metric\.confidence\}/);
   assert.match(effectivenessSource, /CF_METRIC_WINDOW_LABELS/);
   assert.match(effectivenessSource, /CF_METRIC_SOURCE_LABELS/);
