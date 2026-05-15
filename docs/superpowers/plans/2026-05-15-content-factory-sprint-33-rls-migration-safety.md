@@ -31,8 +31,8 @@
 - [x] Run focused backend verification for the RLS migration tests.
 - [x] Run `git diff --check`.
 - [x] Update durable docs with verification results.
-- [ ] Commit, merge to `main`, and push.
-- [ ] Mark Sprint 33 as pushed in docs, commit, and push the final docs update.
+- [x] Commit, merge to `main`, and push.
+- [x] Mark Sprint 33 as pushed in docs, commit, and push the final docs update.
 
 ## Self-Review
 
