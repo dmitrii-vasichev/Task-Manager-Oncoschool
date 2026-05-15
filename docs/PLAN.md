@@ -1,3 +1,60 @@
+# Active Plan: Content Factory Sprint 14 Guest Activity
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-14-content-factory-sprint-14-guest-activity.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Add a guest story activity journal with manual comments and automatic key-change events.
+
+**Recovered design:** `docs/content-factory-design.md`
+
+**Preserved market research:** `docs/content-factory-market-context-report.md`
+
+**Detailed design:** `docs/superpowers/specs/2026-05-14-content-factory-sprint-14-guest-activity-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-14-content-factory-sprint-14-guest-activity.md`
+
+**Backlog:** `docs/BACKLOG.md`
+
+**Milestones:**
+
+1. Add backend guest story event model, schema, migration, service methods, and endpoints.
+2. Auto-log guest story created/status/consent/gift/follow-up changes.
+3. Add frontend event types and API methods.
+4. Add an activity panel to `/content-factory/guests/[id]`.
+5. Run backend/frontend verification and update durable repo docs.
+
+**Implementation status:**
+
+- Planning started on branch `codex/content-factory-sprint-14-guest-activity`.
+- Sprint 1 through Sprint 13 work is merged to `main`.
+- Sprint 14 builds on the Sprint 13 guest story detail page.
+
+**Definition of done:**
+
+- Guest story activity is stored in `cf_guest_story_event`.
+- Users can list and add guest story comments.
+- Key field updates create automatic activity events.
+- Guest detail page shows the activity list and comment form.
+- No reminders, uploads, editing/deleting activity, arbitrary frontend system events, or new standalone activity page are added.
+- Verification commands pass and docs are updated.
+
+**Validation commands:**
+
+```bash
+cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_content_factory_guest_stories_api.py tests/test_cf_guest_story_service.py tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py -q
+cd frontend && node --test --experimental-strip-types src/lib/contentFactoryApiSourceGuards.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- Not yet run for Sprint 14 implementation.
+
+---
+
 # Active Plan: Content Factory Sprint 13 Guest Detail
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-14-content-factory-sprint-13-guest-detail.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.

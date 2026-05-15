@@ -1,5 +1,31 @@
 # Status
 
+## Content Factory Sprint 14 Guest Activity
+
+- Current phase: planning started on branch `codex/content-factory-sprint-14-guest-activity`
+- Source: user approval to continue development after Sprint 13, preserved Content Factory research, restored Content Factory design doc, and the guest story detail page
+- Deep research: `docs/content-factory-market-context-report.md`
+- Design: `docs/superpowers/specs/2026-05-14-content-factory-sprint-14-guest-activity-design.md`
+- Plan: `docs/superpowers/plans/2026-05-14-content-factory-sprint-14-guest-activity.md`
+- Scope: backend guest story events, manual comments, automatic key-change events, frontend activity panel, and verification
+- Latest progress:
+  - Confirmed Sprint 13 is merged to `main` and local `main` was clean before starting.
+  - Created branch `codex/content-factory-sprint-14-guest-activity`.
+  - Reviewed existing guest story backend service/router/schemas/models, task/idea/project event patterns, and guest detail frontend.
+  - Wrote Sprint 14 design and implementation plan.
+  - Made Sprint 14 the active repository plan.
+- Key decisions:
+  - Use a dedicated `cf_guest_story_event` table instead of overloading the guest story JSON fields.
+  - Allow manual comment creation from the frontend; reserve system event types for backend-generated events.
+  - Auto-log only high-signal watched fields in this sprint: status, consent state, gift state, and follow-up date.
+  - Keep reminders, uploads, threaded comments, editing/deleting events, and import history out of scope.
+- Next actions:
+  - Write failing backend tests.
+  - Add event model, schema, migration, service methods, API endpoints, frontend types/API, activity panel, and route integration.
+  - Run backend/frontend verification and update docs with results.
+- Latest verification:
+  - Not yet run for Sprint 14 implementation.
+
 ## Content Factory Sprint 13 Guest Detail
 
 - Current phase: implemented and verified on branch `codex/content-factory-sprint-13-guest-detail`

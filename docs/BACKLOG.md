@@ -11,7 +11,7 @@
 
 ### Later
 
-- Add guest story stage history and comment threads after the detail page is validated.
+- Add richer guest story stage history and threaded comment workflows after the activity journal is validated.
 - Add guest intake-form imports after the manual guest pipeline is validated.
 - Add consent document storage/signature integration only after the consent metadata workflow is used by the team.
 - Add gift delivery confirmation/reminders after the guest story workspace exists.

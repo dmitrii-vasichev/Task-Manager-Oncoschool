@@ -1,5 +1,30 @@
 # Test Plan
 
+## Content Factory Sprint 14 Guest Activity
+
+### Automated
+
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_content_factory_guest_stories_api.py tests/test_cf_guest_story_service.py tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py -q`
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryApiSourceGuards.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Open an existing guest story detail page.
+2. Confirm the activity panel loads newest events first.
+3. Add a manual comment and confirm it appears without reloading the browser.
+4. Edit the story status and confirm an automatic stage-change event appears.
+5. Edit consent state, gift state, and follow-up date and confirm automatic events appear.
+6. Confirm event actor names use team member names when available.
+7. Confirm blank comments are blocked before sending.
+8. Confirm activity load failures do not blank the story detail page.
+9. Confirm missing activity renders a friendly empty state.
+10. Confirm desktop and mobile layouts stay compact and do not overlap text.
+
 ## Content Factory Sprint 13 Guest Detail
 
 ### Automated
