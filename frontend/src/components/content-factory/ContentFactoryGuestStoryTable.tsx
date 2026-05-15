@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import {
+  AlertTriangle,
   CalendarClock,
+  CheckCircle2,
   Edit3,
   FileText,
   FolderKanban,
@@ -19,8 +21,8 @@ import {
   CF_GUEST_ROLE_LABELS,
   CF_GUEST_SOURCE_LABELS,
   CF_GUEST_STATUS_LABELS,
+  getContentFactoryGuestAttention,
   getContentFactoryDisplayName,
-  isContentFactoryGuestFollowUpDue,
 } from "@/lib/contentFactoryUtils";
 import type {
   CFBundle,
@@ -86,7 +88,7 @@ export function ContentFactoryGuestStoryTable({
         const publication = story.publication_id
           ? publicationsById.get(story.publication_id)
           : null;
-        const followUpDue = isContentFactoryGuestFollowUpDue(story);
+        const attention = getContentFactoryGuestAttention(story);
 
         return (
           <div
@@ -108,11 +110,14 @@ export function ContentFactoryGuestStoryTable({
                   >
                     {CF_GUEST_CONSENT_STATUS_LABELS[story.consent_status]}
                   </Badge>
-                  {followUpDue && (
-                    <Badge className="border-amber-500/25 bg-amber-500/10 text-amber-700">
-                      Нужен follow-up
+                  {attention.reasons.slice(0, 2).map((reason) => (
+                    <Badge
+                      key={reason.key}
+                      className="border-red-500/25 bg-red-500/10 text-red-700"
+                    >
+                      {reason.label}
                     </Badge>
-                  )}
+                  ))}
                 </div>
 
                 <div className="min-w-0">
@@ -140,6 +145,24 @@ export function ContentFactoryGuestStoryTable({
                   </span>
                   <span>{CF_GUEST_SOURCE_LABELS[story.source]}</span>
                   <span>{CF_GUEST_ANONYMITY_LABELS[story.anonymity_level]}</span>
+                </div>
+
+                <div
+                  className={
+                    attention.needsAttention
+                      ? "inline-flex max-w-full items-start gap-1.5 rounded-md bg-red-500/10 px-2 py-1 text-sm text-red-700"
+                      : "inline-flex max-w-full items-start gap-1.5 rounded-md bg-muted/40 px-2 py-1 text-sm text-muted-foreground"
+                  }
+                >
+                  {attention.needsAttention ? (
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  )}
+                  <span className="min-w-0">
+                    <span className="font-medium">Следующее действие:</span>{" "}
+                    {attention.nextAction}
+                  </span>
                 </div>
 
                 <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">

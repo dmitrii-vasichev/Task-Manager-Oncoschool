@@ -1,5 +1,29 @@
 # Test Plan
 
+## Content Factory Sprint 15 Guest Attention Queue
+
+### Automated
+
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Open `/content-factory/guests` and confirm the `Требуют внимания` summary card is visible.
+2. Confirm the `Требуют внимания` filter hides calm stories and keeps urgent records.
+3. Confirm overdue stage records show `Просрочен следующий шаг`.
+4. Confirm consent-ready records without signed consent show `Нужно закрыть согласие`.
+5. Confirm published records with due follow-up show `Нужен follow-up`.
+6. Confirm gift-pending records show `Нужно отправить подарок`.
+7. Confirm active records without `stage_due_at` show `Не назначен следующий шаг`.
+8. Confirm closed records such as `follow_up_done`, `maybe_later`, `rejected`, and `archived` do not appear in the attention queue.
+9. Open a guest detail page and confirm the attention panel shows the next action and reasons.
+10. Confirm calm detail pages show `Сейчас без срочных действий`.
+
 ## Content Factory Sprint 14 Guest Activity
 
 ### Automated

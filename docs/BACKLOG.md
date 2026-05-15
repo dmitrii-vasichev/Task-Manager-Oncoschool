@@ -4,7 +4,7 @@
 
 ### Next
 
-- Implement Content Factory Sprint 15 guest story attention queue.
+- Run authenticated manual QA for the Sprint 15 guest story attention queue against real guest story records.
 - Run authenticated manual QA for the Sprint 12 guest story workspace against real guest and patient story records.
 - Run authenticated manual QA for the Sprint 13 guest story detail page against real guest story records.
 - Run authenticated manual QA for the Sprint 14 guest story activity journal against real guest story records.

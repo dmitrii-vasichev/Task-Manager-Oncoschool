@@ -2,7 +2,7 @@
 
 ## Content Factory Sprint 15 Guest Attention Queue
 
-- Current phase: planned on branch `codex/content-factory-sprint-15-attention-queue`
+- Current phase: implemented and verified on branch `codex/content-factory-sprint-15-attention-queue`
 - Source: user approval to continue with Sprint 15, preserved Content Factory research, restored Content Factory design doc, and Sprint 14 guest story activity journal
 - Deep research: `docs/content-factory-market-context-report.md`
 - Design: `docs/superpowers/specs/2026-05-14-content-factory-sprint-15-attention-queue-design.md`
@@ -14,14 +14,29 @@
   - Reviewed existing guest story helpers, list route, table component, detail route, detail panels, activity panel, source guards, and backlog.
   - Wrote Sprint 15 design and implementation plan.
   - Made Sprint 15 the active repository plan.
+  - Added guest story attention helper logic with deterministic Russian reasons and next actions.
+  - Added `Требуют внимания` summary and filter to the guest story list.
+  - Sorted guest story rows by attention priority and added row-level next-action text.
+  - Added a guest detail attention panel.
+  - Added helper tests and source guards.
+  - Ran Sprint 15 frontend verification successfully.
 - Key decisions:
   - Keep Sprint 15 frontend-only and derive attention from existing guest story fields.
   - Use deterministic reasons instead of a vague score.
   - Keep notification delivery, threaded comments, consent documents, imports, and gift automation out of scope.
 - Next actions:
-  - Add failing helper/source-guard tests for attention logic.
-  - Implement helper/UI changes.
-  - Run frontend verification and commit.
+  - Commit Sprint 15 implementation.
+  - Merge and push after final status checks.
+  - Run authenticated manual QA for guest story attention states against real records.
+- Latest verification:
+  - `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 65 tests, with existing Node module-type warnings.
+  - `cd frontend && npm test` passed: 156 tests, with existing Node module-type warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/content-factory/guests` and `/content-factory/guests/[id]`.
+  - Local dev server smoke on `http://127.0.0.1:3015/content-factory/guests` returned HTTP 200 and compiled the route.
+  - Local dev server smoke on `http://127.0.0.1:3015/content-factory/guests/00000000-0000-0000-0000-000000000000` returned HTTP 200 and compiled the route.
+  - `git diff --check` passed.
 
 ## Content Factory Sprint 14 Guest Activity
 

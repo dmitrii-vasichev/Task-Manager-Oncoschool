@@ -20,6 +20,7 @@ import {
   CF_GUEST_CONSENT_STATUS_LABELS,
   CF_GUEST_STATUS_LABELS,
   filterContentFactoryGuestStories,
+  sortContentFactoryGuestStoriesByAttention,
   summarizeContentFactoryGuestStories,
 } from "@/lib/contentFactoryUtils";
 import type {
@@ -34,6 +35,7 @@ import type {
 
 type GuestStatusFilter = "all" | CFGuestStoryStatus;
 type ConsentFilter = "all" | CFGuestConsentStatus;
+type AttentionFilter = "all" | "needs_attention";
 
 function GuestsLoadingSkeleton() {
   return (
@@ -48,8 +50,8 @@ function GuestsLoadingSkeleton() {
         </div>
         <Skeleton className="h-8 w-32 rounded-md" />
       </div>
-      <div className="grid gap-3 md:grid-cols-5">
-        {Array.from({ length: 5 }).map((_, index) => (
+      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, index) => (
           <Skeleton key={index} className="h-20 rounded-lg" />
         ))}
       </div>
@@ -92,6 +94,7 @@ export default function ContentFactoryGuestsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<GuestStatusFilter>("all");
   const [consentFilter, setConsentFilter] = useState<ConsentFilter>("all");
+  const [attentionFilter, setAttentionFilter] = useState<AttentionFilter>("all");
   const [ownerFilter, setOwnerFilter] = useState("all");
   const [bundleFilter, setBundleFilter] = useState("all");
   const [createOpen, setCreateOpen] = useState(false);
@@ -145,14 +148,25 @@ export default function ContentFactoryGuestsPage() {
   );
   const filteredStories = useMemo(
     () =>
-      filterContentFactoryGuestStories(stories, {
-        search,
-        status: statusFilter,
-        consentStatus: consentFilter,
-        ownerId: ownerFilter,
-        bundleId: bundleFilter,
-      }),
-    [bundleFilter, consentFilter, ownerFilter, search, statusFilter, stories],
+      sortContentFactoryGuestStoriesByAttention(
+        filterContentFactoryGuestStories(stories, {
+          search,
+          status: statusFilter,
+          consentStatus: consentFilter,
+          attention: attentionFilter,
+          ownerId: ownerFilter,
+          bundleId: bundleFilter,
+        }),
+      ),
+    [
+      attentionFilter,
+      bundleFilter,
+      consentFilter,
+      ownerFilter,
+      search,
+      statusFilter,
+      stories,
+    ],
   );
   const ownersWithStories = useMemo(
     () =>
@@ -216,7 +230,7 @@ export default function ContentFactoryGuestsPage() {
         </div>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-5">
+      <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
         <SummaryCard
           label="Всего"
           value={summary.total}
@@ -242,10 +256,15 @@ export default function ContentFactoryGuestsPage() {
           value={summary.giftPending}
           helper="Нужно отправить"
         />
+        <SummaryCard
+          label="Требуют внимания"
+          value={summary.attentionNeeded}
+          helper="Нужно действие"
+        />
       </div>
 
       <div className="grid gap-3 rounded-lg border border-border/70 bg-card px-4 py-3 shadow-sm xl:grid-cols-[minmax(0,1fr)_auto]">
-        <div className="grid gap-2 md:grid-cols-[minmax(180px,1.4fr)_180px_180px_180px_180px]">
+        <div className="grid gap-2 md:grid-cols-[minmax(180px,1.4fr)_160px_160px_170px_170px_170px]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
@@ -287,6 +306,20 @@ export default function ContentFactoryGuestsPage() {
                   </SelectItem>
                 ),
               )}
+            </SelectContent>
+          </Select>
+          <Select
+            value={attentionFilter}
+            onValueChange={(value) =>
+              setAttentionFilter(value as AttentionFilter)
+            }
+          >
+            <SelectTrigger className="h-9 border-border/70 bg-muted/20 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="z-[70] border-border/70 shadow-xl">
+              <SelectItem value="all">Все истории</SelectItem>
+              <SelectItem value="needs_attention">Требуют внимания</SelectItem>
             </SelectContent>
           </Select>
           <Select value={ownerFilter} onValueChange={setOwnerFilter}>

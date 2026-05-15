@@ -481,6 +481,9 @@ test("guest story workspace exposes list create edit and navigation", () => {
   assert.match(routeSource, /api\.getCFNosologies\(\{ only_active: false \}\)/);
   assert.match(routeSource, /summarizeContentFactoryGuestStories/);
   assert.match(routeSource, /filterContentFactoryGuestStories/);
+  assert.match(routeSource, /sortContentFactoryGuestStoriesByAttention/);
+  assert.match(routeSource, /attentionFilter/);
+  assert.match(routeSource, /Требуют внимания/);
   assert.match(routeSource, /ContentFactoryGuestStoryDialog/);
   assert.match(routeSource, /ContentFactoryGuestStoryTable/);
   assert.match(dialogSource, /api\.createCFGuestStory/);
@@ -488,6 +491,8 @@ test("guest story workspace exposes list create edit and navigation", () => {
   assert.match(dialogSource, /Кто это/);
   assert.match(dialogSource, /Согласие и границы/);
   assert.match(tableSource, /ContentFactoryGuestStoryTable/);
+  assert.match(tableSource, /getContentFactoryGuestAttention/);
+  assert.match(tableSource, /Следующее действие/);
   assert.match(tableSource, /\/content-factory\/bundles\/\$\{bundle\.id\}/);
   assert.match(
     tableSource,
@@ -507,6 +512,10 @@ test("guest story detail route exposes readable story context", () => {
     sourceExists("components/content-factory/ContentFactoryGuestActivityPanel.tsx"),
     true,
   );
+  assert.equal(
+    sourceExists("components/content-factory/ContentFactoryGuestAttentionPanel.tsx"),
+    true,
+  );
 
   const routeSource = readSource("app/content-factory/guests/[id]/page.tsx");
   const panelSource = readSource(
@@ -514,6 +523,9 @@ test("guest story detail route exposes readable story context", () => {
   );
   const activitySource = readSource(
     "components/content-factory/ContentFactoryGuestActivityPanel.tsx",
+  );
+  const attentionSource = readSource(
+    "components/content-factory/ContentFactoryGuestAttentionPanel.tsx",
   );
   const tableSource = readSource(
     "components/content-factory/ContentFactoryGuestStoryTable.tsx",
@@ -528,6 +540,7 @@ test("guest story detail route exposes readable story context", () => {
   assert.match(routeSource, /api\.getCFPublications\(\{ limit: 500 \}\)/);
   assert.match(routeSource, /api\.getCFNosologies\(\{ only_active: false \}\)/);
   assert.match(routeSource, /ContentFactoryGuestStoryDetailPanels/);
+  assert.match(routeSource, /ContentFactoryGuestAttentionPanel/);
   assert.match(routeSource, /ContentFactoryGuestActivityPanel/);
   assert.match(routeSource, /ContentFactoryGuestStoryDialog/);
   assert.match(routeSource, /setPageTitle/);
@@ -543,4 +556,7 @@ test("guest story detail route exposes readable story context", () => {
   assert.match(activitySource, /api\.createCFGuestStoryEvent/);
   assert.match(activitySource, /Комментарий/);
   assert.match(activitySource, /Статус изменён/);
+  assert.match(attentionSource, /getContentFactoryGuestAttention/);
+  assert.match(attentionSource, /Следующее действие/);
+  assert.match(attentionSource, /Сейчас без срочных действий/);
 });

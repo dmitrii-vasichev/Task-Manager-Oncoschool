@@ -25,7 +25,7 @@
 
 **Implementation status:**
 
-- Planned on branch `codex/content-factory-sprint-15-attention-queue`.
+- Implemented and verified on branch `codex/content-factory-sprint-15-attention-queue`.
 - Sprint 1 through Sprint 14 work is merged to `main`.
 - Sprint 15 is frontend-only and builds on the Sprint 14 activity journal.
 
@@ -48,6 +48,17 @@ cd frontend && npm run lint
 cd frontend && npm run build
 git diff --check
 ```
+
+**Latest verification result:**
+
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 65 tests, with existing Node module-type warnings.
+- `cd frontend && npm test` passed: 156 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/guests` and `/content-factory/guests/[id]`.
+- Local dev server smoke on `http://127.0.0.1:3015/content-factory/guests` returned HTTP 200 and compiled the route.
+- Local dev server smoke on `http://127.0.0.1:3015/content-factory/guests/00000000-0000-0000-0000-000000000000` returned HTTP 200 and compiled the route.
+- `git diff --check` passed.
 
 ---
 

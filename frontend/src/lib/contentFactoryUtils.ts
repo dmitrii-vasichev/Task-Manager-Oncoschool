@@ -315,6 +315,7 @@ export type ContentFactoryGuestStorySummary = {
   consentSigned: number;
   followUpsDue: number;
   giftPending: number;
+  attentionNeeded: number;
 };
 
 export type ContentFactoryGuestStoryFilters = {
@@ -323,11 +324,15 @@ export type ContentFactoryGuestStoryFilters = {
   consentStatus?: "all" | string | null;
   ownerId?: "all" | string | null;
   bundleId?: "all" | string | null;
+  attention?: "all" | "needs_attention" | string | null;
 };
 
 type GuestStoryStatusLike = {
   status: string;
+  stage_due_at?: string | null;
   follow_up_due_at?: string | null;
+  consent_status?: string | null;
+  gift_status?: string | null;
 };
 
 type GuestStoryLike = GuestStoryStatusLike & {
@@ -350,6 +355,28 @@ type GuestStoryLike = GuestStoryStatusLike & {
   sensitive_topics?: string[] | null;
   legal_notes?: string | null;
   gift_status?: string | null;
+};
+
+export type ContentFactoryGuestAttentionReasonKey =
+  | "stage_due"
+  | "consent_missing"
+  | "follow_up_due"
+  | "gift_pending"
+  | "stage_missing";
+
+export type ContentFactoryGuestAttentionReason = {
+  key: ContentFactoryGuestAttentionReasonKey;
+  label: string;
+  priority: number;
+  dueAt: string | null;
+};
+
+export type ContentFactoryGuestAttention = {
+  needsAttention: boolean;
+  reasons: ContentFactoryGuestAttentionReason[];
+  nextAction: string;
+  priority: number;
+  dueAt: string | null;
 };
 
 type SegmentLike = {
@@ -614,6 +641,130 @@ export function isContentFactoryGuestFollowUpDue(
   return dueTime <= dateInputTime(now);
 }
 
+const CONSENT_REQUIRED_GUEST_STATUSES = new Set([
+  "consent_sent",
+  "consent_signed",
+  "scheduled",
+  "prep_materials_sent",
+  "live_or_recorded",
+  "post_production",
+  "published",
+  "gift_sent",
+]);
+
+const FOLLOW_UP_READY_GUEST_STATUSES = new Set(["published", "gift_sent"]);
+
+const GUEST_ATTENTION_REASON_DETAILS: Record<
+  ContentFactoryGuestAttentionReasonKey,
+  { label: string; nextAction: string; priority: number }
+> = {
+  stage_due: {
+    label: "Просрочен следующий шаг",
+    nextAction: "Связаться и закрыть просроченный следующий шаг",
+    priority: 100,
+  },
+  consent_missing: {
+    label: "Нужно закрыть согласие",
+    nextAction: "Довести согласие до подписания",
+    priority: 80,
+  },
+  follow_up_due: {
+    label: "Нужен follow-up",
+    nextAction: "Провести follow-up с гостем",
+    priority: 90,
+  },
+  gift_pending: {
+    label: "Нужно отправить подарок",
+    nextAction: "Отправить или подтвердить подарок",
+    priority: 70,
+  },
+  stage_missing: {
+    label: "Не назначен следующий шаг",
+    nextAction: "Назначить следующий шаг и срок",
+    priority: 40,
+  },
+};
+
+function guestAttentionReason(
+  key: ContentFactoryGuestAttentionReasonKey,
+  dueAt: string | null = null,
+): ContentFactoryGuestAttentionReason {
+  const details = GUEST_ATTENTION_REASON_DETAILS[key];
+  return {
+    key,
+    label: details.label,
+    priority: details.priority,
+    dueAt,
+  };
+}
+
+export function getContentFactoryGuestAttention(
+  story: GuestStoryStatusLike,
+  now: Date | string = new Date(),
+): ContentFactoryGuestAttention {
+  if (!isContentFactoryGuestStoryActive(story)) {
+    return {
+      needsAttention: false,
+      reasons: [],
+      nextAction: "Сейчас без срочных действий",
+      priority: 0,
+      dueAt: null,
+    };
+  }
+
+  const nowTime = dateInputTime(now);
+  const reasons: ContentFactoryGuestAttentionReason[] = [];
+  const stageDueTime = dateTime(story.stage_due_at);
+  const followUpDueTime = dateTime(story.follow_up_due_at);
+
+  if (stageDueTime !== null && stageDueTime <= nowTime) {
+    reasons.push(guestAttentionReason("stage_due", story.stage_due_at ?? null));
+  }
+
+  if (
+    CONSENT_REQUIRED_GUEST_STATUSES.has(story.status) &&
+    story.consent_status !== "signed"
+  ) {
+    reasons.push(guestAttentionReason("consent_missing"));
+  }
+
+  if (
+    FOLLOW_UP_READY_GUEST_STATUSES.has(story.status) &&
+    followUpDueTime !== null &&
+    followUpDueTime <= nowTime
+  ) {
+    reasons.push(
+      guestAttentionReason("follow_up_due", story.follow_up_due_at ?? null),
+    );
+  }
+
+  if (story.gift_status === "pending") {
+    reasons.push(guestAttentionReason("gift_pending"));
+  }
+
+  if (stageDueTime === null) {
+    reasons.push(guestAttentionReason("stage_missing"));
+  }
+
+  const sortedReasons = [...reasons].sort(
+    (left, right) =>
+      right.priority - left.priority ||
+      (dateTime(left.dueAt) ?? Number.MAX_SAFE_INTEGER) -
+        (dateTime(right.dueAt) ?? Number.MAX_SAFE_INTEGER),
+  );
+  const primaryReason = sortedReasons[0] ?? null;
+
+  return {
+    needsAttention: sortedReasons.length > 0,
+    reasons: sortedReasons,
+    nextAction: primaryReason
+      ? GUEST_ATTENTION_REASON_DETAILS[primaryReason.key].nextAction
+      : "Сейчас без срочных действий",
+    priority: primaryReason?.priority ?? 0,
+    dueAt: primaryReason?.dueAt ?? null,
+  };
+}
+
 export function summarizeContentFactoryGuestStories<TStory extends GuestStoryLike>(
   stories: TStory[],
   now: Date | string = new Date(),
@@ -628,15 +779,25 @@ export function summarizeContentFactoryGuestStories<TStory extends GuestStoryLik
     ).length,
     giftPending: stories.filter((story) => story.gift_status === "pending")
       .length,
+    attentionNeeded: stories.filter(
+      (story) => getContentFactoryGuestAttention(story, now).needsAttention,
+    ).length,
   };
 }
 
 export function filterContentFactoryGuestStories<TStory extends GuestStoryLike>(
   stories: TStory[],
   filters: ContentFactoryGuestStoryFilters,
+  now: Date | string = new Date(),
 ): TStory[] {
   const search = filters.search?.trim().toLowerCase();
   return stories.filter((story) => {
+    if (
+      filters.attention === "needs_attention" &&
+      !getContentFactoryGuestAttention(story, now).needsAttention
+    ) {
+      return false;
+    }
     if (filters.status && filters.status !== "all" && story.status !== filters.status) {
       return false;
     }
@@ -686,6 +847,27 @@ export function filterContentFactoryGuestStories<TStory extends GuestStoryLike>(
       .toLowerCase();
 
     return haystack.includes(search);
+  });
+}
+
+export function sortContentFactoryGuestStoriesByAttention<
+  TStory extends GuestStoryLike,
+>(stories: TStory[], now: Date | string = new Date()): TStory[] {
+  return [...stories].sort((left, right) => {
+    const leftAttention = getContentFactoryGuestAttention(left, now);
+    const rightAttention = getContentFactoryGuestAttention(right, now);
+    return (
+      Number(rightAttention.needsAttention) - Number(leftAttention.needsAttention) ||
+      rightAttention.priority - leftAttention.priority ||
+      (dateTime(leftAttention.dueAt) ?? Number.MAX_SAFE_INTEGER) -
+        (dateTime(rightAttention.dueAt) ?? Number.MAX_SAFE_INTEGER) ||
+      (dateTime(left.stage_due_at) ?? Number.MAX_SAFE_INTEGER) -
+        (dateTime(right.stage_due_at) ?? Number.MAX_SAFE_INTEGER) ||
+      (left.display_name ?? left.id ?? "").localeCompare(
+        right.display_name ?? right.id ?? "",
+        "ru",
+      )
+    );
   });
 }
 

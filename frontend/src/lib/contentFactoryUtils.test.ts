@@ -31,6 +31,7 @@ const {
   formatContentFactoryRetroPeriod,
   formatContentFactorySegmentCount,
   getAvailableContentFactorySegments,
+  getContentFactoryGuestAttention,
   getContentFactoryDisplayName,
   getContentFactoryReferenceLabel,
   getContentFactoryRetroTitle,
@@ -45,6 +46,7 @@ const {
   summarizeContentFactoryReferenceRecords,
   summarizeContentFactoryRetroSections,
   summarizeContentFactoryDashboard,
+  sortContentFactoryGuestStoriesByAttention,
 } = contentFactoryUtils;
 
 test("content factory labels expose production wording", () => {
@@ -151,6 +153,107 @@ test("guest story summary counts operational states", () => {
   assert.equal(summary.consentSigned, 2);
   assert.equal(summary.followUpsDue, 1);
   assert.equal(summary.giftPending, 1);
+});
+
+test("guest story attention explains due actions in Russian", () => {
+  const attention = getContentFactoryGuestAttention(
+    {
+      status: "scheduled",
+      stage_due_at: "2026-05-13T12:00:00Z",
+      consent_status: "sent",
+      gift_status: "pending",
+      follow_up_due_at: null,
+    },
+    new Date("2026-05-14T12:00:00Z"),
+  );
+
+  assert.equal(attention.needsAttention, true);
+  assert.equal(attention.nextAction, "Связаться и закрыть просроченный следующий шаг");
+  assert.deepEqual(
+    attention.reasons.map((reason) => reason.label),
+    [
+      "Просрочен следующий шаг",
+      "Нужно закрыть согласие",
+      "Нужно отправить подарок",
+    ],
+  );
+});
+
+test("guest story attention ignores closed stories and flags missing next step", () => {
+  assert.equal(
+    getContentFactoryGuestAttention(
+      {
+        status: "follow_up_done",
+        stage_due_at: "2026-05-13T12:00:00Z",
+        consent_status: "sent",
+        gift_status: "pending",
+        follow_up_due_at: "2026-05-13T12:00:00Z",
+      },
+      new Date("2026-05-14T12:00:00Z"),
+    ).needsAttention,
+    false,
+  );
+
+  const activeWithoutStep = getContentFactoryGuestAttention(
+    {
+      status: "editorial_screening",
+      stage_due_at: null,
+      consent_status: "not_started",
+      gift_status: "not_required",
+      follow_up_due_at: null,
+    },
+    new Date("2026-05-14T12:00:00Z"),
+  );
+
+  assert.equal(activeWithoutStep.needsAttention, true);
+  assert.equal(activeWithoutStep.nextAction, "Назначить следующий шаг и срок");
+  assert.deepEqual(
+    activeWithoutStep.reasons.map((reason) => reason.key),
+    ["stage_missing"],
+  );
+});
+
+test("guest story attention summary filter and sort prioritize urgent records", () => {
+  const stories = [
+    {
+      id: "later",
+      status: "sourced",
+      stage_due_at: "2026-05-20T12:00:00Z",
+      consent_status: "not_started",
+      gift_status: "not_required",
+      follow_up_due_at: null,
+    },
+    {
+      id: "gift",
+      status: "published",
+      stage_due_at: "2026-05-20T12:00:00Z",
+      consent_status: "signed",
+      gift_status: "pending",
+      follow_up_due_at: null,
+    },
+    {
+      id: "overdue",
+      status: "producer_call_scheduled",
+      stage_due_at: "2026-05-13T12:00:00Z",
+      consent_status: "not_started",
+      gift_status: "not_required",
+      follow_up_due_at: null,
+    },
+  ];
+
+  const now = new Date("2026-05-14T12:00:00Z");
+
+  assert.equal(summarizeContentFactoryGuestStories(stories, now).attentionNeeded, 2);
+  assert.deepEqual(
+    filterContentFactoryGuestStories(stories, { attention: "needs_attention" }, now).map(
+      (story) => story.id,
+    ),
+    ["gift", "overdue"],
+  );
+  assert.deepEqual(
+    sortContentFactoryGuestStoriesByAttention(stories, now).map((story) => story.id),
+    ["overdue", "gift", "later"],
+  );
 });
 
 test("guest story filters combine search status consent owner and campaign", () => {
