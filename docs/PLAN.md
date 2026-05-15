@@ -25,8 +25,7 @@
 
 **Implementation status:**
 
-- Implemented, verified, and merged to `main`.
-- Pending push to `origin/main`.
+- Implemented, verified, merged to `main`, and pushed.
 - Sprint 1 through Sprint 28 work is merged to `main`.
 - Sprint 29 builds on manual metric capture by letting users paste several metric rows from dashboards or spreadsheets without waiting for unstable platform API integrations.
 

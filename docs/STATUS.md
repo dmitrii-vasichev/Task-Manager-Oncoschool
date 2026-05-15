@@ -2,7 +2,7 @@
 
 ## Content Factory Sprint 29 Metric Paste Import
 
-- Current phase: implemented, verified, and merged to `main`; pending push to `origin/main`
+- Current phase: implemented, verified, merged to `main`, and pushed
 - Source: manual metric capture exists, but users still had to enter each metric one by one after copying data from TGStat, VK, GetCourse, email dashboards, or spreadsheets.
 - Deep research: `docs/content-factory-market-context-report.md`
 - Design: `docs/superpowers/specs/2026-05-15-content-factory-sprint-29-metric-import-design.md`
@@ -19,12 +19,12 @@
   - Focused frontend verification passed after implementation.
   - Full frontend verification passed after implementation.
   - Merged Sprint 29 into local `main`.
+  - Pushed Sprint 29 to `origin/main`.
 - Key decisions:
   - Keep Sprint 29 frontend-only and reuse the existing metric snapshot endpoint.
   - Treat paste import as the semi-automated bridge before platform API integrations.
   - Keep file upload, XLSX parsing, backend bulk endpoint, deduplication, rollback, and external APIs out of scope.
 - Next actions:
-  - Push `main` to `origin/main`.
   - Run authenticated manual QA against real publication metric rows when useful.
 - Latest verification:
   - `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 87 tests, with existing Node module-type warnings.
