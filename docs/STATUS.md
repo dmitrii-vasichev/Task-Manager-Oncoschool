@@ -1,5 +1,35 @@
 # Status
 
+## Content Factory Sprint 42.1 Import Table UX
+
+- Current phase: implemented, verified, merged to `main`, and pushed
+- Source: user review of Sprint 42 showed the import dialog looked like it had filters and the `Импорт плана` wording implied direct file upload.
+- Scope: frontend-only copy and layout refinement for the publication plan import dialog, downloadable CSV template, source guard, durable docs, and frontend verification
+- Latest progress:
+  - Created branch `codex/cf-import-table-template-ux`.
+  - Added a failing source guard for `Импорт из таблицы`, `Скачать шаблон`, `Настройки импорта`, and explanatory import-default copy.
+  - Renamed the publications page action and dialog title to `Импорт из таблицы`.
+  - Added `content-factory-publication-plan-template.csv` download from the dialog.
+  - Reframed default selectors as import defaults used only when a row field is empty.
+  - Focused source-guard verification passed after implementation.
+  - Full frontend verification passed.
+  - Merged Sprint 42.1 into local `main`.
+  - Pushed Sprint 42.1 to `origin/main`.
+- Key decisions:
+  - Keep Sprint 42.1 as clipboard-based table import, not direct XLSX upload.
+  - Use a CSV template with supported columns because it opens in Excel/Google Sheets and avoids new file parsing logic.
+  - Avoid calling the default selectors filters because they do not filter preview rows.
+- Next actions:
+  - Start Sprint 43: campaign-level cross-channel planning matrix.
+- Latest verification:
+  - RED confirmed: `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` failed before implementation because the import UI still used `Импорт плана` and did not expose template/download/settings copy.
+  - `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 37 tests, with existing Node module-type warning.
+  - `cd frontend && npm test` passed: 198 tests, with existing Node module-type warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/content-factory/publications`.
+  - `git diff --check` passed.
+
 ## Content Factory Sprint 42 Publication Plan Import
 
 - Current phase: implemented, verified, merged to `main`, and pushed

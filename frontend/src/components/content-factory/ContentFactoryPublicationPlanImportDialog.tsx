@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -39,6 +39,19 @@ import type {
 const SAMPLE_IMPORT = `Дата | Тема | Канал | Формат | Статус | Ответственный | Рубрика | Нозология | Текст | Примечания
 29.01.2026 | Анонс эфира | Telegram | Анонс | Запланировано | Дмитрий | Эфир | РМЖ | Текст поста | взять фото
 2026-01-30 13:30 | История пациента | ВК | История пациента | Черновик | Надя | | | | проверить согласие`;
+
+const TEMPLATE_HEADERS = [
+  "Дата",
+  "Тема",
+  "Канал",
+  "Формат",
+  "Статус",
+  "Ответственный",
+  "Рубрика",
+  "Нозология",
+  "Текст",
+  "Примечания",
+];
 
 function buildNameMap<T extends { id: string }>(
   items: T[],
@@ -211,6 +224,19 @@ export function ContentFactoryPublicationPlanImportDialog({
     onOpenChange(nextOpen);
   }
 
+  function handleDownloadTemplate() {
+    const csv = `\uFEFF${TEMPLATE_HEADERS.join(";")}\n`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "content-factory-publication-plan-template.csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function handleImport() {
     if (!canImport) return;
 
@@ -240,90 +266,126 @@ export function ContentFactoryPublicationPlanImportDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-h-[calc(100vh-1.5rem)] overflow-y-auto sm:max-w-[880px]">
         <DialogHeader>
-          <DialogTitle className="text-lg">Импорт плана</DialogTitle>
+          <DialogTitle className="text-lg">Импорт из таблицы</DialogTitle>
           <DialogDescription>
-            Вставьте строки из Excel или Google Sheets. Сначала проверьте
-            предпросмотр и исправьте ошибки, затем создайте публикации.
+            Скачайте шаблон или скопируйте строки из Excel/Google Sheets,
+            вставьте их сюда и проверьте предпросмотр перед созданием
+            публикаций.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="space-y-2">
-              <Label>Кампания по умолчанию</Label>
-              <Select
-                value={defaultBundleId || undefined}
-                onValueChange={setDefaultBundleId}
-                disabled={saving}
-              >
-                <SelectTrigger className="h-9 border-border/70 bg-muted/20 text-sm">
-                  <SelectValue placeholder="Кампания" />
-                </SelectTrigger>
-                <SelectContent className="z-[70] max-h-72 border-border/70 shadow-xl">
-                  {bundles.map((bundle) => (
-                    <SelectItem key={bundle.id} value={bundle.id}>
-                      {bundle.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="flex flex-col gap-3 rounded-md border border-border/70 bg-muted/10 p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-foreground">
+                Шаблон для Excel и Google Sheets
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Начните с готовых колонок, чтобы не ошибиться в структуре
+                таблицы.
+              </p>
             </div>
-            <div className="space-y-2">
-              <Label>Площадка по умолчанию</Label>
-              <Select
-                value={defaultPlatformId || undefined}
-                onValueChange={setDefaultPlatformId}
-                disabled={saving}
-              >
-                <SelectTrigger className="h-9 border-border/70 bg-muted/20 text-sm">
-                  <SelectValue placeholder="Площадка" />
-                </SelectTrigger>
-                <SelectContent className="z-[70] max-h-72 border-border/70 shadow-xl">
-                  {platforms.map((platform) => (
-                    <SelectItem key={platform.id} value={platform.id}>
-                      {platform.display_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full gap-1.5 sm:w-auto"
+              disabled={saving}
+              onClick={handleDownloadTemplate}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Скачать шаблон
+            </Button>
+          </div>
+
+          <div className="rounded-md border border-border/70 bg-muted/10 p-3">
+            <div className="mb-3">
+              <p className="text-sm font-medium text-foreground">
+                Настройки импорта
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Эти значения используются только если в строке таблицы поле
+                пустое. Они не фильтруют данные и не скрывают строки.
+              </p>
             </div>
-            <div className="space-y-2">
-              <Label>Формат по умолчанию</Label>
-              <Select
-                value={defaultFormatId || undefined}
-                onValueChange={setDefaultFormatId}
-                disabled={saving}
-              >
-                <SelectTrigger className="h-9 border-border/70 bg-muted/20 text-sm">
-                  <SelectValue placeholder="Формат" />
-                </SelectTrigger>
-                <SelectContent className="z-[70] max-h-72 border-border/70 shadow-xl">
-                  {formats.map((format) => (
-                    <SelectItem key={format.id} value={format.id}>
-                      {format.display_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Ответственный по умолчанию</Label>
-              <Select
-                value={defaultResponsibleId || undefined}
-                onValueChange={setDefaultResponsibleId}
-                disabled={saving}
-              >
-                <SelectTrigger className="h-9 border-border/70 bg-muted/20 text-sm">
-                  <SelectValue placeholder="Ответственный" />
-                </SelectTrigger>
-                <SelectContent className="z-[70] max-h-72 border-border/70 shadow-xl">
-                  {activeMembers.map((member) => (
-                    <SelectItem key={member.id} value={member.id}>
-                      {member.full_name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="space-y-2">
+                <Label>Кампания для пустых строк</Label>
+                <Select
+                  value={defaultBundleId || undefined}
+                  onValueChange={setDefaultBundleId}
+                  disabled={saving}
+                >
+                  <SelectTrigger className="h-9 border-border/70 bg-background text-sm">
+                    <SelectValue placeholder="Кампания" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[70] max-h-72 border-border/70 shadow-xl">
+                    {bundles.map((bundle) => (
+                      <SelectItem key={bundle.id} value={bundle.id}>
+                        {bundle.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Площадка для пустых строк</Label>
+                <Select
+                  value={defaultPlatformId || undefined}
+                  onValueChange={setDefaultPlatformId}
+                  disabled={saving}
+                >
+                  <SelectTrigger className="h-9 border-border/70 bg-background text-sm">
+                    <SelectValue placeholder="Площадка" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[70] max-h-72 border-border/70 shadow-xl">
+                    {platforms.map((platform) => (
+                      <SelectItem key={platform.id} value={platform.id}>
+                        {platform.display_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Формат для пустых строк</Label>
+                <Select
+                  value={defaultFormatId || undefined}
+                  onValueChange={setDefaultFormatId}
+                  disabled={saving}
+                >
+                  <SelectTrigger className="h-9 border-border/70 bg-background text-sm">
+                    <SelectValue placeholder="Формат" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[70] max-h-72 border-border/70 shadow-xl">
+                    {formats.map((format) => (
+                      <SelectItem key={format.id} value={format.id}>
+                        {format.display_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Ответственный для пустых строк</Label>
+                <Select
+                  value={defaultResponsibleId || undefined}
+                  onValueChange={setDefaultResponsibleId}
+                  disabled={saving}
+                >
+                  <SelectTrigger className="h-9 border-border/70 bg-background text-sm">
+                    <SelectValue placeholder="Ответственный" />
+                  </SelectTrigger>
+                  <SelectContent className="z-[70] max-h-72 border-border/70 shadow-xl">
+                    {activeMembers.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        {member.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
@@ -394,7 +456,7 @@ export function ContentFactoryPublicationPlanImportDialog({
             onClick={() => void handleImport()}
           >
             {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-            Импортировать план
+            Создать публикации
           </Button>
         </DialogFooter>
       </DialogContent>

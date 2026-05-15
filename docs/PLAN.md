@@ -1,3 +1,54 @@
+# Active Plan: Content Factory Sprint 42.1 Import Table UX
+
+> **For agentic workers:** Keep this follow-up tightly scoped. The goal is to make Sprint 42's clipboard import honest and less confusing before starting Sprint 43.
+
+**Goal:** Clarify that publication plan import is clipboard-based table import, not direct XLSX upload, and add a downloadable template.
+
+**Milestones:**
+
+1. Rename the entry point and dialog from generic plan import to table import.
+2. Add a downloadable CSV template with supported publication planning columns.
+3. Reframe default campaign/platform/format/responsible selectors as import defaults, not filters.
+4. Run focused and full frontend verification and update durable repo docs.
+
+**Implementation status:**
+
+- Implemented, verified, merged to `main`, and pushed.
+- Sprint 1 through Sprint 42.1 work is merged to `main` and pushed.
+
+**Definition of done:**
+
+- The publications page uses `Импорт из таблицы`.
+- The import dialog explains that users copy rows from Excel or Google Sheets.
+- Users can download `content-factory-publication-plan-template.csv`.
+- The default selectors are grouped under `Настройки импорта` and explain that values apply only when a row has an empty field.
+- The import flow still blocks rows with validation errors before creating publications.
+- No backend schema or API changes are added.
+- Verification commands pass and docs are updated.
+
+**Validation commands:**
+
+```bash
+cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- RED confirmed: focused source-guard tests failed before implementation because the UI still used `Импорт плана` and did not expose template/download/settings copy.
+- `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 37 tests, with existing Node module-type warning.
+- `cd frontend && npm test` passed: 198 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/publications`.
+- `git diff --check` passed.
+
+---
+
 # Active Plan: Content Factory Sprint 42 Publication Plan Import
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-42-publication-plan-import.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.

@@ -284,7 +284,7 @@ export default function ContentFactoryPublicationsPage() {
             onClick={() => setImportOpen(true)}
           >
             <Upload className="h-3.5 w-3.5" />
-            Импорт плана
+            Импорт из таблицы
           </Button>
           <Button
             type="button"

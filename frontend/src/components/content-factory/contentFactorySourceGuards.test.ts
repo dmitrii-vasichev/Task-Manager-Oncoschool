@@ -315,9 +315,18 @@ test("publications route exposes publication plan import preview", () => {
   );
   assert.match(source, /ContentFactoryPublicationPlanImportDialog/);
   assert.match(source, /setImportOpen/);
-  assert.match(source, /Импорт плана/);
+  assert.match(source, /Импорт из таблицы/);
+  assert.doesNotMatch(source, />Импорт плана</);
   assert.match(importDialogSource, /parseContentFactoryPublicationPlanImportRows/);
   assert.match(importDialogSource, /api\.createCFPublicationForBundle/);
+  assert.match(importDialogSource, /Скачать шаблон/);
+  assert.match(importDialogSource, /handleDownloadTemplate/);
+  assert.match(importDialogSource, /content-factory-publication-plan-template\.csv/);
+  assert.match(importDialogSource, /Настройки импорта/);
+  assert.match(
+    importDialogSource,
+    /если в строке таблицы поле\s+пустое/i,
+  );
   assert.match(importDialogSource, /Готово к созданию/);
   assert.match(importDialogSource, /С ошибками/);
   assert.match(importDialogSource, /preview\.invalidRows\.length === 0/);

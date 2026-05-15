@@ -1,5 +1,27 @@
 # Test Plan
 
+## Content Factory Sprint 42.1 Import Table UX
+
+### Automated
+
+- `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Open `/content-factory/publications`.
+2. Confirm the action is named `Импорт из таблицы`.
+3. Open the dialog and confirm the title is `Импорт из таблицы`.
+4. Confirm the dialog explains copying rows from Excel or Google Sheets.
+5. Click `Скачать шаблон` and confirm a CSV file named `content-factory-publication-plan-template.csv` downloads.
+6. Open the CSV and confirm the headers are `Дата`, `Тема`, `Канал`, `Формат`, `Статус`, `Ответственный`, `Рубрика`, `Нозология`, `Текст`, `Примечания`.
+7. Confirm `Настройки импорта` says the defaults are used only when a row field is empty and do not filter rows.
+8. Paste rows and confirm the preview and validation behavior from Sprint 42 still works.
+
 ## Content Factory Sprint 42 Publication Plan Import
 
 ### Automated
