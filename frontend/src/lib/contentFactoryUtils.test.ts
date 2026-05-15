@@ -43,6 +43,7 @@ const {
   getContentFactoryGuestAttention,
   getContentFactoryDisplayName,
   getContentFactoryPlatformCapabilities,
+  getContentFactoryPublicationVariantCoverage,
   getContentFactoryPublicationMetricInsights,
   getContentFactoryPublicationOperations,
   getContentFactoryPublicationReadiness,
@@ -1470,6 +1471,117 @@ test("publication variants warn when source text is missing", () => {
   );
   assert.match(variants.variants[0]?.copyText ?? "", /Текст публикации не заполнен/);
   assert.doesNotMatch(variants.variants[0]?.copyText ?? "", /UTM:/);
+});
+
+test("publication variant coverage summarizes saved missing and stale channels", () => {
+  const coverage = getContentFactoryPublicationVariantCoverage({
+    publication: {
+      version_number: 4,
+    },
+    savedVariants: [
+      {
+        channel: "telegram",
+        body_text: "Telegram adaptation",
+        source_version_number: 4,
+      },
+      {
+        channel: "email",
+        body_text: "Email adaptation",
+        source_version_number: 2,
+      },
+      {
+        channel: "vk",
+        body_text: "   ",
+        source_version_number: 4,
+      },
+    ],
+  });
+
+  assert.equal(coverage.totalChannels, 6);
+  assert.equal(coverage.savedCount, 2);
+  assert.equal(coverage.readyCount, 1);
+  assert.equal(coverage.missingCount, 4);
+  assert.equal(coverage.staleCount, 1);
+  assert.deepEqual(
+    coverage.savedChannels.map((channel) => channel.label),
+    ["Telegram", "Email"],
+  );
+  assert.deepEqual(
+    coverage.missingChannels.map((channel) => channel.label),
+    ["VK", "Push", "Max", "Дзен"],
+  );
+  assert.deepEqual(
+    coverage.staleChannels.map((channel) => channel.label),
+    ["Email"],
+  );
+  assert.equal(
+    coverage.nextAction,
+    "Обновите адаптации после изменения публикации",
+  );
+});
+
+test("publication variant coverage marks all current variants as ready", () => {
+  const coverage = getContentFactoryPublicationVariantCoverage({
+    publication: {
+      version_number: 3,
+    },
+    savedVariants: [
+      {
+        channel: "telegram",
+        body_text: "Telegram adaptation",
+        source_version_number: 3,
+      },
+      {
+        channel: "vk",
+        body_text: "VK adaptation",
+        source_version_number: 3,
+      },
+      {
+        channel: "email",
+        body_text: "Email adaptation",
+        source_version_number: 3,
+      },
+      {
+        channel: "push",
+        body_text: "Push adaptation",
+        source_version_number: 3,
+      },
+      {
+        channel: "max",
+        body_text: "Max adaptation",
+        source_version_number: 3,
+      },
+      {
+        channel: "dzen",
+        body_text: "Dzen adaptation",
+        source_version_number: 3,
+      },
+    ],
+  });
+
+  assert.equal(coverage.totalChannels, 6);
+  assert.equal(coverage.savedCount, 6);
+  assert.equal(coverage.readyCount, 6);
+  assert.equal(coverage.missingCount, 0);
+  assert.equal(coverage.staleCount, 0);
+  assert.deepEqual(coverage.missingChannels, []);
+  assert.deepEqual(coverage.staleChannels, []);
+  assert.equal(coverage.nextAction, "Адаптации готовы");
+});
+
+test("publication variant coverage asks for the first adaptation when nothing is saved", () => {
+  const coverage = getContentFactoryPublicationVariantCoverage({
+    publication: {
+      version_number: 1,
+    },
+    savedVariants: [],
+  });
+
+  assert.equal(coverage.savedCount, 0);
+  assert.equal(coverage.readyCount, 0);
+  assert.equal(coverage.missingCount, 6);
+  assert.equal(coverage.staleCount, 0);
+  assert.equal(coverage.nextAction, "Сохраните первую адаптацию");
 });
 
 test("formatContentFactoryMetricValue renders numeric and text metrics", () => {

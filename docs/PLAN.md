@@ -1,3 +1,58 @@
+# Active Plan: Content Factory Sprint 34 Variant Coverage
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-34-variant-coverage.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Show editors whether saved publication adaptations are complete and current across all channels.
+
+**Detailed design:** `docs/superpowers/specs/2026-05-15-content-factory-sprint-34-variant-coverage-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-15-content-factory-sprint-34-variant-coverage.md`
+
+**Milestones:**
+
+1. Add failing helper and source guard tests for variant coverage.
+2. Add a frontend-only coverage helper for saved, missing, ready, and stale adaptations.
+3. Render a compact `Готовность адаптаций` summary inside the publication adaptations panel.
+4. Run focused and full frontend verification and update durable repo docs.
+
+**Implementation status:**
+
+- Implemented and verified on branch `codex/content-factory-sprint-34-variant-coverage`.
+- Sprint 1 through Sprint 33 work is merged to `main`.
+
+**Definition of done:**
+
+- Publication detail pages show a coverage summary inside `Адаптации`.
+- Saved, missing, ready, and stale channel counts are derived from saved variants.
+- Blank saved bodies count as missing.
+- Stale variants are detected by comparing `source_version_number` with `publication.version_number`.
+- Existing adaptation save/copy/reset behavior remains unchanged.
+- No backend schema or API changes are added.
+- Verification commands pass and docs are updated.
+
+**Validation commands:**
+
+```bash
+cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- RED confirmed: focused frontend tests failed before implementation because `getContentFactoryPublicationVariantCoverage` and the `Готовность адаптаций` UI block did not exist.
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 96 tests, with existing Node module-type warnings.
+- `cd frontend && npm test` passed: 188 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+- `git diff --check` passed.
+
+---
+
 # Active Plan: Content Factory Sprint 33 RLS Migration Safety
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-33-rls-migration-safety.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.

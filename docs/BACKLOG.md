@@ -4,6 +4,7 @@
 
 ### Next
 
+- Run authenticated manual QA for the Sprint 34 variant coverage summary against saved publication variants.
 - Run authenticated manual QA for the Sprint 32 saved publication variants against real publication texts.
 - Run authenticated manual QA for the Sprint 31 publication adaptations against real publication texts.
 - Run authenticated manual QA for the Sprint 30 publication metric insights against real publication metric rows.

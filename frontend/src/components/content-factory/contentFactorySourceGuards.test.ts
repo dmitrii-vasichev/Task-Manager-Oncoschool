@@ -397,7 +397,11 @@ test("publication detail route exposes manual channel adaptations", () => {
   assert.match(variantsSource, /api\.upsertCFPublicationVariant/);
   assert.match(variantsSource, /navigator\.clipboard\.writeText/);
   assert.match(variantsSource, /buildContentFactoryPublicationVariants/);
+  assert.match(variantsSource, /getContentFactoryPublicationVariantCoverage/);
+  assert.match(variantsSource, /Готовность адаптаций/);
+  assert.match(variantsSource, /source_version_number/);
   assert.match(utilsSource, /buildContentFactoryPublicationVariants/);
+  assert.match(utilsSource, /getContentFactoryPublicationVariantCoverage/);
   assert.match(utilsSource, /ContentFactoryPublicationVariant/);
 });
 

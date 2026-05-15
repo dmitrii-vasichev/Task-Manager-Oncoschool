@@ -1,5 +1,35 @@
 # Status
 
+## Content Factory Sprint 34 Variant Coverage
+
+- Current phase: implemented and verified on branch `codex/content-factory-sprint-34-variant-coverage`
+- Source: Sprint 32 made channel adaptations durable, but editors still need an at-a-glance view of which channel variants are saved, missing, or stale after source publication changes.
+- Design: `docs/superpowers/specs/2026-05-15-content-factory-sprint-34-variant-coverage-design.md`
+- Plan: `docs/superpowers/plans/2026-05-15-content-factory-sprint-34-variant-coverage.md`
+- Scope: frontend-only variant coverage helper, adaptations panel summary, source guards, helper tests, and frontend verification
+- Latest progress:
+  - Confirmed local `main` was clean and created branch `codex/content-factory-sprint-34-variant-coverage`.
+  - Wrote Sprint 34 design and implementation plan.
+  - Added failing helper tests for saved, missing, blank-body, stale, and all-ready variant coverage.
+  - Added source guards for the new coverage helper and `Готовность адаптаций` UI.
+  - Added `getContentFactoryPublicationVariantCoverage`.
+  - Added a compact coverage summary inside `ContentFactoryPublicationVariants`.
+  - Focused and full frontend verification passed after implementation.
+- Key decisions:
+  - Keep Sprint 34 frontend-only and reuse existing saved variants.
+  - Treat blank saved variant bodies as missing.
+  - Use `source_version_number` versus `publication.version_number` to flag stale adaptations.
+- Next actions:
+  - Merge Sprint 34 into `main` and push when ready.
+- Latest verification:
+  - RED confirmed: `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` failed before implementation because the coverage helper and UI block did not exist.
+  - `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 96 tests, with existing Node module-type warnings.
+  - `cd frontend && npm test` passed: 188 tests, with existing Node module-type warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+  - `git diff --check` passed.
+
 ## Content Factory Sprint 33 RLS Migration Safety
 
 - Current phase: implemented, verified, merged to `main`, and pushed

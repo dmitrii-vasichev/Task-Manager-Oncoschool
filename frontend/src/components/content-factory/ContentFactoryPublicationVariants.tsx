@@ -14,6 +14,7 @@ import { useToast } from "@/components/shared/Toast";
 import { api } from "@/lib/api";
 import {
   buildContentFactoryPublicationVariants,
+  getContentFactoryPublicationVariantCoverage,
   type ContentFactoryPublicationVariantKey,
 } from "@/lib/contentFactoryUtils";
 import type {
@@ -106,6 +107,14 @@ export function ContentFactoryPublicationVariants({
       }),
     [bundle, format, platform, publication],
   );
+  const coverage = useMemo(
+    () =>
+      getContentFactoryPublicationVariantCoverage({
+        publication,
+        savedVariants,
+      }),
+    [publication, savedVariants],
+  );
   const [selectedKey, setSelectedKey] =
     useState<ContentFactoryPublicationVariantKey>("telegram");
   const [draftTitle, setDraftTitle] = useState("");
@@ -118,8 +127,8 @@ export function ContentFactoryPublicationVariants({
   const selectedSavedVariant =
     savedVariants.find((variant) => variant.channel === selectedKey) ?? null;
   const savedChannelKeys = useMemo(
-    () => new Set(savedVariants.map((variant) => variant.channel)),
-    [savedVariants],
+    () => new Set(coverage.savedChannels.map((channel) => channel.key)),
+    [coverage],
   );
   const isSavedFromOlderPublication =
     selectedSavedVariant !== null &&
@@ -240,6 +249,63 @@ export function ContentFactoryPublicationVariants({
               </p>
             </div>
           ))}
+        </div>
+
+        <div className="rounded-md border border-border/60 bg-muted/10 px-3 py-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase text-muted-foreground">
+                Готовность адаптаций
+              </p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {coverage.savedCount} из {coverage.totalChannels} каналов
+                сохранено
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {coverage.nextAction}
+              </p>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center text-xs sm:min-w-[280px]">
+              <div>
+                <p className="font-semibold text-foreground">
+                  {coverage.readyCount}
+                </p>
+                <p className="text-muted-foreground">готово</p>
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">
+                  {coverage.missingCount}
+                </p>
+                <p className="text-muted-foreground">нет текста</p>
+              </div>
+              <div>
+                <p className="font-semibold text-foreground">
+                  {coverage.staleCount}
+                </p>
+                <p className="text-muted-foreground">устарело</p>
+              </div>
+            </div>
+          </div>
+          {coverage.missingCount > 0 || coverage.staleCount > 0 ? (
+            <div className="mt-3 flex flex-wrap gap-2 text-xs leading-5">
+              {coverage.missingCount > 0 ? (
+                <span className="rounded-md border border-border/60 bg-background px-2 py-1 text-muted-foreground">
+                  Нет:{" "}
+                  {coverage.missingChannels
+                    .map((channel) => channel.label)
+                    .join(", ")}
+                </span>
+              ) : null}
+              {coverage.staleCount > 0 ? (
+                <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-amber-900">
+                  Устарели:{" "}
+                  {coverage.staleChannels
+                    .map((channel) => channel.label)
+                    .join(", ")}
+                </span>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="flex gap-2 overflow-x-auto pb-1">

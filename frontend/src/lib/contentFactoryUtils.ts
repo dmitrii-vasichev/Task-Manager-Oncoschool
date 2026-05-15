@@ -942,6 +942,18 @@ export type ContentFactoryPublicationVariantKey =
   | "max"
   | "dzen";
 
+export const CONTENT_FACTORY_PUBLICATION_VARIANT_CHANNELS: Array<{
+  key: ContentFactoryPublicationVariantKey;
+  label: string;
+}> = [
+  { key: "telegram", label: "Telegram" },
+  { key: "vk", label: "VK" },
+  { key: "email", label: "Email" },
+  { key: "push", label: "Push" },
+  { key: "max", label: "Max" },
+  { key: "dzen", label: "Дзен" },
+];
+
 type PublicationVariantPublicationLike = {
   id: string;
   title?: string | null;
@@ -972,6 +984,43 @@ export type ContentFactoryPublicationVariantsInput = {
   platform?: PublishPackageReferenceLike;
   format?: PublishPackageReferenceLike;
   bundle?: PublishPackageReferenceLike;
+};
+
+type PublicationVariantCoveragePublicationLike = {
+  version_number?: number | null;
+};
+
+type PublicationVariantCoverageSavedVariantLike = {
+  channel: ContentFactoryPublicationVariantKey | string;
+  body_text?: string | null;
+  source_version_number?: number | null;
+};
+
+export type ContentFactoryPublicationVariantCoverageChannel = {
+  key: ContentFactoryPublicationVariantKey;
+  label: string;
+  saved: boolean;
+  stale: boolean;
+  sourceVersionNumber: number | null;
+};
+
+export type ContentFactoryPublicationVariantCoverage = {
+  totalChannels: number;
+  savedCount: number;
+  readyCount: number;
+  missingCount: number;
+  staleCount: number;
+  savedChannels: ContentFactoryPublicationVariantCoverageChannel[];
+  readyChannels: ContentFactoryPublicationVariantCoverageChannel[];
+  missingChannels: ContentFactoryPublicationVariantCoverageChannel[];
+  staleChannels: ContentFactoryPublicationVariantCoverageChannel[];
+  channels: ContentFactoryPublicationVariantCoverageChannel[];
+  nextAction: string;
+};
+
+export type ContentFactoryPublicationVariantCoverageInput = {
+  publication: PublicationVariantCoveragePublicationLike;
+  savedVariants?: PublicationVariantCoverageSavedVariantLike[] | null;
 };
 
 export type ContentFactorySegmentSummary = {
@@ -2416,6 +2465,73 @@ export function buildContentFactoryPublicationVariants(
     sourceBody: body,
     contextRows,
     variants: variantInputs.map(publicationVariant),
+  };
+}
+
+export function getContentFactoryPublicationVariantCoverage({
+  publication,
+  savedVariants = [],
+}: ContentFactoryPublicationVariantCoverageInput): ContentFactoryPublicationVariantCoverage {
+  const publicationVersion = publication.version_number ?? 0;
+  const savedByChannel = new Map<
+    ContentFactoryPublicationVariantKey,
+    PublicationVariantCoverageSavedVariantLike
+  >();
+
+  for (const variant of savedVariants ?? []) {
+    const channel = CONTENT_FACTORY_PUBLICATION_VARIANT_CHANNELS.find(
+      (item) => item.key === variant.channel,
+    );
+    if (channel) {
+      savedByChannel.set(channel.key, variant);
+    }
+  }
+
+  const channels = CONTENT_FACTORY_PUBLICATION_VARIANT_CHANNELS.map((channel) => {
+    const savedVariant = savedByChannel.get(channel.key);
+    const saved = Boolean(savedVariant?.body_text?.trim());
+    const sourceVersionNumber = savedVariant?.source_version_number ?? null;
+    const stale =
+      saved &&
+      sourceVersionNumber !== null &&
+      sourceVersionNumber < publicationVersion;
+
+    return {
+      key: channel.key,
+      label: channel.label,
+      saved,
+      stale,
+      sourceVersionNumber,
+    };
+  });
+
+  const savedChannels = channels.filter((channel) => channel.saved);
+  const readyChannels = channels.filter(
+    (channel) => channel.saved && !channel.stale,
+  );
+  const missingChannels = channels.filter((channel) => !channel.saved);
+  const staleChannels = channels.filter((channel) => channel.stale);
+  const nextAction =
+    savedChannels.length === 0
+      ? "Сохраните первую адаптацию"
+      : staleChannels.length > 0
+        ? "Обновите адаптации после изменения публикации"
+        : missingChannels.length > 0
+          ? "Заполните недостающие каналы"
+          : "Адаптации готовы";
+
+  return {
+    totalChannels: channels.length,
+    savedCount: savedChannels.length,
+    readyCount: readyChannels.length,
+    missingCount: missingChannels.length,
+    staleCount: staleChannels.length,
+    savedChannels,
+    readyChannels,
+    missingChannels,
+    staleChannels,
+    channels,
+    nextAction,
   };
 }
 

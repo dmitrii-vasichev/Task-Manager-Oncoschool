@@ -1,5 +1,27 @@
 # Test Plan
 
+## Content Factory Sprint 34 Variant Coverage
+
+### Automated
+
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Open a publication detail page with no saved variants.
+2. Confirm `Адаптации` shows `Готовность адаптаций` and asks to save the first adaptation.
+3. Save Telegram and VK adaptations.
+4. Confirm the summary shows `2 из 6 каналов сохранено` and lists missing channels.
+5. Edit the publication source text so the publication version increases.
+6. Confirm previously saved variants are marked as stale.
+7. Save a stale channel again and confirm it moves back to ready.
+8. Confirm existing channel switching, reset, save, and copy actions still work.
+
 ## Content Factory Sprint 33 RLS Migration Safety
 
 ### Automated
