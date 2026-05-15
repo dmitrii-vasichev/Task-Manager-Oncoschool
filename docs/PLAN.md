@@ -26,7 +26,7 @@
 
 **Implementation status:**
 
-- Implemented and full frontend verification passed on branch `codex/content-factory-sprint-25-review-triage`.
+- Implemented, verified, merged to `main`, and pushed.
 - Sprint 1 through Sprint 24 work is merged to `main`.
 - Sprint 25 builds on publication readiness, publish packages, and calendar operations by turning the review queue into an actionable worklist.
 

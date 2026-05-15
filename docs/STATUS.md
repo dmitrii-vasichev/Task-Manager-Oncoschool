@@ -2,7 +2,7 @@
 
 ## Content Factory Sprint 25 Review Queue Triage
 
-- Current phase: implemented and full frontend verification passed on branch `codex/content-factory-sprint-25-review-triage`
+- Current phase: implemented, verified, merged to `main`, and pushed
 - Source: the review queue grouped publications by workflow status, but users still had to infer the operational meaning from raw-ish group labels and open each publication to understand the next action.
 - Deep research: `docs/content-factory-market-context-report.md`
 - Design: `docs/superpowers/specs/2026-05-15-content-factory-sprint-25-review-triage-design.md`
@@ -22,7 +22,6 @@
   - Treat the review queue as an operational worklist, not as an editing surface.
   - Keep backend transitions, approval automation, notifications, automatic publishing, and platform integrations out of scope.
 - Next actions:
-  - Merge and push Sprint 25.
   - Run authenticated manual QA against real review queue records when useful.
 - Latest verification:
   - `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 82 tests, with existing Node module-type warnings.
