@@ -141,6 +141,19 @@ test("content factory overview help explains operating model and automation boun
   );
 });
 
+test("content factory help explains publication planning readiness and adaptations", () => {
+  const source = readSource("app/content-factory/help/page.tsx");
+
+  assert.match(source, /Планирование публикации: от календаря до готовности/);
+  assert.match(source, /Календарь показывает рабочий план/);
+  assert.match(source, /Карточка публикации собирает источник правды/);
+  assert.match(source, /Адаптации показывают готовность каналов/);
+  assert.match(source, /Чек-лист готовности помогает не пропустить шаг/);
+  assert.match(source, /дата в календаре не означает автопубликацию/i);
+  assert.match(source, /устаревш/i);
+  assert.match(source, /скопировать готовые/i);
+});
+
 test("dashboard and calendar routes exist", () => {
   assert.match(
     readSource("app/content-factory/dashboard/page.tsx"),

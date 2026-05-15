@@ -1,3 +1,58 @@
+# Active Plan: Content Factory Sprint 39 Help For Publications
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-39-help-publications.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Add detailed practical help for calendar planning, publication records, channel adaptations, manual handoff, and readiness.
+
+**Detailed design:** `docs/superpowers/specs/2026-05-15-content-factory-sprint-39-help-publications-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-15-content-factory-sprint-39-help-publications.md`
+
+**Milestones:**
+
+1. Add a failing source-guard test for publication planning help.
+2. Expand `/content-factory/help` with calendar, publication, adaptation, readiness, manual handoff, and confusion-note guidance.
+3. Run focused and full frontend verification and update durable repo docs.
+
+**Implementation status:**
+
+- Implemented, verified, merged to `main`, and pushed.
+- Sprint 1 through Sprint 39 work is merged to `main` and pushed.
+
+**Definition of done:**
+
+- The help page explains how the calendar should be used for planning and triage.
+- The help page explains what belongs in a publication record.
+- The help page explains saved, missing, and stale channel adaptations.
+- The help page explains how the readiness checklist should be interpreted before and after publication.
+- The help page clearly says that a planned date is not automatic publishing yet.
+- Existing global overview help remains intact.
+- No backend schema or API changes are added.
+- Verification commands pass and docs are updated.
+
+**Validation commands:**
+
+```bash
+cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- RED confirmed: focused source-guard tests failed before implementation because the help page did not contain the publication planning section.
+- `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 34 tests, with existing Node module-type warning.
+- `cd frontend && npm test` passed: 193 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/help`.
+- `git diff --check` passed.
+
+---
+
 # Active Plan: Content Factory Sprint 38 Help Overview
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-38-help-overview.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.

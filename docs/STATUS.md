@@ -1,5 +1,36 @@
 # Status
 
+## Content Factory Sprint 39 Help For Publications
+
+- Current phase: implemented, verified, merged to `main`, and pushed
+- Source: Sprint 38 added the global help overview. Sprint 39 adds the first detailed practical help slice for day-to-day publication planning.
+- Design: `docs/superpowers/specs/2026-05-15-content-factory-sprint-39-help-publications-design.md`
+- Plan: `docs/superpowers/plans/2026-05-15-content-factory-sprint-39-help-publications.md`
+- Scope: frontend-only help expansion for calendar, publication records, adaptations, readiness, manual handoff, source guard, durable docs, and frontend verification
+- Latest progress:
+  - Created branch `codex/content-factory-sprint-39-help-publications`.
+  - Wrote Sprint 39 design and implementation plan.
+  - Added a failing source-guard test for publication planning, readiness, and adaptation help.
+  - Expanded `/content-factory/help` with practical guidance for calendar planning, publication records, channel adaptations, readiness, manual publishing, and common confusion points.
+  - Focused source-guard verification passed after implementation.
+  - Full frontend verification passed.
+  - Merged Sprint 39 into local `main`.
+  - Pushed Sprint 39 to `origin/main`.
+- Key decisions:
+  - Keep the detailed help inside the existing `/content-factory/help` route for now.
+  - Explain current manual publishing honestly instead of implying scheduled auto-posting exists.
+  - Split campaign/review/audience help and metric/retro/reference help into later sprints.
+- Next actions:
+  - Start Sprint 40: detailed help for campaigns, review queue, and audiences.
+- Latest verification:
+  - RED confirmed: `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` failed before implementation because the help page did not contain the publication planning section.
+  - `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 34 tests, with existing Node module-type warning.
+  - `cd frontend && npm test` passed: 193 tests, with existing Node module-type warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/content-factory/help`.
+  - `git diff --check` passed.
+
 ## Content Factory Sprint 38 Help Overview
 
 - Current phase: implemented, verified, merged to `main`, and pushed

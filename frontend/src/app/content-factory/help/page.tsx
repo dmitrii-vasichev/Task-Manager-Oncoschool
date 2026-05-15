@@ -2,12 +2,17 @@
 
 import Link from "next/link";
 import {
+  AlertTriangle,
   BookOpen,
+  CalendarDays,
   CheckCircle2,
   ClipboardCheck,
   Compass,
+  FileText,
   Info,
+  Layers3,
   Lightbulb,
+  ListChecks,
   Rocket,
   ShieldCheck,
   Sparkles,
@@ -95,6 +100,67 @@ const FIRST_SAFE_PATH = [
   "Доведите публикацию до одобрения или календаря через быстрые действия.",
   "Опубликуйте вручную, вставьте ссылку и дату факта.",
   "Через 24 часа внесите первые метрики и сохраните вывод в ретроспективе.",
+];
+
+const PUBLICATION_PLANNING_HELP = [
+  {
+    icon: CalendarDays,
+    title: "Календарь показывает рабочий план",
+    text: "Календарь нужен не только для дат. Он показывает, что запланировано, что просрочено, что осталось без даты, какие публикации уже вышли и где процесс застрял. Фильтры помогают смотреть план по статусу, площадке, формату, ответственному и кампании.",
+    tips: [
+      "Если публикация без даты, она попадет в отдельную группу и не потеряется.",
+      "Дата в календаре помогает команде договориться о сроке, но пока не запускает публикацию автоматически.",
+      "Просроченные и проблемные элементы стоит открывать из календаря и доводить до следующего статуса.",
+    ],
+  },
+  {
+    icon: FileText,
+    title: "Карточка публикации собирает источник правды",
+    text: "Карточка публикации хранит то, что раньше расползалось по таблицам и чатам: название, текст, площадку, формат, рубрику, нозологию, ответственного, плановую дату, UTM, аудитории, историю изменений и факт выхода.",
+    tips: [
+      "Не обязательно заполнять все сразу: начните с площадки, формата, даты и ответственного.",
+      "Текст публикации - исходник, от которого дальше делаются адаптации под каналы.",
+      "Ссылка на пост и внешний ID заполняются после ручной публикации или будущей интеграции.",
+    ],
+  },
+  {
+    icon: Layers3,
+    title: "Адаптации показывают готовность каналов",
+    text: "Одна идея редко одинаково работает в Telegram, VK, email, push, Max и Dzen. Адаптации позволяют сохранить отдельный текст под каждый канал, увидеть сохраненные, отсутствующие и устаревшие версии, а затем скопировать готовые тексты для ручной публикации.",
+    tips: [
+      "Сохраненная адаптация привязана к версии исходного текста.",
+      "Если исходный текст изменился, старая адаптация может стать устаревшей и ее нужно пересмотреть.",
+      "Кнопка «Скопировать готовые» собирает только актуальные сохраненные каналы.",
+    ],
+  },
+  {
+    icon: ListChecks,
+    title: "Чек-лист готовности помогает не пропустить шаг",
+    text: "Готовность - это не наказание и не блокировка черновика. Это подсказка, что еще мешает спокойно выпускать материал: нет текста, не хватает даты, статус не дошел до одобрения, адаптации не готовы, ссылка не записана или метрики появятся только после публикации.",
+    tips: [
+      "До публикации чек-лист помогает закрыть текст, дату, статус, аудитории и адаптации.",
+      "После публикации он напоминает записать ссылку, дату факта и первые метрики.",
+      "Пункты «после публикации» могут ждать своего момента и не должны пугать на этапе подготовки.",
+    ],
+  },
+];
+
+const MANUAL_PUBLICATION_FLOW = [
+  "Создайте публикацию из списка, кампании или будущего импорта Excel.",
+  "Поставьте плановую дату, площадку, формат и ответственного.",
+  "Заполните исходный текст, UTM и аудитории настолько, насколько они известны.",
+  "Сохраните адаптации для каналов, где материал действительно будет выходить.",
+  "Проведите проверку: текст, дизайн, фактчек, врачебное согласование и одобрение.",
+  "Скопируйте пакет или готовые адаптации и опубликуйте вручную во внешнем канале.",
+  "Вернитесь в карточку и сохраните факт публикации: дату, ссылку и внешний ID.",
+  "Добавьте первые метрики и используйте их в эффективности и ретроспективе.",
+];
+
+const PUBLICATION_CONFUSION_NOTES = [
+  "Плановая дата в календаре не означает автопубликацию: автоматический выпуск появится позже через очередь публикации и интеграции.",
+  "Устаревшая адаптация не удаляется сама: она остается как рабочая версия, но команда видит, что исходный текст уже изменился.",
+  "Метрики нужны не для красивого отчета, а как evidence: по ним видно, какой канал, тема, аудитория и CTA действительно сработали.",
+  "Чек-лист готовности помогает принять решение, но ранний черновик может быть неполным - это нормальное состояние производства.",
 ];
 
 const GLOSSARY = [
@@ -281,6 +347,92 @@ export default function ContentFactoryHelpPage() {
             </li>
           ))}
         </ol>
+      </section>
+
+      <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm sm:px-5">
+        <div className="flex items-center gap-2">
+          <CalendarDays className="h-4 w-4 text-primary" />
+          <h2 className="text-sm font-semibold text-foreground">
+            Планирование публикации: от календаря до готовности
+          </h2>
+        </div>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          Этот блок помогает пройти путь одной публикации: увидеть ее в плане,
+          собрать карточку, подготовить адаптации, проверить готовность,
+          опубликовать вручную и вернуться за ссылкой и метриками.
+        </p>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {PUBLICATION_PLANNING_HELP.map((item) => {
+            const Icon = item.icon;
+            return (
+              <article
+                key={item.title}
+                className="rounded-lg border border-border/70 bg-background px-4 py-4"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-foreground">
+                      {item.title}
+                    </h3>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {item.text}
+                    </p>
+                  </div>
+                </div>
+                <ul className="mt-3 space-y-1.5 text-xs leading-5 text-muted-foreground">
+                  {item.tips.map((tip) => (
+                    <li key={tip} className="flex gap-2">
+                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-primary/70" />
+                      <span>{tip}</span>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,0.72fr)]">
+          <div className="rounded-lg border border-border/70 bg-muted/20 px-4 py-4">
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="h-4 w-4 text-primary" />
+              <h3 className="text-sm font-semibold text-foreground">
+                Ручной маршрут публикации сегодня
+              </h3>
+            </div>
+            <ol className="mt-3 grid gap-2 md:grid-cols-2">
+              {MANUAL_PUBLICATION_FLOW.map((step, index) => (
+                <li
+                  key={step}
+                  className="flex gap-3 rounded-md bg-background px-3 py-2 text-sm leading-6 text-muted-foreground"
+                >
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                    {index + 1}
+                  </span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-amber-900">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4" />
+              <h3 className="text-sm font-semibold">Что часто путают</h3>
+            </div>
+            <ul className="mt-3 space-y-2 text-sm leading-6">
+              {PUBLICATION_CONFUSION_NOTES.map((note) => (
+                <li key={note} className="flex gap-2">
+                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-700" />
+                  <span>{note}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
       </section>
 
       <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm sm:px-5">

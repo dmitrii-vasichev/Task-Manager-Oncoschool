@@ -4,7 +4,6 @@
 
 ### Next
 
-- Execute Sprint 39: detailed help for calendar, publications, adaptations, and readiness.
 - Execute Sprint 40: detailed help for campaigns, review queue, and audiences.
 - Execute Sprint 41: detailed help for metrics, effectiveness, retrospectives, and references.
 - Execute Sprint 42: publication plan import from spreadsheet-like manual planning data.

@@ -1,5 +1,27 @@
 # Test Plan
 
+## Content Factory Sprint 39 Help For Publications
+
+### Automated
+
+- `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Open `/content-factory/help`.
+2. Confirm there is a section named `Планирование публикации: от календаря до готовности`.
+3. Confirm the calendar guidance explains dates, filters, overdue items, and unscheduled publications.
+4. Confirm the publication-card guidance explains source text, platform, format, rubric, nosology, responsible user, UTM, audiences, and publish evidence.
+5. Confirm the adaptations guidance explains saved, missing, and stale channel variants.
+6. Confirm the readiness guidance explains before-publication and after-publication checks.
+7. Confirm the page says a planned date in the calendar does not mean automatic publishing yet.
+8. Confirm the layout remains readable on desktop and mobile without overlapping text.
+
 ## Content Factory Sprint 38 Help Overview
 
 ### Automated
