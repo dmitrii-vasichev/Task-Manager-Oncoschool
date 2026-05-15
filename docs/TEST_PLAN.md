@@ -1,5 +1,27 @@
 # Test Plan
 
+## Content Factory Sprint 31 Publication Variants
+
+### Automated
+
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Open a publication detail page with title, body text, and UTM.
+2. Confirm `Адаптации` appears below `Пакет для публикации`.
+3. Switch between Telegram, VK, email, push, Max, and Dzen variants.
+4. Confirm each preview uses the current publication text and readable channel wording.
+5. Click `Скопировать адаптацию` and paste into a scratch note.
+6. Confirm copied text includes UTM when publication UTM exists.
+7. Open a publication without body text and confirm the panel shows a readable warning.
+8. Confirm the existing publish package, metric insights, and metric history still work below/around the new panel.
+
 ## Content Factory Sprint 30 Metric Insights
 
 ### Automated

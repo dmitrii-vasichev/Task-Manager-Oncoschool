@@ -19,6 +19,7 @@ import { ContentFactoryMetricInsights } from "@/components/content-factory/Conte
 import { ContentFactoryPublicationOperationsPanel } from "@/components/content-factory/ContentFactoryPublicationOperationsPanel";
 import { ContentFactoryPublicationDialog } from "@/components/content-factory/ContentFactoryPublicationDialog";
 import { ContentFactoryPublicationPublishPackage } from "@/components/content-factory/ContentFactoryPublicationPublishPackage";
+import { ContentFactoryPublicationVariants } from "@/components/content-factory/ContentFactoryPublicationVariants";
 import { ContentFactoryPublicationWorkflowActionsPanel } from "@/components/content-factory/ContentFactoryPublicationWorkflowActionsPanel";
 import { ContentFactoryPublicationVersionList } from "@/components/content-factory/ContentFactoryPublicationVersionList";
 import { ContentFactorySegmentTargetsPanel } from "@/components/content-factory/ContentFactorySegmentTargetsPanel";
@@ -281,6 +282,13 @@ export default function ContentFactoryPublicationDetailPage() {
             bundle={bundle}
             segments={segments}
             segmentTargets={segmentTargets}
+          />
+
+          <ContentFactoryPublicationVariants
+            publication={publication}
+            platform={platform}
+            format={format}
+            bundle={bundle}
           />
 
           <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm">

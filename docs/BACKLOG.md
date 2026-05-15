@@ -4,6 +4,7 @@
 
 ### Next
 
+- Run authenticated manual QA for the Sprint 31 publication adaptations against real publication texts.
 - Run authenticated manual QA for the Sprint 30 publication metric insights against real publication metric rows.
 - Run authenticated manual QA for the Sprint 29 metric paste import against real publication metric rows.
 - Run authenticated manual QA for the Sprint 28 workflow guardrails against real publication records.

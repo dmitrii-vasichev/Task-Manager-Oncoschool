@@ -21,6 +21,7 @@ const {
   buildContentFactoryEffectivenessRows,
   buildContentFactoryGuestStageTimeline,
   buildContentFactoryPublishPackage,
+  buildContentFactoryPublicationVariants,
   buildContentFactorySegmentUsageRows,
   buildContentFactoryUtm,
   canAccessContentFactory,
@@ -1392,6 +1393,83 @@ test("publication publish package composes a copy-ready handoff", () => {
   assert.match(publishPackage.copyText, /"utm_source": "telegram"/);
   assert.match(publishPackage.copyText, /Друзья, завтра встречаемся на вебинаре\./);
   assert.match(publishPackage.copyText, /https:\/\/assets\.example\.com\/banner\.png/);
+});
+
+test("publication variants build copy-ready channel adaptations", () => {
+  const variants = buildContentFactoryPublicationVariants({
+    publication: {
+      id: "pub-1",
+      title: "Вебинар по РМЖ",
+      body_text: "Разберём подготовку к лечению и вопросы к врачу.",
+      utm: {
+        utm_source: "telegram",
+        utm_medium: "post",
+        utm_campaign: "rmj-webinar",
+      },
+    },
+    platform: {
+      id: "platform-telegram",
+      code: "telegram",
+      display_name: "Telegram",
+    },
+    format: {
+      id: "format-post",
+      code: "post",
+      display_name: "Пост",
+    },
+    bundle: {
+      id: "bundle-1",
+      name: "РМЖ май",
+    },
+  });
+
+  assert.equal(variants.sourceTitle, "Вебинар по РМЖ");
+  assert.equal(variants.sourceBody, "Разберём подготовку к лечению и вопросы к врачу.");
+  assert.deepEqual(
+    variants.variants.map((variant) => [variant.key, variant.channelLabel]),
+    [
+      ["telegram", "Telegram"],
+      ["vk", "VK"],
+      ["email", "Email"],
+      ["push", "Push"],
+      ["max", "Max"],
+      ["dzen", "Дзен"],
+    ],
+  );
+  assert.match(variants.contextRows.map((row) => row.value).join(" "), /РМЖ май/);
+
+  const email = variants.variants.find((variant) => variant.key === "email");
+  assert.equal(email?.title, "Вебинар по РМЖ");
+  assert.match(email?.body ?? "", /Тема:/);
+  assert.match(email?.body ?? "", /Прехедер:/);
+  assert.match(email?.copyText ?? "", /Канал: Email/);
+  assert.match(email?.copyText ?? "", /UTM:/);
+  assert.match(email?.copyText ?? "", /"utm_campaign": "rmj-webinar"/);
+
+  const push = variants.variants.find((variant) => variant.key === "push");
+  assert.equal(push?.lengthHint, "До 200 знаков");
+  assert.match(push?.copyText ?? "", /Канал: Push/);
+});
+
+test("publication variants warn when source text is missing", () => {
+  const variants = buildContentFactoryPublicationVariants({
+    publication: {
+      id: "pub-empty",
+      title: "",
+      body_text: "",
+      utm: {},
+    },
+  });
+
+  assert.equal(variants.sourceTitle, "Без названия");
+  assert.equal(variants.sourceBody, "Текст публикации не заполнен");
+  assert.ok(
+    variants.variants.every((variant) =>
+      variant.warnings.includes("Текст публикации не заполнен"),
+    ),
+  );
+  assert.match(variants.variants[0]?.copyText ?? "", /Текст публикации не заполнен/);
+  assert.doesNotMatch(variants.variants[0]?.copyText ?? "", /UTM:/);
 });
 
 test("formatContentFactoryMetricValue renders numeric and text metrics", () => {

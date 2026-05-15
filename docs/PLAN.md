@@ -1,3 +1,66 @@
+# Active Plan: Content Factory Sprint 31 Publication Variants
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-31-publication-variants.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Add a frontend-only publication adaptations panel that produces copy-ready channel variants from the current publication text.
+
+**Recovered design:** `docs/content-factory-design.md`
+
+**Preserved market research:** `docs/content-factory-market-context-report.md`
+
+**Detailed design:** `docs/superpowers/specs/2026-05-15-content-factory-sprint-31-publication-variants-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-15-content-factory-sprint-31-publication-variants.md`
+
+**Backlog:** `docs/BACKLOG.md`
+
+**Milestones:**
+
+1. Add helper tests for copy-ready channel variants, UTM inclusion, and missing-body warnings.
+2. Add `buildContentFactoryPublicationVariants`.
+3. Add `ContentFactoryPublicationVariants`.
+4. Wire the adaptations panel into publication detail pages below the publish package.
+5. Run frontend verification and update durable repo docs.
+
+**Implementation status:**
+
+- Implemented and verified on branch `codex/content-factory-sprint-31-publication-variants`.
+- Pending merge to `main` and push.
+- Sprint 1 through Sprint 30 work is merged to `main`.
+- Sprint 31 introduces manual channel adaptations before backend variant persistence or AI generation.
+
+**Definition of done:**
+
+- Publication detail pages show `Адаптации` below the publish package.
+- The panel provides copy-ready variants for Telegram, VK, email, push, Max, and Dzen.
+- Users can switch channel previews and copy the selected adaptation.
+- Missing source text shows a readable warning.
+- UTM data is included in copied text when present.
+- No backend schema, endpoint, AI generation, style-guide model, save flow, or platform posting API is added.
+- Verification commands pass and docs are updated.
+
+**Validation commands:**
+
+```bash
+cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryUtils.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 93 tests, with existing Node module-type warnings.
+- `cd frontend && npm test` passed: 184 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+- `git diff --check` passed.
+
+---
+
 # Active Plan: Content Factory Sprint 30 Metric Insights
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-30-metric-insights.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.

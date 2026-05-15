@@ -934,6 +934,46 @@ export type ContentFactoryPublishPackageInput = {
   segmentTargets?: PublishPackageSegmentTargetLike[];
 };
 
+export type ContentFactoryPublicationVariantKey =
+  | "telegram"
+  | "vk"
+  | "email"
+  | "push"
+  | "max"
+  | "dzen";
+
+type PublicationVariantPublicationLike = {
+  id: string;
+  title?: string | null;
+  body_text?: string | null;
+  utm?: Record<string, unknown> | null;
+};
+
+export type ContentFactoryPublicationVariant = {
+  key: ContentFactoryPublicationVariantKey;
+  channelLabel: string;
+  useCase: string;
+  title: string;
+  body: string;
+  lengthHint: string;
+  warnings: string[];
+  copyText: string;
+};
+
+export type ContentFactoryPublicationVariants = {
+  sourceTitle: string;
+  sourceBody: string;
+  contextRows: ContentFactoryPublishPackageRow[];
+  variants: ContentFactoryPublicationVariant[];
+};
+
+export type ContentFactoryPublicationVariantsInput = {
+  publication: PublicationVariantPublicationLike;
+  platform?: PublishPackageReferenceLike;
+  format?: PublishPackageReferenceLike;
+  bundle?: PublishPackageReferenceLike;
+};
+
 export type ContentFactorySegmentSummary = {
   total: number;
   active: number;
@@ -2200,6 +2240,182 @@ export function buildContentFactoryPublishPackage(
     utmText,
     audienceText,
     copyText,
+  };
+}
+
+function compactVariantText(value: string, maxLength: number): string {
+  const compact = value.trim().replace(/\s+/g, " ");
+  if (compact.length <= maxLength) return compact;
+  const sliced = compact.slice(0, Math.max(maxLength - 1, 0)).trimEnd();
+  return `${sliced}…`;
+}
+
+function buildPublicationVariantCopyText({
+  channelLabel,
+  useCase,
+  title,
+  body,
+  warnings,
+  utmText,
+}: {
+  channelLabel: string;
+  useCase: string;
+  title: string;
+  body: string;
+  warnings: string[];
+  utmText: string | null;
+}): string {
+  const lines = [
+    `Канал: ${channelLabel}`,
+    `Назначение: ${useCase}`,
+    "",
+    "Заголовок:",
+    title,
+    "",
+    "Текст:",
+    body,
+  ];
+
+  if (warnings.length > 0) {
+    lines.push("", "Проверить:", ...warnings.map((warning) => `- ${warning}`));
+  }
+  if (utmText) {
+    lines.push("", "UTM:", utmText);
+  }
+
+  return lines.join("\n");
+}
+
+function publicationVariant({
+  key,
+  channelLabel,
+  useCase,
+  title,
+  body,
+  lengthHint,
+  warnings,
+  utmText,
+}: Omit<ContentFactoryPublicationVariant, "copyText"> & {
+  utmText: string | null;
+}): ContentFactoryPublicationVariant {
+  return {
+    key,
+    channelLabel,
+    useCase,
+    title,
+    body,
+    lengthHint,
+    warnings,
+    copyText: buildPublicationVariantCopyText({
+      channelLabel,
+      useCase,
+      title,
+      body,
+      warnings,
+      utmText,
+    }),
+  };
+}
+
+export function buildContentFactoryPublicationVariants(
+  input: ContentFactoryPublicationVariantsInput,
+): ContentFactoryPublicationVariants {
+  const title = input.publication.title?.trim() || "Без названия";
+  const hasBody = Boolean(input.publication.body_text?.trim());
+  const body = input.publication.body_text?.trim() || "Текст публикации не заполнен";
+  const warnings = hasBody ? [] : ["Текст публикации не заполнен"];
+  const utmText =
+    cleanUtmEntries(input.publication.utm).length > 0
+      ? formatPublishPackageUtm(input.publication.utm)
+      : null;
+  const compactBody = compactVariantText(body, 280);
+  const shortBody = compactVariantText(body, 140);
+  const preheader = compactVariantText(body, 90);
+  const contextRows: ContentFactoryPublishPackageRow[] = [
+    {
+      label: "Исходный канал",
+      value: publishPackageReferenceLabel(input.platform, "Площадка не указана"),
+    },
+    {
+      label: "Формат",
+      value: publishPackageReferenceLabel(input.format, "Формат не указан"),
+    },
+    {
+      label: "Кампания",
+      value: publishPackageReferenceLabel(input.bundle, "Кампания не указана"),
+    },
+  ];
+
+  const variantInputs: Array<
+    Omit<ContentFactoryPublicationVariant, "copyText"> & { utmText: string | null }
+  > = [
+    {
+      key: "telegram",
+      channelLabel: "Telegram",
+      useCase: "Основной пост или анонс в канале",
+      title,
+      body: `${title}\n\n${body}\n\nCTA: добавьте ссылку, кнопку или следующий шаг.`,
+      lengthHint: "Короткий пост",
+      warnings,
+      utmText,
+    },
+    {
+      key: "vk",
+      channelLabel: "VK",
+      useCase: "Пост с обсуждением и комментарием",
+      title,
+      body: `${title}\n\n${body}\n\nНапишите в комментариях, какой вопрос важно разобрать отдельно.\n\nCTA: добавьте ссылку или кнопку.`,
+      lengthHint: "Пост средней длины",
+      warnings,
+      utmText,
+    },
+    {
+      key: "email",
+      channelLabel: "Email",
+      useCase: "Письмо или рассылка",
+      title,
+      body: `Тема: ${title}\nПрехедер: ${preheader}\n\nЗдравствуйте!\n\n${body}\n\nCTA: добавьте ссылку на регистрацию или материал.`,
+      lengthHint: "Subject + preheader + body",
+      warnings,
+      utmText,
+    },
+    {
+      key: "push",
+      channelLabel: "Push",
+      useCase: "Короткое уведомление",
+      title: compactVariantText(title, 55),
+      body: shortBody,
+      lengthHint: "До 200 знаков",
+      warnings,
+      utmText,
+    },
+    {
+      key: "max",
+      channelLabel: "Max",
+      useCase: "Короткий социальный пост",
+      title,
+      body: `${title}\n\n${compactBody}\n\nCTA: добавьте короткую ссылку.`,
+      lengthHint: "Короткая версия",
+      warnings,
+      utmText,
+    },
+    {
+      key: "dzen",
+      channelLabel: "Дзен",
+      useCase: "План лонгрида или заметки",
+      title,
+      body: `${title}\n\nПлан материала:\n1. Почему это важно\n2. Что нужно знать\n3. Что сделать дальше\n\nОснова:\n${body}`,
+      lengthHint: "Outline",
+      warnings,
+      utmText,
+    },
+  ];
+
+  return {
+    sourceTitle: title,
+    sourceBody: body,
+    contextRows,
+    variants: variantInputs.map(publicationVariant),
   };
 }
 

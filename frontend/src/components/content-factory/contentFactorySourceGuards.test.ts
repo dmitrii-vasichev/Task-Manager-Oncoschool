@@ -364,6 +364,35 @@ test("publication detail route exposes manual publish package", () => {
   assert.match(utilsSource, /ContentFactoryPublishPackage/);
 });
 
+test("publication detail route exposes manual channel adaptations", () => {
+  assert.equal(
+    sourceExists("components/content-factory/ContentFactoryPublicationVariants.tsx"),
+    true,
+  );
+
+  const source = readSource("app/content-factory/publications/[id]/page.tsx");
+  const variantsSource = readSource(
+    "components/content-factory/ContentFactoryPublicationVariants.tsx",
+  );
+  const utilsSource = readSource("lib/contentFactoryUtils.ts");
+
+  assert.match(source, /ContentFactoryPublicationVariants/);
+  assert.match(source, /publication={publication}/);
+  assert.match(source, /platform={platform}/);
+  assert.match(source, /format={format}/);
+  assert.match(source, /bundle={bundle}/);
+  assert.ok(
+    source.indexOf("<ContentFactoryPublicationPublishPackage") <
+      source.indexOf("<ContentFactoryPublicationVariants"),
+  );
+  assert.match(variantsSource, /Адаптации/);
+  assert.match(variantsSource, /Скопировать адаптацию/);
+  assert.match(variantsSource, /navigator\.clipboard\.writeText/);
+  assert.match(variantsSource, /buildContentFactoryPublicationVariants/);
+  assert.match(utilsSource, /buildContentFactoryPublicationVariants/);
+  assert.match(utilsSource, /ContentFactoryPublicationVariant/);
+});
+
 test("metric capture surfaces use readable labels and presets", () => {
   const dialogSource = readSource(
     "components/content-factory/ContentFactoryMetricDialog.tsx",
