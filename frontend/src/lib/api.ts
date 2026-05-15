@@ -108,6 +108,9 @@ import type {
   CFPublicationCreateRequest,
   CFPublicationUpdateRequest,
   CFPublicationVersion,
+  CFPublicationVariant,
+  CFPublicationVariantChannel,
+  CFPublicationVariantUpsertRequest,
   CFPublicationListParams,
   CFExternalSegment,
   CFExternalSegmentCreateRequest,
@@ -834,6 +837,28 @@ class ApiClient {
   async getCFPublicationVersions(id: string): Promise<CFPublicationVersion[]> {
     return this.request<CFPublicationVersion[]>(
       `/api/content-factory/publications/${id}/versions`
+    );
+  }
+
+  async getCFPublicationVariants(
+    publicationId: string
+  ): Promise<CFPublicationVariant[]> {
+    return this.request<CFPublicationVariant[]>(
+      `/api/content-factory/publications/${publicationId}/variants`
+    );
+  }
+
+  async upsertCFPublicationVariant(
+    publicationId: string,
+    channel: CFPublicationVariantChannel,
+    data: CFPublicationVariantUpsertRequest
+  ): Promise<CFPublicationVariant> {
+    return this.request<CFPublicationVariant>(
+      `/api/content-factory/publications/${publicationId}/variants/${channel}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }
     );
   }
 

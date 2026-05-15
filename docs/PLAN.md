@@ -1,3 +1,71 @@
+# Active Plan: Content Factory Sprint 32 Saved Publication Variants
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-32-saved-publication-variants.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Add durable saved channel variants for Content Factory publications.
+
+**Recovered design:** `docs/content-factory-design.md`
+
+**Preserved market research:** `docs/content-factory-market-context-report.md`
+
+**Detailed design:** `docs/superpowers/specs/2026-05-15-content-factory-sprint-32-saved-publication-variants-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-15-content-factory-sprint-32-saved-publication-variants.md`
+
+**Backlog:** `docs/BACKLOG.md`
+
+**Milestones:**
+
+1. Add backend model, schema, migration, service, and API tests for saved variants.
+2. Add `cf_publication_variant` persistence with one row per publication/channel.
+3. Add frontend types and API client methods.
+4. Update publication detail pages to load variants.
+5. Turn `Адаптации` into an editable saved-variant panel.
+6. Run backend/frontend verification and update durable repo docs.
+
+**Implementation status:**
+
+- Implemented and verified on branch `codex/content-factory-sprint-32-saved-variants`.
+- Pending merge to `main` and push.
+- Sprint 1 through Sprint 31 work is merged to `main`.
+- Sprint 32 makes Sprint 31 channel adaptations durable without adding AI or publishing integrations.
+
+**Definition of done:**
+
+- Backend exposes saved variants under `/api/content-factory/publications/{publication_id}/variants`.
+- Each publication has at most one saved variant per channel.
+- Publication detail pages load saved variants.
+- The `Адаптации` panel lets users edit title, body, and notes for a selected channel.
+- Users can save and copy the current edited adaptation.
+- Unsaved channels still start from the deterministic Sprint 31 draft.
+- No AI generation, external publishing API, per-variant approval workflow, or delete/archive endpoint is added.
+- Verification commands pass and docs are updated.
+
+**Validation commands:**
+
+```bash
+cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py tests/test_cf_publication_service.py tests/test_content_factory_publications_api.py -q
+cd frontend && node --test --experimental-strip-types src/lib/contentFactoryApiSourceGuards.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_supabase_rls_migration.py::test_rls_migration_covers_every_application_table tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py tests/test_cf_publication_service.py tests/test_content_factory_publications_api.py -q` passed: 69 tests, with existing pytest-asyncio/AsyncMock warnings.
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryApiSourceGuards.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 40 tests, with existing Node module-type warnings.
+- `cd frontend && npm test` passed: 185 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+- `git diff --check` passed.
+- `cd backend && ... pytest -q` was attempted but the local full-suite DB tests could not connect to `test:test@localhost:5432` due invalid Postgres credentials; focused backend verification above passed.
+
+---
+
 # Active Plan: Content Factory Sprint 31 Publication Variants
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-31-publication-variants.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.

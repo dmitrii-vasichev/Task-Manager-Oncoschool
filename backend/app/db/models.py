@@ -1666,6 +1666,11 @@ class CFPublication(Base):
     metric_snapshots: Mapped[list["CFMetricSnapshot"]] = relationship(
         back_populates="publication", cascade="all, delete-orphan"
     )
+    variants: Mapped[list["CFPublicationVariant"]] = relationship(
+        back_populates="publication",
+        cascade="all, delete-orphan",
+        order_by="CFPublicationVariant.channel",
+    )
 
 
 class CFPublicationVersion(Base):
@@ -1685,6 +1690,34 @@ class CFPublicationVersion(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     publication: Mapped["CFPublication"] = relationship(back_populates="versions")
+
+
+class CFPublicationVariant(Base):
+    __tablename__ = "cf_publication_variant"
+    __table_args__ = (
+        UniqueConstraint(
+            "publication_id",
+            "channel",
+            name="uq_cf_publication_variant_channel",
+        ),
+        Index("ix_cf_publication_variant_publication", "publication_id"),
+        Index("ix_cf_publication_variant_channel", "channel"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    publication_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cf_publication.id", ondelete="CASCADE"), nullable=False
+    )
+    channel: Mapped[str] = mapped_column(String(30), nullable=False)
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    body_text: Mapped[str] = mapped_column(Text, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
+    updated_by_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("team_members.id"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    publication: Mapped["CFPublication"] = relationship(back_populates="variants")
 
 
 class CFPublicationRelation(Base):

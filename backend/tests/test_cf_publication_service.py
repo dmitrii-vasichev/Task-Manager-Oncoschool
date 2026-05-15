@@ -8,7 +8,11 @@ from app.services.content_factory.publication_service import (
     PublicationService,
     PublicationWorkflowTransitionError,
 )
-from app.db.schemas import CFPublicationCreate, CFPublicationUpdate
+from app.db.schemas import (
+    CFPublicationCreate,
+    CFPublicationUpdate,
+    CFPublicationVariantUpsert,
+)
 
 
 class TestPublicationService(unittest.IsolatedAsyncioTestCase):
@@ -235,6 +239,109 @@ class TestPublicationService(unittest.IsolatedAsyncioTestCase):
         version = session.add.call_args.args[0]
         self.assertEqual(version.approval_event, "scheduled")
         self.assertEqual(version.notes, "Статус: Одобрено -> Запланировано")
+
+    async def test_upsert_variant_creates_saved_channel_variant(self):
+        session = AsyncMock()
+        publication = SimpleNamespace(
+            id=uuid.uuid4(),
+            version_number=3,
+        )
+        PublicationService.get = AsyncMock(return_value=publication)
+
+        class EmptyResult:
+            @staticmethod
+            def scalar_one_or_none():
+                return None
+
+        session.execute = AsyncMock(return_value=EmptyResult())
+        editor_id = uuid.uuid4()
+
+        result = await PublicationService.upsert_variant(
+            session,
+            publication.id,
+            "telegram",
+            CFPublicationVariantUpsert(
+                title="Telegram saved",
+                body_text="Saved body",
+                notes="Use registration link",
+            ),
+            editor_id=editor_id,
+        )
+
+        self.assertEqual(result.publication_id, publication.id)
+        self.assertEqual(result.channel, "telegram")
+        self.assertEqual(result.title, "Telegram saved")
+        self.assertEqual(result.body_text, "Saved body")
+        self.assertEqual(result.notes, "Use registration link")
+        self.assertEqual(result.source_version_number, 3)
+        self.assertEqual(result.updated_by_id, editor_id)
+        session.add.assert_called_once()
+        session.flush.assert_awaited()
+
+    async def test_upsert_variant_updates_existing_channel_variant(self):
+        session = AsyncMock()
+        publication = SimpleNamespace(
+            id=uuid.uuid4(),
+            version_number=4,
+        )
+        existing = SimpleNamespace(
+            id=uuid.uuid4(),
+            publication_id=publication.id,
+            channel="vk",
+            title="Old",
+            body_text="Old body",
+            notes=None,
+            source_version_number=2,
+            updated_by_id=uuid.uuid4(),
+            updated_at=None,
+        )
+        PublicationService.get = AsyncMock(return_value=publication)
+
+        class ExistingResult:
+            @staticmethod
+            def scalar_one_or_none():
+                return existing
+
+        session.execute = AsyncMock(return_value=ExistingResult())
+        editor_id = uuid.uuid4()
+
+        result = await PublicationService.upsert_variant(
+            session,
+            publication.id,
+            "vk",
+            CFPublicationVariantUpsert(
+                title="New",
+                body_text="New body",
+                notes="Updated note",
+            ),
+            editor_id=editor_id,
+        )
+
+        self.assertIs(result, existing)
+        self.assertEqual(existing.title, "New")
+        self.assertEqual(existing.body_text, "New body")
+        self.assertEqual(existing.notes, "Updated note")
+        self.assertEqual(existing.source_version_number, 4)
+        self.assertEqual(existing.updated_by_id, editor_id)
+        self.assertIsNotNone(existing.updated_at)
+        session.add.assert_not_called()
+        session.flush.assert_awaited()
+
+    async def test_upsert_variant_returns_none_for_missing_publication(self):
+        session = AsyncMock()
+        PublicationService.get = AsyncMock(return_value=None)
+
+        result = await PublicationService.upsert_variant(
+            session,
+            uuid.uuid4(),
+            "telegram",
+            CFPublicationVariantUpsert(body_text="Saved body"),
+            editor_id=uuid.uuid4(),
+        )
+
+        self.assertIsNone(result)
+        session.add.assert_not_called()
+        session.flush.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from app.db.schemas import (
     CFPublicationCreate,
     CFPublicationSegmentTargetCreate,
     CFPublicationUpdate,
+    CFPublicationVariantUpsert,
 )
 from app.services.content_factory.publication_service import (
     PublicationWorkflowTransitionError,
@@ -226,6 +227,102 @@ async def test_list_versions(monkeypatch):
         member=cf_member(), session=AsyncMock(),
     )
     assert len(result) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_publication_variants(monkeypatch):
+    variants = [
+        SimpleNamespace(
+            id=uuid.uuid4(),
+            publication_id=uuid.uuid4(),
+            channel="telegram",
+            title="Telegram",
+            body_text="Saved body",
+            notes=None,
+            source_version_number=1,
+            updated_by_id=uuid.uuid4(),
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+    ]
+    monkeypatch.setattr(
+        pubs_api.publication_service,
+        "list_variants",
+        AsyncMock(return_value=variants),
+    )
+
+    result = await pubs_api.list_publication_variants(
+        publication_id=uuid.uuid4(),
+        member=cf_member(),
+        session=AsyncMock(),
+    )
+
+    assert result == variants
+
+
+@pytest.mark.asyncio
+async def test_upsert_publication_variant(monkeypatch):
+    member = cf_member()
+    publication_id = uuid.uuid4()
+    variant = SimpleNamespace(
+        id=uuid.uuid4(),
+        publication_id=publication_id,
+        channel="telegram",
+        title="Telegram",
+        body_text="Saved body",
+        notes="Check CTA",
+        source_version_number=2,
+        updated_by_id=member.id,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    monkeypatch.setattr(
+        pubs_api.publication_service,
+        "upsert_variant",
+        AsyncMock(return_value=variant),
+    )
+    session = AsyncMock()
+
+    result = await pubs_api.upsert_publication_variant(
+        publication_id=publication_id,
+        channel="telegram",
+        data=CFPublicationVariantUpsert(
+            title="Telegram",
+            body_text="Saved body",
+            notes="Check CTA",
+        ),
+        member=member,
+        session=session,
+    )
+
+    assert result is variant
+    pubs_api.publication_service.upsert_variant.assert_awaited_once()
+    _, args, kwargs = pubs_api.publication_service.upsert_variant.mock_calls[0]
+    assert args[:3] == (session, publication_id, "telegram")
+    assert kwargs["editor_id"] == member.id
+    session.commit.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_upsert_publication_variant_404(monkeypatch):
+    monkeypatch.setattr(
+        pubs_api.publication_service,
+        "upsert_variant",
+        AsyncMock(return_value=None),
+    )
+    session = AsyncMock()
+
+    with pytest.raises(HTTPException) as exc:
+        await pubs_api.upsert_publication_variant(
+            publication_id=uuid.uuid4(),
+            channel="telegram",
+            data=CFPublicationVariantUpsert(body_text="Saved body"),
+            member=cf_member(),
+            session=session,
+        )
+
+    assert exc.value.status_code == 404
+    session.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio

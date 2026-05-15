@@ -38,6 +38,7 @@ import type {
   CFPlatform,
   CFPublication,
   CFPublicationSegmentTarget,
+  CFPublicationVariant,
   CFPublicationVersion,
   CFRubric,
   TeamMember,
@@ -89,6 +90,7 @@ export default function ContentFactoryPublicationDetailPage() {
   const [segmentTargets, setSegmentTargets] = useState<
     CFPublicationSegmentTarget[]
   >([]);
+  const [variants, setVariants] = useState<CFPublicationVariant[]>([]);
   const [metrics, setMetrics] = useState<CFMetricSnapshot[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -111,6 +113,7 @@ export default function ContentFactoryPublicationDetailPage() {
         nosologyRes,
         segmentRes,
         segmentTargetRes,
+        variantRes,
         metricRes,
       ] = await Promise.all([
         api.getCFPublication(id),
@@ -123,6 +126,7 @@ export default function ContentFactoryPublicationDetailPage() {
         api.getCFSegments({ only_active: true }).catch(() => [] as CFExternalSegment[]),
         api.getCFPublicationSegmentTargets(id)
           .catch(() => [] as CFPublicationSegmentTarget[]),
+        api.getCFPublicationVariants(id).catch(() => [] as CFPublicationVariant[]),
         api.getCFMetrics(id).catch(() => [] as CFMetricSnapshot[]),
       ]);
       const bundleRes = await api
@@ -139,6 +143,7 @@ export default function ContentFactoryPublicationDetailPage() {
       setNosologies(nosologyRes);
       setSegments(segmentRes);
       setSegmentTargets(segmentTargetRes);
+      setVariants(variantRes);
       setMetrics(metricRes);
     } catch (err) {
       if (isLatestRequest()) {
@@ -289,6 +294,8 @@ export default function ContentFactoryPublicationDetailPage() {
             platform={platform}
             format={format}
             bundle={bundle}
+            savedVariants={variants}
+            onSaved={handleSaved}
           />
 
           <section className="rounded-lg border border-border/70 bg-card px-4 py-4 shadow-sm">

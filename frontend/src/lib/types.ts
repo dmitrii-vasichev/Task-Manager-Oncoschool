@@ -108,6 +108,13 @@ export type CFPublicationRelationType =
   | "digest_includes"
   | "replaces"
   | "crosspost_of";
+export type CFPublicationVariantChannel =
+  | "telegram"
+  | "vk"
+  | "email"
+  | "push"
+  | "max"
+  | "dzen";
 export type CFSegmentRole = "target" | "exclusion" | "control" | "retargeting";
 export type CFMetricWindow = "3h" | "24h" | "72h" | "7d" | "final" | "custom";
 export type CFMetricSource =
@@ -1346,6 +1353,25 @@ export interface CFPublicationVersion {
   approval_event: CFApprovalEvent;
   source_materials_refs: unknown[];
   notes: string | null;
+}
+
+export interface CFPublicationVariant {
+  id: string;
+  publication_id: string;
+  channel: CFPublicationVariantChannel;
+  title: string | null;
+  body_text: string;
+  notes: string | null;
+  source_version_number: number;
+  updated_by_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CFPublicationVariantUpsertRequest {
+  title?: string | null;
+  body_text: string;
+  notes?: string | null;
 }
 
 export interface CFPublicationSegmentTarget {

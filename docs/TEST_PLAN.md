@@ -1,5 +1,29 @@
 # Test Plan
 
+## Content Factory Sprint 32 Saved Publication Variants
+
+### Automated
+
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py tests/test_cf_publication_service.py tests/test_content_factory_publications_api.py -q`
+- `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryApiSourceGuards.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Open a publication detail page.
+2. Confirm `Адаптации` still appears below `Пакет для публикации`.
+3. Select Telegram and edit title, body, and notes.
+4. Click `Сохранить адаптацию`.
+5. Refresh the page and confirm the saved Telegram text is still present.
+6. Select VK and confirm it starts from the generated draft until saved.
+7. Click `Скопировать адаптацию` and paste into a scratch note.
+8. Confirm copied text uses the edited fields.
+9. Confirm existing publish package, metric insights, metric history, and publication operations still work.
+
 ## Content Factory Sprint 31 Publication Variants
 
 ### Automated

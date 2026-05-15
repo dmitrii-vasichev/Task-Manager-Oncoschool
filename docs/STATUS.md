@@ -1,5 +1,42 @@
 # Status
 
+## Content Factory Sprint 32 Saved Publication Variants
+
+- Current phase: implemented and verified on branch `codex/content-factory-sprint-32-saved-variants`; pending merge to `main` and push
+- Source: Sprint 31 created copy-ready channel adaptations, but edited variants are not durable and cannot be resumed after refresh.
+- Deep research: `docs/content-factory-market-context-report.md`
+- Design: `docs/superpowers/specs/2026-05-15-content-factory-sprint-32-saved-publication-variants-design.md`
+- Plan: `docs/superpowers/plans/2026-05-15-content-factory-sprint-32-saved-publication-variants.md`
+- Scope: backend variant persistence, REST endpoints, frontend API/types, editable adaptations panel, source guards, backend tests, frontend tests, and verification
+- Latest progress:
+  - Confirmed local `main` was clean and created branch `codex/content-factory-sprint-32-saved-variants`.
+  - Wrote Sprint 32 design and implementation plan.
+  - Added failing backend tests for variant model, schema, migration, service, and endpoints.
+  - Added failing frontend source guards for variant types, API methods, route loading, and editable adaptations UI.
+  - Added `cf_publication_variant` migration, model, relationship, schemas, service methods, and REST endpoints.
+  - Updated the Supabase RLS table registry to include guest story tables and saved publication variants.
+  - Added frontend variant types, API client methods, publication detail loading, and saved variant state.
+  - Turned `ContentFactoryPublicationVariants` into an editor with generated defaults, saved channel state, notes, reset, save, and copy.
+  - Focused backend and frontend verification passed after implementation.
+  - Full frontend verification passed after implementation.
+- Key decisions:
+  - Store one saved variant per publication/channel.
+  - Keep deterministic Sprint 31 drafts as defaults for unsaved channels.
+  - Track `source_version_number` so saved adaptations can be compared with the publication body version later.
+  - Defer AI generation, variant history, approval workflow, delete/archive, and platform posting APIs.
+- Next actions:
+  - Merge Sprint 32 into `main`.
+  - Push Sprint 32 to `origin/main`.
+- Latest verification:
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_supabase_rls_migration.py::test_rls_migration_covers_every_application_table tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py tests/test_cf_publication_service.py tests/test_content_factory_publications_api.py -q` passed: 69 tests, with existing pytest-asyncio/AsyncMock warnings.
+  - `cd frontend && node --test --experimental-strip-types src/lib/contentFactoryApiSourceGuards.test.ts src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 40 tests, with existing Node module-type warnings.
+  - `cd frontend && npm test` passed: 185 tests, with existing Node module-type warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+  - `git diff --check` passed.
+  - `cd backend && ... pytest -q` was attempted but the local full-suite DB tests could not connect to `test:test@localhost:5432` due invalid Postgres credentials; focused backend verification above passed.
+
 ## Content Factory Sprint 31 Publication Variants
 
 - Current phase: implemented, verified, merged to `main`, and pushed

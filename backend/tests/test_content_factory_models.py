@@ -38,6 +38,12 @@ class TestContentFactoryCoreModels(unittest.TestCase):
     def test_cf_publication_version_exists(self):
         self.assertEqual(models.CFPublicationVersion.__tablename__, "cf_publication_version")
 
+    def test_cf_publication_variant_exists(self):
+        self.assertEqual(models.CFPublicationVariant.__tablename__, "cf_publication_variant")
+        self.assertTrue(hasattr(models.CFPublicationVariant, "publication_id"))
+        self.assertTrue(hasattr(models.CFPublicationVariant, "channel"))
+        self.assertTrue(hasattr(models.CFPublicationVariant, "source_version_number"))
+
     def test_cf_publication_relation_exists(self):
         self.assertEqual(models.CFPublicationRelation.__tablename__, "cf_publication_relation")
 
@@ -76,6 +82,8 @@ class TestContentFactoryCoreModels(unittest.TestCase):
         self.assertIn("publications", models.CFBundle.__mapper__.relationships)
         # Publication ↔ versions
         self.assertIn("versions", models.CFPublication.__mapper__.relationships)
+        # Publication ↔ saved channel variants
+        self.assertIn("variants", models.CFPublication.__mapper__.relationships)
         # External segment ↔ snapshots
         self.assertIn("snapshots", models.CFExternalSegment.__mapper__.relationships)
         # Guest story ↔ activity events

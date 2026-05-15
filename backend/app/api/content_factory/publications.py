@@ -15,6 +15,9 @@ from app.db.schemas import (
     CFPublicationSegmentTargetCreate,
     CFPublicationSegmentTargetResponse,
     CFPublicationUpdate,
+    CFPublicationVariantChannelType,
+    CFPublicationVariantResponse,
+    CFPublicationVariantUpsert,
     CFPublicationVersionResponse,
 )
 from app.services.content_factory.publication_service import (
@@ -133,6 +136,42 @@ async def list_publication_versions(
     session: AsyncSession = Depends(get_session),
 ):
     return await publication_service.list_versions(session, publication_id)
+
+
+@pubs_router.get(
+    "/{publication_id}/variants",
+    response_model=list[CFPublicationVariantResponse],
+)
+async def list_publication_variants(
+    publication_id: uuid.UUID,
+    member: TeamMember = Depends(require_cf_access),
+    session: AsyncSession = Depends(get_session),
+):
+    return await publication_service.list_variants(session, publication_id)
+
+
+@pubs_router.put(
+    "/{publication_id}/variants/{channel}",
+    response_model=CFPublicationVariantResponse,
+)
+async def upsert_publication_variant(
+    publication_id: uuid.UUID,
+    channel: CFPublicationVariantChannelType,
+    data: CFPublicationVariantUpsert,
+    member: TeamMember = Depends(require_cf_access),
+    session: AsyncSession = Depends(get_session),
+):
+    variant = await publication_service.upsert_variant(
+        session,
+        publication_id,
+        channel,
+        data,
+        editor_id=member.id,
+    )
+    if variant is None:
+        raise HTTPException(status_code=404, detail="Публикация не найдена")
+    await session.commit()
+    return variant
 
 
 @pubs_router.get(

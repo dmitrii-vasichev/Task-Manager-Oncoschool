@@ -76,6 +76,7 @@ CFPublicationRelationType = Literal[
     "adapted_from", "follow_up_to", "reminder_for",
     "digest_includes", "replaces", "crosspost_of",
 ]
+CFPublicationVariantChannelType = Literal["telegram", "vk", "email", "push", "max", "dzen"]
 CFSegmentRoleType = Literal["target", "exclusion", "control", "retargeting"]
 CFMetricWindowType = Literal["3h", "24h", "72h", "7d", "final", "custom"]
 CFMetricSourceType = Literal[
@@ -1546,6 +1547,42 @@ class CFPublicationVersionResponse(BaseModel):
     approval_event: CFApprovalEventType
     source_materials_refs: list
     notes: str | None = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CFPublicationVariantUpsert(BaseModel):
+    title: str | None = Field(default=None, max_length=500)
+    body_text: str = Field(..., min_length=1)
+    notes: str | None = None
+
+    @field_validator("body_text")
+    @classmethod
+    def validate_body_text(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("body_text must not be blank")
+        return stripped
+
+    @field_validator("title", "notes", mode="before")
+    @classmethod
+    def normalize_blank_optional_text(cls, value):
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+
+class CFPublicationVariantResponse(BaseModel):
+    id: uuid.UUID
+    publication_id: uuid.UUID
+    channel: CFPublicationVariantChannelType
+    title: str | None = None
+    body_text: str
+    notes: str | None = None
+    source_version_number: int
+    updated_by_id: uuid.UUID
+    created_at: datetime
+    updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
 

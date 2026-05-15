@@ -381,12 +381,20 @@ test("publication detail route exposes manual channel adaptations", () => {
   assert.match(source, /platform={platform}/);
   assert.match(source, /format={format}/);
   assert.match(source, /bundle={bundle}/);
+  assert.match(source, /api\.getCFPublicationVariants\(id\)/);
+  assert.match(source, /setVariants\(variantRes\)/);
+  assert.match(source, /savedVariants={variants}/);
+  assert.match(source, /onSaved={handleSaved}/);
   assert.ok(
     source.indexOf("<ContentFactoryPublicationPublishPackage") <
       source.indexOf("<ContentFactoryPublicationVariants"),
   );
   assert.match(variantsSource, /Адаптации/);
   assert.match(variantsSource, /Скопировать адаптацию/);
+  assert.match(variantsSource, /Сохранить адаптацию/);
+  assert.match(variantsSource, /Заметки/);
+  assert.match(variantsSource, /savedVariants/);
+  assert.match(variantsSource, /api\.upsertCFPublicationVariant/);
   assert.match(variantsSource, /navigator\.clipboard\.writeText/);
   assert.match(variantsSource, /buildContentFactoryPublicationVariants/);
   assert.match(utilsSource, /buildContentFactoryPublicationVariants/);

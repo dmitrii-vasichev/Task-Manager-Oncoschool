@@ -71,6 +71,30 @@ class TestCFCoreSchemas(unittest.TestCase):
         )
         self.assertEqual(m.status, "draft")
 
+    def test_cf_publication_variant_upsert(self):
+        m = schemas.CFPublicationVariantUpsert(
+            title="Telegram title",
+            body_text="Telegram body",
+            notes="Check CTA",
+        )
+        self.assertEqual(m.body_text, "Telegram body")
+        self.assertEqual(m.notes, "Check CTA")
+
+    def test_cf_publication_variant_rejects_bad_channel_response(self):
+        with self.assertRaises(ValidationError):
+            schemas.CFPublicationVariantResponse(
+                id=uuid.uuid4(),
+                publication_id=uuid.uuid4(),
+                channel="not_a_channel",
+                title="Title",
+                body_text="Body",
+                notes=None,
+                source_version_number=1,
+                updated_by_id=uuid.uuid4(),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+
     def test_cf_metric_snapshot_create_requires_window(self):
         with self.assertRaises(ValidationError):
             schemas.CFMetricSnapshotCreate(

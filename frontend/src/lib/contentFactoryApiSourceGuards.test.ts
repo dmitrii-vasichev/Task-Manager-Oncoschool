@@ -51,6 +51,25 @@ test("content factory API client exposes Sprint 5 outcomes endpoints", () => {
   assert.match(source, /\/api\/content-factory\/publications\/\$\{publicationId\}\/metrics/);
 });
 
+test("content factory API client exposes saved publication variant endpoints", () => {
+  const typesSource = readSource("lib/types.ts");
+  const apiSource = readSource("lib/api.ts");
+
+  assert.match(typesSource, /export type CFPublicationVariantChannel/);
+  assert.match(typesSource, /export interface CFPublicationVariant/);
+  assert.match(typesSource, /export interface CFPublicationVariantUpsertRequest/);
+  assert.match(apiSource, /async getCFPublicationVariants/);
+  assert.match(apiSource, /async upsertCFPublicationVariant/);
+  assert.match(
+    apiSource,
+    /\/api\/content-factory\/publications\/\$\{publicationId\}\/variants/,
+  );
+  assert.match(
+    apiSource,
+    /\/api\/content-factory\/publications\/\$\{publicationId\}\/variants\/\$\{channel\}/,
+  );
+});
+
 test("content factory API client exposes Sprint 6 retro endpoints", () => {
   const source = readSource("lib/api.ts");
 

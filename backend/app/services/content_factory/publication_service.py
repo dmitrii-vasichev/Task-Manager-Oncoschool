@@ -7,8 +7,12 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import CFPublication, CFPublicationVersion
-from app.db.schemas import CFPublicationCreate, CFPublicationUpdate
+from app.db.models import CFPublication, CFPublicationVariant, CFPublicationVersion
+from app.db.schemas import (
+    CFPublicationCreate,
+    CFPublicationUpdate,
+    CFPublicationVariantUpsert,
+)
 
 if TYPE_CHECKING:
     from app.db.models import CFPublicationSegmentTarget
@@ -251,6 +255,60 @@ class PublicationService:
             .order_by(CFPublicationVersion.version_number)
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def list_variants(
+        session: AsyncSession, publication_id: uuid.UUID
+    ) -> list[CFPublicationVariant]:
+        result = await session.execute(
+            select(CFPublicationVariant)
+            .where(CFPublicationVariant.publication_id == publication_id)
+            .order_by(CFPublicationVariant.channel)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def upsert_variant(
+        session: AsyncSession,
+        publication_id: uuid.UUID,
+        channel: str,
+        payload: CFPublicationVariantUpsert,
+        *,
+        editor_id: uuid.UUID,
+    ) -> CFPublicationVariant | None:
+        publication = await PublicationService.get(session, publication_id)
+        if publication is None:
+            return None
+
+        result = await session.execute(
+            select(CFPublicationVariant).where(
+                CFPublicationVariant.publication_id == publication_id,
+                CFPublicationVariant.channel == channel,
+            )
+        )
+        variant = result.scalar_one_or_none()
+        source_version_number = publication.version_number or 1
+        if variant is None:
+            variant = CFPublicationVariant(
+                publication_id=publication_id,
+                channel=channel,
+                title=payload.title,
+                body_text=payload.body_text,
+                notes=payload.notes,
+                source_version_number=source_version_number,
+                updated_by_id=editor_id,
+            )
+            session.add(variant)
+        else:
+            variant.title = payload.title
+            variant.body_text = payload.body_text
+            variant.notes = payload.notes
+            variant.source_version_number = source_version_number
+            variant.updated_by_id = editor_id
+            variant.updated_at = datetime.now(timezone.utc)
+
+        await session.flush()
+        return variant
 
     @staticmethod
     async def add_segment_target(

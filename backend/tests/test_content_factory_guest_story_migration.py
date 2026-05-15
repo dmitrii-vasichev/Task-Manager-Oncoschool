@@ -20,6 +20,12 @@ THREAD_MIGRATION = (
     / "versions"
     / "044_cf_guest_story_event_threads.py"
 )
+VARIANT_MIGRATION = (
+    Path(__file__).resolve().parents[1]
+    / "alembic"
+    / "versions"
+    / "045_cf_publication_variants.py"
+)
 ALEMBIC_VERSIONS = Path(__file__).resolve().parents[1] / "alembic" / "versions"
 ALEMBIC_VERSION_NUM_MAX_LENGTH = 32
 
@@ -110,3 +116,20 @@ def test_guest_story_event_thread_migration_adds_parent_reference():
     assert '"fk_cf_guest_story_event_parent"' in source
     assert '"ix_cf_guest_story_event_parent"' in source
     assert 'op.drop_column("cf_guest_story_event", "parent_event_id")' in source
+
+
+def test_publication_variant_migration_creates_saved_variants_table():
+    source = VARIANT_MIGRATION.read_text()
+
+    assert 'revision: str = "045_cf_pub_variants"' in source
+    assert 'down_revision: Union[str, None] = "044_cf_guest_event_threads"' in source
+    assert '"cf_publication_variant"' in source
+    assert '"publication_id"' in source
+    assert '"channel"' in source
+    assert '"body_text"' in source
+    assert '"notes"' in source
+    assert '"source_version_number"' in source
+    assert '"updated_by_id"' in source
+    assert '"uq_cf_publication_variant_channel"' in source
+    assert '"ix_cf_publication_variant_publication"' in source
+    assert 'op.drop_table("cf_publication_variant")' in source
