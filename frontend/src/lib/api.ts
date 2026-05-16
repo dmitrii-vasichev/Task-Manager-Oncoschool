@@ -112,6 +112,10 @@ import type {
   CFPublicationVariantChannel,
   CFPublicationVariantUpsertRequest,
   CFPublicationListParams,
+  CFPublishingQueueEvent,
+  CFPublishingQueueItem,
+  CFPublishingQueueListParams,
+  CFPublishingQueueManualFallbackRequest,
   CFExternalSegment,
   CFExternalSegmentCreateRequest,
   CFPublicationSegmentTarget,
@@ -870,6 +874,62 @@ class ApiClient {
       method: "PATCH",
       body: JSON.stringify(data),
     });
+  }
+
+  async getCFPublishingQueue(
+    params?: CFPublishingQueueListParams
+  ): Promise<CFPublishingQueueItem[]> {
+    const query = this.buildQuery(params);
+    return this.request<CFPublishingQueueItem[]>(
+      `/api/content-factory/publishing-queue${query}`
+    );
+  }
+
+  async getCFPublishingQueueForPublication(
+    publicationId: string
+  ): Promise<CFPublishingQueueItem[]> {
+    return this.request<CFPublishingQueueItem[]>(
+      `/api/content-factory/publications/${publicationId}/publishing-queue`
+    );
+  }
+
+  async enqueueCFPublicationForPublishing(
+    publicationId: string
+  ): Promise<CFPublishingQueueItem> {
+    return this.request<CFPublishingQueueItem>(
+      `/api/content-factory/publications/${publicationId}/publishing-queue`,
+      { method: "POST" }
+    );
+  }
+
+  async retryCFPublishingQueueItem(
+    queueItemId: string
+  ): Promise<CFPublishingQueueItem> {
+    return this.request<CFPublishingQueueItem>(
+      `/api/content-factory/publishing-queue/${queueItemId}/retry`,
+      { method: "POST" }
+    );
+  }
+
+  async markCFPublishingQueueManualFallback(
+    queueItemId: string,
+    data: CFPublishingQueueManualFallbackRequest
+  ): Promise<CFPublishingQueueItem> {
+    return this.request<CFPublishingQueueItem>(
+      `/api/content-factory/publishing-queue/${queueItemId}/manual-fallback`,
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
+  }
+
+  async getCFPublishingQueueEvents(
+    queueItemId: string
+  ): Promise<CFPublishingQueueEvent[]> {
+    return this.request<CFPublishingQueueEvent[]>(
+      `/api/content-factory/publishing-queue/${queueItemId}/events`
+    );
   }
 
   async getCFSegments(options?: { only_active?: boolean }): Promise<CFExternalSegment[]> {

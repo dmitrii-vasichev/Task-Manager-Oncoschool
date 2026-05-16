@@ -18,6 +18,7 @@ from app.api.content_factory.publications import (
     bundle_pubs_router,
     pubs_router,
 )
+from app.api.content_factory.publishing_queue import router as publishing_queue_router
 from app.api.content_factory.retros import router as retros_router
 from app.api.content_factory.rubrics import router as rubrics_router
 from app.api.content_factory.segments import router as segments_router
@@ -32,6 +33,7 @@ content_factory_router.include_router(funnel_templates_router)
 content_factory_router.include_router(bundles_router)
 content_factory_router.include_router(bundle_pubs_router)
 content_factory_router.include_router(pubs_router)
+content_factory_router.include_router(publishing_queue_router)
 content_factory_router.include_router(segments_router)
 content_factory_router.include_router(metrics_router)
 content_factory_router.include_router(retros_router)

@@ -1,5 +1,50 @@
 # Status
 
+## Content Factory Sprint 44 Publishing Queue
+
+- Current phase: implemented, verified, merged to `main`, and pushed
+- Source: Wave C starts controlled publishing automation after the manual planning/import/matrix work in Wave B.
+- Design: `docs/superpowers/specs/2026-05-15-content-factory-sprint-44-publishing-queue-design.md`
+- Plan: `docs/superpowers/plans/2026-05-15-content-factory-sprint-44-publishing-queue.md`
+- Scope: backend queue/event tables, queue schemas, queue service, queue API routes, frontend queue API/types, publication-detail queue panel, tests, and durable docs
+- Latest progress:
+  - Created branch `codex/content-factory-sprint-44-publishing-queue`.
+  - Wrote Sprint 44 design and implementation plan.
+  - Added failing backend model, schema, and migration tests.
+  - Added `cf_publishing_queue_item` and `cf_publishing_queue_event` migration, ORM models, relationships, and schemas.
+  - Added failing publishing queue service tests.
+  - Added `PublishingQueueService` with enqueue, list, events, retry, manual fallback, and failure metadata behavior.
+  - Added failing publishing queue API tests.
+  - Added API routes for queue list, publication queue list, enqueue, retry, manual fallback, and events.
+  - Added failing frontend source guard.
+  - Added frontend queue types, API client methods, Russian labels, `ContentFactoryPublishingQueuePanel`, and publication detail wiring.
+  - Focused backend, full backend, full frontend, lint, build, and diff verification passed.
+- Key decisions:
+  - Keep Sprint 44 platform-neutral and avoid external posting calls.
+  - Keep manual publish fact as the source of truth for posts that are actually live.
+  - Allow enqueue only for `approved` and `scheduled` publications.
+  - Make active enqueue idempotent so repeated clicks do not create duplicate active jobs.
+  - Treat manual fallback as an auditable queue state, not as published evidence.
+- Next actions:
+  - Start Sprint 45: first practical platform publishing integration.
+  - Run authenticated manual QA for the Sprint 44 publishing queue against approved, scheduled, failed, and manual-fallback publication states.
+- Latest verification:
+  - RED confirmed: `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py -q` failed before implementation because publishing queue models, schemas, and migration did not exist.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py -q` passed: 52 tests, with existing pytest-asyncio warning.
+  - RED confirmed: `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_cf_publishing_queue_service.py -q` failed before implementation because `publishing_queue_service` did not exist.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_cf_publishing_queue_service.py -q` passed: 8 tests, with existing pytest-asyncio warning.
+  - RED confirmed: `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_content_factory_publishing_queue_api.py -q` failed before implementation because the API module was not wired.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_content_factory_publishing_queue_api.py -q` passed: 9 tests, with existing pytest-asyncio warning.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py tests/test_cf_publishing_queue_service.py tests/test_content_factory_publishing_queue_api.py -q` passed: 69 tests, with existing pytest-asyncio warning.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest -q` passed: 654 tests, with existing warnings.
+  - RED confirmed: `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` failed before implementation because `ContentFactoryPublishingQueuePanel` did not exist.
+  - `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 39 tests, with existing Node module-type warning.
+  - `cd frontend && npm test` passed: 202 tests, with existing Node module-type warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+  - `git diff --check` passed.
+
 ## Content Factory Sprint 43 Planning Matrix
 
 - Current phase: implemented, verified, merged to `main`, and pushed

@@ -77,6 +77,23 @@ CFPublicationRelationType = Literal[
     "digest_includes", "replaces", "crosspost_of",
 ]
 CFPublicationVariantChannelType = Literal["telegram", "vk", "email", "push", "max", "dzen"]
+CFPublishingQueueStatusType = Literal[
+    "queued",
+    "processing",
+    "succeeded",
+    "failed",
+    "manual_fallback",
+    "cancelled",
+]
+CFPublishingQueueEventType = Literal[
+    "queued",
+    "started",
+    "succeeded",
+    "failed",
+    "retry_requested",
+    "manual_fallback",
+    "cancelled",
+]
 CFSegmentRoleType = Literal["target", "exclusion", "control", "retargeting"]
 CFMetricWindowType = Literal["3h", "24h", "72h", "7d", "final", "custom"]
 CFMetricSourceType = Literal[
@@ -1584,6 +1601,51 @@ class CFPublicationVariantResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+class CFPublishingQueueItemResponse(BaseModel):
+    id: uuid.UUID
+    publication_id: uuid.UUID
+    platform_id: uuid.UUID
+    status: CFPublishingQueueStatusType
+    scheduled_for: datetime | None = None
+    requested_by_id: uuid.UUID
+    attempts: int
+    max_attempts: int
+    last_attempt_at: datetime | None = None
+    next_retry_at: datetime | None = None
+    completed_at: datetime | None = None
+    error_message: str | None = None
+    manual_fallback_reason: str | None = None
+    payload: dict = Field(default_factory=dict)
+    provider_response: dict | None = None
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CFPublishingQueueEventResponse(BaseModel):
+    id: uuid.UUID
+    queue_item_id: uuid.UUID
+    publication_id: uuid.UUID
+    actor_id: uuid.UUID | None = None
+    event_type: CFPublishingQueueEventType
+    message: str | None = None
+    payload: dict = Field(default_factory=dict)
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CFPublishingQueueManualFallbackRequest(BaseModel):
+    reason: str = Field(..., min_length=1)
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("reason must not be blank")
+        return stripped
 
 
 class CFPublicationSegmentTargetCreate(BaseModel):

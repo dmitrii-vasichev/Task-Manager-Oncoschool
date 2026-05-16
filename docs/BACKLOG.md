@@ -4,12 +4,12 @@
 
 ### Next
 
-- Execute Sprint 44: publishing queue foundation with audit, retry, and manual fallback.
 - Execute Sprint 45: first practical platform publishing integration.
 - Execute Sprint 46: second practical platform publishing integration.
 - Execute Sprint 47: metrics integration foundation.
 - Execute Sprint 48: first automated metric source integrations.
 - Execute Sprint 49: production readiness, onboarding, and authenticated end-to-end QA.
+- Run authenticated manual QA for the Sprint 44 publishing queue against approved, scheduled, failed, and manual-fallback publication states.
 - Run authenticated manual QA for the Sprint 43 campaign planning matrix against real campaign templates.
 - Run authenticated manual QA for the Sprint 42.1 table import template and default-setting copy.
 - Run authenticated manual QA for the Sprint 36 adaptation readiness checklist against saved publication variants.

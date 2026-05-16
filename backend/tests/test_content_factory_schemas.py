@@ -95,6 +95,78 @@ class TestCFCoreSchemas(unittest.TestCase):
                 updated_at=datetime.now(UTC),
             )
 
+    def test_cf_publishing_queue_item_response(self):
+        item = schemas.CFPublishingQueueItemResponse(
+            id=uuid.uuid4(),
+            publication_id=uuid.uuid4(),
+            platform_id=uuid.uuid4(),
+            status="queued",
+            scheduled_for=datetime(2026, 5, 20, 10, 0, tzinfo=UTC),
+            requested_by_id=uuid.uuid4(),
+            attempts=0,
+            max_attempts=3,
+            last_attempt_at=None,
+            next_retry_at=None,
+            completed_at=None,
+            error_message=None,
+            manual_fallback_reason=None,
+            payload={"title": "Telegram announcement"},
+            provider_response=None,
+            created_at=datetime.now(UTC),
+            updated_at=datetime.now(UTC),
+        )
+
+        self.assertEqual(item.status, "queued")
+        self.assertEqual(item.payload["title"], "Telegram announcement")
+
+    def test_cf_publishing_queue_response_rejects_bad_status(self):
+        with self.assertRaises(ValidationError):
+            schemas.CFPublishingQueueItemResponse(
+                id=uuid.uuid4(),
+                publication_id=uuid.uuid4(),
+                platform_id=uuid.uuid4(),
+                status="not_a_queue_status",
+                scheduled_for=None,
+                requested_by_id=uuid.uuid4(),
+                attempts=0,
+                max_attempts=3,
+                last_attempt_at=None,
+                next_retry_at=None,
+                completed_at=None,
+                error_message=None,
+                manual_fallback_reason=None,
+                payload={},
+                provider_response=None,
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            )
+
+    def test_cf_publishing_queue_manual_fallback_request_trims_reason(self):
+        data = schemas.CFPublishingQueueManualFallbackRequest(
+            reason="  API token is not ready yet  "
+        )
+
+        self.assertEqual(data.reason, "API token is not ready yet")
+
+    def test_cf_publishing_queue_manual_fallback_request_rejects_blank_reason(self):
+        with self.assertRaises(ValidationError):
+            schemas.CFPublishingQueueManualFallbackRequest(reason="   ")
+
+    def test_cf_publishing_queue_event_response(self):
+        event = schemas.CFPublishingQueueEventResponse(
+            id=uuid.uuid4(),
+            queue_item_id=uuid.uuid4(),
+            publication_id=uuid.uuid4(),
+            actor_id=uuid.uuid4(),
+            event_type="queued",
+            message="Publication was queued",
+            payload={"source": "operator"},
+            created_at=datetime.now(UTC),
+        )
+
+        self.assertEqual(event.event_type, "queued")
+        self.assertEqual(event.payload["source"], "operator")
+
     def test_cf_metric_snapshot_create_requires_window(self):
         with self.assertRaises(ValidationError):
             schemas.CFMetricSnapshotCreate(

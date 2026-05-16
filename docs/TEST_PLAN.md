@@ -1,5 +1,29 @@
 # Test Plan
 
+## Content Factory Sprint 44 Publishing Queue
+
+### Automated
+
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest -q`
+- `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Open an approved or scheduled publication detail page.
+2. Confirm the sidebar shows `Очередь публикации`.
+3. Click `Поставить в очередь`.
+4. Confirm the panel shows `В очереди`, planned send time, attempts, and `Журнал очереди`.
+5. Refresh the page and confirm the queue item remains visible.
+6. Open a draft or early-workflow publication and confirm the panel explains that approval or scheduling is required first.
+7. For a failed queue item, click `Повторить` and confirm it returns to the queued state.
+8. For a queued or failed queue item, use `Ручной обход`, enter a reason, and confirm the reason appears in the panel.
+9. Confirm the existing `Публикация и статистика` manual publish fact controls remain available and are not replaced by the queue state.
+
 ## Content Factory Sprint 43 Planning Matrix
 
 ### Automated

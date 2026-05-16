@@ -23,6 +23,8 @@ import type {
   CFPublication,
   CFPublicationCreateRequest,
   CFPublicationSegmentTarget,
+  CFPublishingQueueEventType,
+  CFPublishingQueueStatus,
   CFPublicationUpdateRequest,
   CFPublicationStatus,
   CFRubric,
@@ -69,6 +71,31 @@ export const CF_PUBLICATION_STATUS_LABELS: Record<CFPublicationStatus, string> =
   scheduled: "Запланировано",
   published: "Опубликовано",
   failed: "Ошибка",
+  cancelled: "Отменено",
+};
+
+export const CF_PUBLISHING_QUEUE_STATUS_LABELS: Record<
+  CFPublishingQueueStatus,
+  string
+> = {
+  queued: "В очереди",
+  processing: "Отправляется",
+  succeeded: "Отправлено через интеграцию",
+  failed: "Ошибка отправки",
+  manual_fallback: "Ручной обход",
+  cancelled: "Отменено",
+};
+
+export const CF_PUBLISHING_QUEUE_EVENT_LABELS: Record<
+  CFPublishingQueueEventType,
+  string
+> = {
+  queued: "Поставлено в очередь",
+  started: "Начата отправка",
+  succeeded: "Отправка завершена",
+  failed: "Ошибка отправки",
+  retry_requested: "Запрошен повтор",
+  manual_fallback: "Ручной обход",
   cancelled: "Отменено",
 };
 

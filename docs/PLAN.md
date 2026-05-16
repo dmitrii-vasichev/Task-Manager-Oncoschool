@@ -1,3 +1,65 @@
+# Active Plan: Content Factory Sprint 44 Publishing Queue
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-44-publishing-queue.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Add a platform-neutral publishing queue with durable jobs, audit events, retry controls, manual fallback, and a publication-detail panel.
+
+**Detailed design:** `docs/superpowers/specs/2026-05-15-content-factory-sprint-44-publishing-queue-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-15-content-factory-sprint-44-publishing-queue.md`
+
+**Milestones:**
+
+1. Add backend queue and event tables with schemas and migration coverage.
+2. Add publishing queue service and API routes for enqueue, list, retry, manual fallback, and events.
+3. Add frontend queue types/API methods and a publication-detail queue panel.
+4. Run backend and frontend verification and update durable repo docs.
+
+**Implementation status:**
+
+- Implemented, verified, merged to `main`, and pushed.
+- Sprint 1 through Sprint 44 work is merged to `main` and pushed.
+
+**Definition of done:**
+
+- Content Factory has durable publishing queue item and event records.
+- Approved or scheduled publications can be queued through the backend API.
+- Queue enqueue is idempotent for active queued/processing jobs.
+- Failed or manual-fallback jobs can be retried.
+- Queue items can be routed to manual fallback with a required reason.
+- Publication detail pages show queue status, attempts, error/manual fallback state, actions, and latest audit events.
+- No external platform posting is added in this sprint.
+- Verification commands pass and docs are updated.
+
+**Validation commands:**
+
+```bash
+cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest -q
+cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- RED confirmed: backend model/schema/migration tests failed before implementation because publishing queue models, schemas, and migration did not exist.
+- RED confirmed: service tests failed before implementation because `publishing_queue_service` did not exist.
+- RED confirmed: API tests failed before implementation because the publishing queue API module was not wired.
+- RED confirmed: frontend source guard failed before implementation because `ContentFactoryPublishingQueuePanel` did not exist.
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://test:test@localhost:5432/test OPENAI_API_KEY=test pytest tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_content_factory_guest_story_migration.py tests/test_cf_publishing_queue_service.py tests/test_content_factory_publishing_queue_api.py -q` passed: 69 tests, with existing pytest-asyncio warning.
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest -q` passed: 654 tests, with existing warnings.
+- `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 39 tests, with existing Node module-type warning.
+- `cd frontend && npm test` passed: 202 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+- `git diff --check` passed.
+
+---
+
 # Active Plan: Content Factory Sprint 43 Planning Matrix
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-43-planning-matrix.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.

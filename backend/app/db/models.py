@@ -1671,6 +1671,11 @@ class CFPublication(Base):
         cascade="all, delete-orphan",
         order_by="CFPublicationVariant.channel",
     )
+    publishing_queue_items: Mapped[list["CFPublishingQueueItem"]] = relationship(
+        back_populates="publication",
+        cascade="all, delete-orphan",
+        order_by="CFPublishingQueueItem.created_at.desc()",
+    )
 
 
 class CFPublicationVersion(Base):
@@ -1718,6 +1723,67 @@ class CFPublicationVariant(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     publication: Mapped["CFPublication"] = relationship(back_populates="variants")
+
+
+class CFPublishingQueueItem(Base):
+    __tablename__ = "cf_publishing_queue_item"
+    __table_args__ = (
+        Index("ix_cf_publishing_queue_status_schedule", "status", "scheduled_for"),
+        Index("ix_cf_publishing_queue_publication", "publication_id"),
+        Index("ix_cf_publishing_queue_platform", "platform_id"),
+        Index("ix_cf_publishing_queue_next_retry", "next_retry_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    publication_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cf_publication.id", ondelete="CASCADE"), nullable=False
+    )
+    platform_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("cf_platform.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="queued", server_default="queued")
+    scheduled_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    requested_by_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("team_members.id"), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3, server_default="3")
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    manual_fallback_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    provider_response: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    publication: Mapped["CFPublication"] = relationship(back_populates="publishing_queue_items")
+    events: Mapped[list["CFPublishingQueueEvent"]] = relationship(
+        back_populates="queue_item",
+        cascade="all, delete-orphan",
+        order_by="CFPublishingQueueEvent.created_at",
+    )
+
+
+class CFPublishingQueueEvent(Base):
+    __tablename__ = "cf_publishing_queue_event"
+    __table_args__ = (
+        Index("ix_cf_publishing_queue_event_item_created", "queue_item_id", "created_at"),
+        Index("ix_cf_publishing_queue_event_publication_created", "publication_id", "created_at"),
+        Index("ix_cf_publishing_queue_event_type", "event_type"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    queue_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cf_publishing_queue_item.id", ondelete="CASCADE"), nullable=False
+    )
+    publication_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("cf_publication.id", ondelete="CASCADE"), nullable=False
+    )
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("team_members.id"), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(30), nullable=False)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    queue_item: Mapped["CFPublishingQueueItem"] = relationship(back_populates="events")
 
 
 class CFPublicationRelation(Base):

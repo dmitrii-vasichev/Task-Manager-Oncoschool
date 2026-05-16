@@ -466,6 +466,43 @@ test("publication detail route exposes publication operations panel", () => {
   assert.match(utilsSource, /getContentFactoryPublicationReadiness/);
 });
 
+test("publication detail route exposes publishing queue foundation", () => {
+  assert.equal(
+    sourceExists("components/content-factory/ContentFactoryPublishingQueuePanel.tsx"),
+    true,
+  );
+
+  const source = readSource("app/content-factory/publications/[id]/page.tsx");
+  const panelSource = readSource(
+    "components/content-factory/ContentFactoryPublishingQueuePanel.tsx",
+  );
+  const apiSource = readSource("lib/api.ts");
+  const typesSource = readSource("lib/types.ts");
+  const utilsSource = readSource("lib/contentFactoryUtils.ts");
+
+  assert.match(source, /ContentFactoryPublishingQueuePanel/);
+  assert.match(source, /api\.getCFPublishingQueueForPublication\(id\)/);
+  assert.match(source, /api\.getCFPublishingQueueEvents/);
+  assert.match(panelSource, /Очередь публикации/);
+  assert.match(panelSource, /Поставить в очередь/);
+  assert.match(panelSource, /Повторить/);
+  assert.match(panelSource, /Ручной обход/);
+  assert.match(panelSource, /Журнал очереди/);
+  assert.match(panelSource, /api\.enqueueCFPublicationForPublishing/);
+  assert.match(panelSource, /api\.retryCFPublishingQueueItem/);
+  assert.match(panelSource, /api\.markCFPublishingQueueManualFallback/);
+  assert.match(typesSource, /CFPublishingQueueStatus/);
+  assert.match(typesSource, /CFPublishingQueueItem/);
+  assert.match(typesSource, /CFPublishingQueueEvent/);
+  assert.match(apiSource, /getCFPublishingQueue/);
+  assert.match(apiSource, /getCFPublishingQueueForPublication/);
+  assert.match(apiSource, /enqueueCFPublicationForPublishing/);
+  assert.match(apiSource, /retryCFPublishingQueueItem/);
+  assert.match(apiSource, /markCFPublishingQueueManualFallback/);
+  assert.match(apiSource, /getCFPublishingQueueEvents/);
+  assert.match(utilsSource, /CF_PUBLISHING_QUEUE_STATUS_LABELS/);
+});
+
 test("publication detail route exposes manual publish package", () => {
   assert.equal(
     sourceExists("components/content-factory/ContentFactoryPublicationPublishPackage.tsx"),

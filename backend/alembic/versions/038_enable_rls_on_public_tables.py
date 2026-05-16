@@ -32,6 +32,8 @@ PUBLIC_TABLES: tuple[str, ...] = (
     "cf_metric_snapshot",
     "cf_nosology",
     "cf_platform",
+    "cf_publishing_queue_event",
+    "cf_publishing_queue_item",
     "cf_publication",
     "cf_publication_relation",
     "cf_publication_segment_target",

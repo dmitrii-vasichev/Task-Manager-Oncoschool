@@ -44,6 +44,21 @@ class TestContentFactoryCoreModels(unittest.TestCase):
         self.assertTrue(hasattr(models.CFPublicationVariant, "channel"))
         self.assertTrue(hasattr(models.CFPublicationVariant, "source_version_number"))
 
+    def test_cf_publishing_queue_item_exists(self):
+        self.assertEqual(models.CFPublishingQueueItem.__tablename__, "cf_publishing_queue_item")
+        self.assertTrue(hasattr(models.CFPublishingQueueItem, "publication_id"))
+        self.assertTrue(hasattr(models.CFPublishingQueueItem, "platform_id"))
+        self.assertTrue(hasattr(models.CFPublishingQueueItem, "status"))
+        self.assertTrue(hasattr(models.CFPublishingQueueItem, "attempts"))
+        self.assertTrue(hasattr(models.CFPublishingQueueItem, "manual_fallback_reason"))
+
+    def test_cf_publishing_queue_event_exists(self):
+        self.assertEqual(models.CFPublishingQueueEvent.__tablename__, "cf_publishing_queue_event")
+        self.assertTrue(hasattr(models.CFPublishingQueueEvent, "queue_item_id"))
+        self.assertTrue(hasattr(models.CFPublishingQueueEvent, "publication_id"))
+        self.assertTrue(hasattr(models.CFPublishingQueueEvent, "event_type"))
+        self.assertTrue(hasattr(models.CFPublishingQueueEvent, "payload"))
+
     def test_cf_publication_relation_exists(self):
         self.assertEqual(models.CFPublicationRelation.__tablename__, "cf_publication_relation")
 
@@ -84,6 +99,9 @@ class TestContentFactoryCoreModels(unittest.TestCase):
         self.assertIn("versions", models.CFPublication.__mapper__.relationships)
         # Publication ↔ saved channel variants
         self.assertIn("variants", models.CFPublication.__mapper__.relationships)
+        # Publication ↔ publishing queue jobs
+        self.assertIn("publishing_queue_items", models.CFPublication.__mapper__.relationships)
+        self.assertIn("events", models.CFPublishingQueueItem.__mapper__.relationships)
         # External segment ↔ snapshots
         self.assertIn("snapshots", models.CFExternalSegment.__mapper__.relationships)
         # Guest story ↔ activity events

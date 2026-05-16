@@ -115,6 +115,21 @@ export type CFPublicationVariantChannel =
   | "push"
   | "max"
   | "dzen";
+export type CFPublishingQueueStatus =
+  | "queued"
+  | "processing"
+  | "succeeded"
+  | "failed"
+  | "manual_fallback"
+  | "cancelled";
+export type CFPublishingQueueEventType =
+  | "queued"
+  | "started"
+  | "succeeded"
+  | "failed"
+  | "retry_requested"
+  | "manual_fallback"
+  | "cancelled";
 export type CFSegmentRole = "target" | "exclusion" | "control" | "retargeting";
 export type CFMetricWindow = "3h" | "24h" | "72h" | "7d" | "final" | "custom";
 export type CFMetricSource =
@@ -1374,6 +1389,41 @@ export interface CFPublicationVariantUpsertRequest {
   notes?: string | null;
 }
 
+export interface CFPublishingQueueItem {
+  id: string;
+  publication_id: string;
+  platform_id: string;
+  status: CFPublishingQueueStatus;
+  scheduled_for: string | null;
+  requested_by_id: string;
+  attempts: number;
+  max_attempts: number;
+  last_attempt_at: string | null;
+  next_retry_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  manual_fallback_reason: string | null;
+  payload: CFJsonObject;
+  provider_response: CFJsonObject | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CFPublishingQueueEvent {
+  id: string;
+  queue_item_id: string;
+  publication_id: string;
+  actor_id: string | null;
+  event_type: CFPublishingQueueEventType;
+  message: string | null;
+  payload: CFJsonObject;
+  created_at: string;
+}
+
+export interface CFPublishingQueueManualFallbackRequest {
+  reason: string;
+}
+
 export interface CFPublicationSegmentTarget {
   publication_id: string;
   external_segment_id: string;
@@ -1618,6 +1668,13 @@ export interface CFPublicationListParams {
   responsible_id?: string;
   scheduled_from?: string;
   scheduled_to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface CFPublishingQueueListParams {
+  status?: CFPublishingQueueStatus;
+  publication_id?: string;
   limit?: number;
   offset?: number;
 }

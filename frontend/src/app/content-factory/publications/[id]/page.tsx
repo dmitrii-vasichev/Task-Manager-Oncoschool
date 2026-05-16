@@ -19,6 +19,7 @@ import { ContentFactoryMetricInsights } from "@/components/content-factory/Conte
 import { ContentFactoryPublicationOperationsPanel } from "@/components/content-factory/ContentFactoryPublicationOperationsPanel";
 import { ContentFactoryPublicationDialog } from "@/components/content-factory/ContentFactoryPublicationDialog";
 import { ContentFactoryPublicationPublishPackage } from "@/components/content-factory/ContentFactoryPublicationPublishPackage";
+import { ContentFactoryPublishingQueuePanel } from "@/components/content-factory/ContentFactoryPublishingQueuePanel";
 import { ContentFactoryPublicationVariants } from "@/components/content-factory/ContentFactoryPublicationVariants";
 import { ContentFactoryPublicationWorkflowActionsPanel } from "@/components/content-factory/ContentFactoryPublicationWorkflowActionsPanel";
 import { ContentFactoryPublicationVersionList } from "@/components/content-factory/ContentFactoryPublicationVersionList";
@@ -37,6 +38,8 @@ import type {
   CFNosology,
   CFPlatform,
   CFPublication,
+  CFPublishingQueueEvent,
+  CFPublishingQueueItem,
   CFPublicationSegmentTarget,
   CFPublicationVariant,
   CFPublicationVersion,
@@ -92,6 +95,12 @@ export default function ContentFactoryPublicationDetailPage() {
   >([]);
   const [variants, setVariants] = useState<CFPublicationVariant[]>([]);
   const [metrics, setMetrics] = useState<CFMetricSnapshot[]>([]);
+  const [publishingQueueItems, setPublishingQueueItems] = useState<
+    CFPublishingQueueItem[]
+  >([]);
+  const [publishingQueueEvents, setPublishingQueueEvents] = useState<
+    CFPublishingQueueEvent[]
+  >([]);
   const [editOpen, setEditOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const latestRequestSeqRef = useRef(0);
@@ -115,6 +124,7 @@ export default function ContentFactoryPublicationDetailPage() {
         segmentTargetRes,
         variantRes,
         metricRes,
+        publishingQueueRes,
       ] = await Promise.all([
         api.getCFPublication(id),
         api.getCFPublicationVersions(id),
@@ -128,7 +138,13 @@ export default function ContentFactoryPublicationDetailPage() {
           .catch(() => [] as CFPublicationSegmentTarget[]),
         api.getCFPublicationVariants(id).catch(() => [] as CFPublicationVariant[]),
         api.getCFMetrics(id).catch(() => [] as CFMetricSnapshot[]),
+        api.getCFPublishingQueueForPublication(id)
+          .catch(() => [] as CFPublishingQueueItem[]),
       ]);
+      const publishingQueueEventRes = publishingQueueRes[0]
+        ? await api.getCFPublishingQueueEvents(publishingQueueRes[0].id)
+            .catch(() => [] as CFPublishingQueueEvent[])
+        : [];
       const bundleRes = await api
         .getCFBundle(publicationRes.bundle_id)
         .catch(() => null as CFBundle | null);
@@ -145,6 +161,8 @@ export default function ContentFactoryPublicationDetailPage() {
       setSegmentTargets(segmentTargetRes);
       setVariants(variantRes);
       setMetrics(metricRes);
+      setPublishingQueueItems(publishingQueueRes);
+      setPublishingQueueEvents(publishingQueueEventRes);
     } catch (err) {
       if (isLatestRequest()) {
         toastError(
@@ -339,6 +357,13 @@ export default function ContentFactoryPublicationDetailPage() {
           <ContentFactoryPublicationWorkflowActionsPanel
             publication={publication}
             onSaved={handleSaved}
+          />
+
+          <ContentFactoryPublishingQueuePanel
+            publication={publication}
+            queueItems={publishingQueueItems}
+            events={publishingQueueEvents}
+            onChanged={handleSaved}
           />
 
           <ContentFactoryPublicationOperationsPanel

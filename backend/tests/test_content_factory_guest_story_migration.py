@@ -26,6 +26,12 @@ VARIANT_MIGRATION = (
     / "versions"
     / "045_cf_publication_variants.py"
 )
+PUBLISHING_QUEUE_MIGRATION = (
+    Path(__file__).resolve().parents[1]
+    / "alembic"
+    / "versions"
+    / "046_cf_publishing_queue.py"
+)
 ALEMBIC_VERSIONS = Path(__file__).resolve().parents[1] / "alembic" / "versions"
 ALEMBIC_VERSION_NUM_MAX_LENGTH = 32
 
@@ -133,3 +139,27 @@ def test_publication_variant_migration_creates_saved_variants_table():
     assert '"uq_cf_publication_variant_channel"' in source
     assert '"ix_cf_publication_variant_publication"' in source
     assert 'op.drop_table("cf_publication_variant")' in source
+
+
+def test_publishing_queue_migration_creates_queue_and_event_tables():
+    source = PUBLISHING_QUEUE_MIGRATION.read_text()
+
+    assert 'revision: str = "046_cf_publishing_queue"' in source
+    assert 'down_revision: Union[str, None] = "045_cf_pub_variants"' in source
+    assert '"cf_publishing_queue_item"' in source
+    assert '"cf_publishing_queue_event"' in source
+    assert '"publication_id"' in source
+    assert '"platform_id"' in source
+    assert '"status"' in source
+    assert '"attempts"' in source
+    assert '"max_attempts"' in source
+    assert '"next_retry_at"' in source
+    assert '"manual_fallback_reason"' in source
+    assert '"provider_response"' in source
+    assert '"queue_item_id"' in source
+    assert '"event_type"' in source
+    assert '"ix_cf_publishing_queue_status_schedule"' in source
+    assert '"ix_cf_publishing_queue_publication"' in source
+    assert '"ix_cf_publishing_queue_event_item_created"' in source
+    assert 'op.drop_table("cf_publishing_queue_event")' in source
+    assert 'op.drop_table("cf_publishing_queue_item")' in source
