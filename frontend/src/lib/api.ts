@@ -911,6 +911,15 @@ class ApiClient {
     );
   }
 
+  async sendCFPublishingQueueItemNow(
+    queueItemId: string
+  ): Promise<CFPublishingQueueItem> {
+    return this.request<CFPublishingQueueItem>(
+      `/api/content-factory/publishing-queue/${queueItemId}/send-now`,
+      { method: "POST" }
+    );
+  }
+
   async markCFPublishingQueueManualFallback(
     queueItemId: string,
     data: CFPublishingQueueManualFallbackRequest

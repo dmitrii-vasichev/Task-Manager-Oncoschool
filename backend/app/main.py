@@ -30,6 +30,9 @@ from app.config import settings
 from app.db.database import async_session
 from app.services.broadcast_scheduler_service import BroadcastSchedulerService
 from app.services.content_cleanup_service import ContentCleanupService
+from app.services.content_factory.publishing_scheduler_service import (
+    ContentFactoryPublishingSchedulerService,
+)
 from app.services.meeting_scheduler_service import MeetingSchedulerService
 from app.services.meeting_transcription_scheduler_service import (
     MeetingTranscriptionSchedulerService,
@@ -173,6 +176,11 @@ broadcast_scheduler = BroadcastSchedulerService(
     session_maker=async_session,
     storage_service=storage_service,
 )
+content_factory_publishing_scheduler = ContentFactoryPublishingSchedulerService(
+    bot=bot,
+    session_maker=async_session,
+)
+app.state.content_factory_publishing_scheduler = content_factory_publishing_scheduler
 
 report_scheduler = ReportSchedulerService(bot=bot, session_maker=async_session)
 app.state.report_scheduler = report_scheduler
@@ -196,6 +204,7 @@ async def _start_background_schedulers() -> None:
     meeting_transcription_scheduler.start()
     report_scheduler.start()
     broadcast_scheduler.start()
+    content_factory_publishing_scheduler.start()
     content_cleanup.start()
     try:
         async with async_session() as db_session:
@@ -220,6 +229,7 @@ async def _stop_background_schedulers() -> None:
     meeting_transcription_scheduler.stop()
     report_scheduler.stop()
     broadcast_scheduler.stop()
+    content_factory_publishing_scheduler.stop()
     content_cleanup.stop()
 
 

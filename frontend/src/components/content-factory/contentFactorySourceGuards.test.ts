@@ -487,9 +487,12 @@ test("publication detail route exposes publishing queue foundation", () => {
   assert.match(panelSource, /Поставить в очередь/);
   assert.match(panelSource, /Повторить/);
   assert.match(panelSource, /Ручной обход/);
+  assert.match(panelSource, /Отправить сейчас/);
+  assert.match(panelSource, /Telegram/);
   assert.match(panelSource, /Журнал очереди/);
   assert.match(panelSource, /api\.enqueueCFPublicationForPublishing/);
   assert.match(panelSource, /api\.retryCFPublishingQueueItem/);
+  assert.match(panelSource, /api\.sendCFPublishingQueueItemNow/);
   assert.match(panelSource, /api\.markCFPublishingQueueManualFallback/);
   assert.match(typesSource, /CFPublishingQueueStatus/);
   assert.match(typesSource, /CFPublishingQueueItem/);
@@ -498,6 +501,7 @@ test("publication detail route exposes publishing queue foundation", () => {
   assert.match(apiSource, /getCFPublishingQueueForPublication/);
   assert.match(apiSource, /enqueueCFPublicationForPublishing/);
   assert.match(apiSource, /retryCFPublishingQueueItem/);
+  assert.match(apiSource, /sendCFPublishingQueueItemNow/);
   assert.match(apiSource, /markCFPublishingQueueManualFallback/);
   assert.match(apiSource, /getCFPublishingQueueEvents/);
   assert.match(utilsSource, /CF_PUBLISHING_QUEUE_STATUS_LABELS/);

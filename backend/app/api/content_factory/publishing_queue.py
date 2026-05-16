@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.content_factory.deps import require_cf_access
@@ -20,6 +20,20 @@ from app.services.content_factory.publishing_queue_service import (
 
 router = APIRouter(tags=["content-factory"])
 publishing_queue_service = PublishingQueueService
+
+
+def _get_publishing_scheduler(request: Request):
+    scheduler = getattr(
+        request.app.state,
+        "content_factory_publishing_scheduler",
+        None,
+    )
+    if scheduler is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Сервис автоотправки недоступен",
+        )
+    return scheduler
 
 
 @router.get(
@@ -93,6 +107,31 @@ async def retry_publishing_queue_item(
 ):
     try:
         item = await publishing_queue_service.retry_item(
+            session,
+            queue_item_id,
+            actor_id=member.id,
+        )
+    except PublishingQueueValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if item is None:
+        raise HTTPException(status_code=404, detail="Задание очереди не найдено")
+    await session.commit()
+    return item
+
+
+@router.post(
+    "/publishing-queue/{queue_item_id}/send-now",
+    response_model=CFPublishingQueueItemResponse,
+)
+async def send_publishing_queue_item_now(
+    queue_item_id: uuid.UUID,
+    request: Request,
+    member: TeamMember = Depends(require_cf_access),
+    session: AsyncSession = Depends(get_session),
+):
+    scheduler = _get_publishing_scheduler(request)
+    try:
+        item = await scheduler.send_now(
             session,
             queue_item_id,
             actor_id=member.id,

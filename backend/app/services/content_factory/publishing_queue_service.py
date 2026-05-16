@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import CFPublication, CFPublishingQueueEvent, CFPublishingQueueItem
@@ -183,6 +183,87 @@ class PublishingQueueService:
             .order_by(CFPublishingQueueEvent.created_at)
         )
         return list(result.scalars().all())
+
+    @staticmethod
+    async def list_due_items(
+        session: AsyncSession,
+        *,
+        now: datetime,
+        limit: int = 50,
+    ) -> list[CFPublishingQueueItem]:
+        result = await session.execute(
+            select(CFPublishingQueueItem)
+            .where(
+                CFPublishingQueueItem.status == "queued",
+                or_(
+                    CFPublishingQueueItem.scheduled_for.is_(None),
+                    CFPublishingQueueItem.scheduled_for <= now,
+                ),
+                or_(
+                    CFPublishingQueueItem.next_retry_at.is_(None),
+                    CFPublishingQueueItem.next_retry_at <= now,
+                ),
+            )
+            .order_by(
+                CFPublishingQueueItem.scheduled_for.asc().nullsfirst(),
+                CFPublishingQueueItem.created_at.asc(),
+            )
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    @staticmethod
+    async def mark_processing(
+        session: AsyncSession,
+        item: CFPublishingQueueItem,
+        *,
+        actor_id: uuid.UUID | None = None,
+    ) -> CFPublishingQueueItem:
+        now = datetime.now(timezone.utc)
+        item.status = "processing"
+        item.last_attempt_at = now
+        item.error_message = None
+        item.updated_at = now
+        session.add(
+            _queue_event(
+                item,
+                event_type="started",
+                actor_id=actor_id,
+                message="Publishing attempt started.",
+                payload={"attempt": (item.attempts or 0) + 1},
+            )
+        )
+        await session.flush()
+        return item
+
+    @staticmethod
+    async def record_attempt_success(
+        session: AsyncSession,
+        item: CFPublishingQueueItem,
+        *,
+        provider_response: dict[str, Any],
+        actor_id: uuid.UUID | None = None,
+    ) -> CFPublishingQueueItem:
+        now = datetime.now(timezone.utc)
+        item.status = "succeeded"
+        item.attempts = (item.attempts or 0) + 1
+        item.last_attempt_at = now
+        item.next_retry_at = None
+        item.completed_at = now
+        item.error_message = None
+        item.provider_response = provider_response
+        item.updated_at = now
+        session.add(
+            _queue_event(
+                item,
+                event_type="succeeded",
+                actor_id=actor_id,
+                message="Publishing attempt succeeded.",
+                payload=provider_response,
+            )
+        )
+        await session.flush()
+        return item
 
     @staticmethod
     async def retry_item(

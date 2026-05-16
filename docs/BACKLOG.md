@@ -4,11 +4,11 @@
 
 ### Next
 
-- Execute Sprint 45: first practical platform publishing integration.
 - Execute Sprint 46: second practical platform publishing integration.
 - Execute Sprint 47: metrics integration foundation.
 - Execute Sprint 48: first automated metric source integrations.
 - Execute Sprint 49: production readiness, onboarding, and authenticated end-to-end QA.
+- Run authenticated manual QA for the Sprint 45 Telegram publisher against configured, missing-target, ambiguous-target, and media-ref cases.
 - Run authenticated manual QA for the Sprint 44 publishing queue against approved, scheduled, failed, and manual-fallback publication states.
 - Run authenticated manual QA for the Sprint 43 campaign planning matrix against real campaign templates.
 - Run authenticated manual QA for the Sprint 42.1 table import template and default-setting copy.

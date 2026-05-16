@@ -1,5 +1,30 @@
 # Test Plan
 
+## Content Factory Sprint 45 Telegram Publisher
+
+### Automated
+
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_cf_publishing_queue_service.py tests/test_cf_telegram_publisher_service.py tests/test_cf_publishing_scheduler_service.py tests/test_content_factory_publishing_queue_api.py -q`
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest -q`
+- `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Configure exactly one active Telegram target with type `content_factory`.
+2. Open a scheduled Telegram publication without `media_refs`.
+3. Put it into the publishing queue.
+4. Click `Отправить сейчас` and confirm the queue item becomes successful.
+5. Confirm the publication status becomes `Опубликовано` and `platform_post_id` is filled.
+6. Confirm the Telegram channel/group received the escaped text post.
+7. Repeat with no `content_factory` target and confirm the queue records a readable configuration error.
+8. Repeat with non-empty `media_refs` and confirm the queue records a readable text-only limitation.
+9. Confirm manual publish evidence controls remain available after automatic publishing.
+
 ## Content Factory Sprint 44 Publishing Queue
 
 ### Automated

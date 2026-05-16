@@ -1,3 +1,67 @@
+# Active Plan: Content Factory Sprint 45 Telegram Publisher
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-45-telegram-publisher.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Add the first real Content Factory publishing integration by sending due Telegram text publications through the existing application bot.
+
+**Detailed design:** `docs/superpowers/specs/2026-05-15-content-factory-sprint-45-telegram-publisher-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-15-content-factory-sprint-45-telegram-publisher.md`
+
+**Milestones:**
+
+1. Add publishing queue processing primitives for due jobs, started attempts, and success events.
+2. Add a Telegram publisher service that resolves Content Factory Telegram targets and sends text posts through the existing bot.
+3. Add a Content Factory publishing scheduler plus a `send-now` API endpoint.
+4. Add a frontend `Отправить сейчас` action to the publication queue panel.
+5. Run backend and frontend verification and update durable repo docs.
+
+**Implementation status:**
+
+- Implemented and verified locally; merge and push are next.
+- Sprint 1 through Sprint 44 work is merged to `main` and pushed.
+
+**Definition of done:**
+
+- Due queued Telegram text publications can be sent by scheduler or send-now.
+- Telegram target resolution uses explicit UTM target id or exactly one active `content_factory` Telegram target.
+- Success writes queue audit evidence and updates publication status, published timestamp, post id, and best-effort post URL.
+- Failures are visible, retryable, bounded, and written to queue history.
+- Media posts are blocked with a readable error instead of being sent without attachments.
+- Existing manual publish evidence remains available.
+- Verification commands pass and docs are updated.
+
+**Validation commands:**
+
+```bash
+cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_cf_publishing_queue_service.py tests/test_cf_telegram_publisher_service.py tests/test_cf_publishing_scheduler_service.py tests/test_content_factory_publishing_queue_api.py -q
+cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest -q
+cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- RED confirmed: queue primitive tests failed before implementation because `list_due_items`, `mark_processing`, and `record_attempt_success` did not exist.
+- RED confirmed: Telegram publisher tests failed before implementation because `telegram_publisher_service` did not exist.
+- RED confirmed: scheduler tests failed before implementation because `publishing_scheduler_service` did not exist.
+- RED confirmed: API tests failed before implementation because `send_publishing_queue_item_now` did not exist.
+- RED confirmed: frontend source guard failed before implementation because the send-now method and `Отправить сейчас` button did not exist.
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_cf_publishing_queue_service.py tests/test_cf_telegram_publisher_service.py tests/test_cf_publishing_scheduler_service.py tests/test_content_factory_publishing_queue_api.py -q` passed: 31 tests, with existing pytest-asyncio warning.
+- `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 39 tests, with existing Node module-type warning.
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest -q` passed: 668 tests, with existing warnings.
+- `cd frontend && npm test` passed: 202 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+- `git diff --check` passed.
+
+---
+
 # Active Plan: Content Factory Sprint 44 Publishing Queue
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-15-content-factory-sprint-44-publishing-queue.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.

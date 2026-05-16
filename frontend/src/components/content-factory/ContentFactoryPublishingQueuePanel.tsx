@@ -9,6 +9,7 @@ import {
   RadioTower,
   RefreshCw,
   RotateCcw,
+  Send,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -81,7 +82,7 @@ export function ContentFactoryPublishingQueuePanel({
 }) {
   const { toastSuccess, toastError } = useToast();
   const [action, setAction] = useState<
-    "enqueue" | "retry" | "fallback" | null
+    "enqueue" | "retry" | "send_now" | "fallback" | null
   >(null);
   const [fallbackOpen, setFallbackOpen] = useState(false);
   const [fallbackReason, setFallbackReason] = useState("");
@@ -93,6 +94,7 @@ export function ContentFactoryPublishingQueuePanel({
   const canEnqueue = canEnqueuePublication(publication) && !hasActiveItem;
   const canRetry =
     latestItem?.status === "failed" || latestItem?.status === "manual_fallback";
+  const canSendNow = latestItem?.status === "queued";
   const canManualFallback = Boolean(
     latestItem &&
       latestItem.status !== "succeeded" &&
@@ -138,6 +140,22 @@ export function ContentFactoryPublishingQueuePanel({
     }
   }
 
+  async function handleSendNow() {
+    if (!latestItem) return;
+    setAction("send_now");
+    try {
+      await api.sendCFPublishingQueueItemNow(latestItem.id);
+      toastSuccess("Отправка в Telegram выполнена или записана в журнал");
+      await onChanged();
+    } catch (err) {
+      toastError(
+        err instanceof Error ? err.message : "Не удалось отправить сейчас",
+      );
+    } finally {
+      setAction(null);
+    }
+  }
+
   async function handleFallbackSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!latestItem) return;
@@ -172,8 +190,8 @@ export function ContentFactoryPublishingQueuePanel({
               Очередь публикации
             </h2>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Подготовка к автоматической отправке: очередь, попытки, ошибки и
-              ручной обход. Факт выхода всё ещё фиксируется отдельно.
+              Telegram-автоотправка: очередь, попытки, ошибки и ручной обход.
+              Факт выхода всё ещё можно фиксировать отдельно.
             </p>
           </div>
         </div>
@@ -225,6 +243,21 @@ export function ContentFactoryPublishingQueuePanel({
           </div>
 
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 rounded-md px-2 text-xs"
+              disabled={!canSendNow || action === "send_now"}
+              onClick={() => void handleSendNow()}
+            >
+              {action === "send_now" ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Send className="h-3.5 w-3.5" />
+              )}
+              Отправить сейчас
+            </Button>
             <Button
               type="button"
               variant="outline"

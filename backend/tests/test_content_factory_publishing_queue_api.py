@@ -277,3 +277,49 @@ async def test_list_publishing_queue_events(monkeypatch):
     )
 
     assert result == events
+
+
+@pytest.mark.asyncio
+async def test_send_publishing_queue_item_now_uses_scheduler():
+    session = AsyncMock()
+    member = cf_member()
+    item = make_queue_item(status="succeeded")
+    scheduler = SimpleNamespace(send_now=AsyncMock(return_value=item))
+    request = SimpleNamespace(
+        app=SimpleNamespace(
+            state=SimpleNamespace(content_factory_publishing_scheduler=scheduler)
+        )
+    )
+
+    result = await queue_api.send_publishing_queue_item_now(
+        queue_item_id=item.id,
+        request=request,
+        member=member,
+        session=session,
+    )
+
+    assert result is item
+    scheduler.send_now.assert_awaited_once_with(
+        session,
+        item.id,
+        actor_id=member.id,
+    )
+    session.commit.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_send_publishing_queue_item_now_returns_503_without_scheduler():
+    session = AsyncMock()
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace()))
+
+    with pytest.raises(HTTPException) as exc:
+        await queue_api.send_publishing_queue_item_now(
+            queue_item_id=uuid.uuid4(),
+            request=request,
+            member=cf_member(),
+            session=session,
+        )
+
+    assert exc.value.status_code == 503
+    assert exc.value.detail == "Сервис автоотправки недоступен"
+    session.commit.assert_not_awaited()

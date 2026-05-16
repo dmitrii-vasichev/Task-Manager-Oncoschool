@@ -58,6 +58,22 @@ def make_session():
     )
 
 
+class FakeScalarResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return self._rows
+
+
+class FakeExecuteResult:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def scalars(self):
+        return FakeScalarResult(self._rows)
+
+
 @pytest.mark.asyncio
 async def test_enqueue_publication_creates_queue_item_and_audit_event(monkeypatch):
     session = make_session()
@@ -282,4 +298,77 @@ async def test_record_attempt_failure_marks_failed_at_max_attempts():
     event = session.add.call_args.args[0]
     assert event.event_type == "failed"
     assert event.payload["will_retry"] is False
+    session.flush.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_list_due_items_filters_queued_due_and_retryable_rows():
+    session = make_session()
+    due_item = make_queue_item(status="queued")
+    session.execute.return_value = FakeExecuteResult([due_item])
+    now = datetime(2026, 5, 20, 12, 0, tzinfo=UTC)
+
+    result = await PublishingQueueService.list_due_items(session, now=now, limit=25)
+
+    assert result == [due_item]
+    statement = session.execute.call_args.args[0]
+    compiled = str(statement)
+    assert "cf_publishing_queue_item.status" in compiled
+    assert "cf_publishing_queue_item.scheduled_for" in compiled
+    assert "cf_publishing_queue_item.next_retry_at" in compiled
+
+
+@pytest.mark.asyncio
+async def test_mark_processing_moves_item_and_records_started_event():
+    session = make_session()
+    actor_id = uuid.uuid4()
+    item = make_queue_item(status="queued", attempts=0)
+
+    result = await PublishingQueueService.mark_processing(
+        session,
+        item,
+        actor_id=actor_id,
+    )
+
+    assert result is item
+    assert item.status == "processing"
+    assert item.last_attempt_at is not None
+    assert item.error_message is None
+    event = session.add.call_args.args[0]
+    assert isinstance(event, CFPublishingQueueEvent)
+    assert event.event_type == "started"
+    assert event.actor_id == actor_id
+    session.flush.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_record_attempt_success_completes_item_and_records_event():
+    session = make_session()
+    actor_id = uuid.uuid4()
+    item = make_queue_item(status="processing", attempts=1)
+    provider_response = {
+        "platform": "telegram",
+        "message_id": "321",
+        "chat_id": -1001234567890,
+    }
+
+    result = await PublishingQueueService.record_attempt_success(
+        session,
+        item,
+        provider_response=provider_response,
+        actor_id=actor_id,
+    )
+
+    assert result is item
+    assert item.status == "succeeded"
+    assert item.attempts == 2
+    assert item.provider_response == provider_response
+    assert item.error_message is None
+    assert item.next_retry_at is None
+    assert item.completed_at is not None
+    event = session.add.call_args.args[0]
+    assert isinstance(event, CFPublishingQueueEvent)
+    assert event.event_type == "succeeded"
+    assert event.actor_id == actor_id
+    assert event.payload == provider_response
     session.flush.assert_awaited()
