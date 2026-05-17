@@ -4,9 +4,9 @@
 
 ### Next
 
-- Execute Sprint 47: metrics integration foundation.
 - Execute Sprint 48: first automated metric source integrations.
 - Execute Sprint 49: production readiness, onboarding, and authenticated end-to-end QA.
+- Run authenticated manual QA for the Sprint 47 metrics integration foundation against manual metrics, paste import, metric source config API, import run listing, dedupe, and provenance display.
 - Run authenticated manual QA for the Sprint 46 VK publisher against configured, missing-config, API-error, and media-ref cases.
 - Run authenticated manual QA for the Sprint 45 Telegram publisher against configured, missing-target, ambiguous-target, and media-ref cases.
 - Run authenticated manual QA for the Sprint 44 publishing queue against approved, scheduled, failed, and manual-fallback publication states.

@@ -1,3 +1,69 @@
+# Active Plan: Content Factory Sprint 47 Metrics Integration Foundation
+
+> **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-16-content-factory-sprint-47-metrics-foundation.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.
+
+**Goal:** Add the backend and frontend foundation for automated social metric imports without adding real external collectors yet.
+
+**Detailed design:** `docs/superpowers/specs/2026-05-16-content-factory-sprint-47-metrics-foundation-design.md`
+
+**Detailed implementation plan:** `docs/superpowers/plans/2026-05-16-content-factory-sprint-47-metrics-foundation.md`
+
+**Milestones:**
+
+1. Add metric source configuration and metric import run tables.
+2. Extend metric snapshots with source/import provenance and dedupe support.
+3. Add services for source configuration, import run lifecycle, and deduped metric recording.
+4. Add Content Factory REST endpoints for metric sources and import runs.
+5. Surface metric provenance on publication metric history without adding a new user-facing setup page yet.
+6. Run backend/frontend verification and update durable repo docs.
+
+**Implementation status:**
+
+- Implemented and locally verified on branch `codex/content-factory-sprint-47-metrics-foundation`.
+- Sprint 47 is ready for merge/push after the current review checkpoint.
+- Full DB-dependent backend verification is pending a local Postgres/Docker runtime; Docker is currently unavailable on this machine.
+
+**Definition of done:**
+
+- Metric source configurations can be created, listed, read, and updated through `/api/content-factory/metric-sources`.
+- Metric import runs can be listed globally and per source.
+- Metric source config stores only non-secret configuration; secret-looking keys in `config` are rejected and secrets must be referenced through `credentials_ref`.
+- Metric snapshots can reference source config, import run, external metric id, and dedupe key.
+- Duplicate imported metric snapshots are skipped when the same dedupe key already exists.
+- Existing manual metric entry and paste import behavior remain unchanged.
+- Publication metric history shows integration provenance when a metric came from an import foundation record.
+- No real VK/Telegram/social analytics collector is introduced in Sprint 47; that is Sprint 48.
+
+**Validation commands:**
+
+```bash
+cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_cf_metric_source_service.py tests/test_cf_segment_metric_retro_services.py tests/test_content_factory_metric_sources_api.py tests/test_content_factory_metrics_api.py tests/test_content_factory_guest_story_migration.py tests/test_supabase_rls_migration.py -q
+cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest -q
+cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run lint
+cd frontend && npm run build
+git diff --check
+```
+
+**Latest verification result:**
+
+- RED confirmed: backend model/schema tests failed before implementation because metric source/import models, schemas, and snapshot provenance fields did not exist.
+- RED confirmed: backend service tests failed before implementation because the metric source service and deduped metric recording did not exist.
+- RED confirmed: backend API tests failed before implementation because the metric source API module was not wired.
+- RED confirmed: frontend source guard failed before implementation because metric source types/API methods and provenance rendering did not exist.
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_cf_metric_source_service.py tests/test_cf_segment_metric_retro_services.py tests/test_content_factory_metric_sources_api.py tests/test_content_factory_metrics_api.py tests/test_content_factory_guest_story_migration.py tests/test_supabase_rls_migration.py -q` passed: 80 tests, with existing pytest-asyncio warnings.
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest -q --ignore=tests/test_content_factory_publication_service_extras.py --ignore=tests/test_content_factory_retro_update.py` passed: 692 tests, with existing warnings. The ignored files require a live Postgres instance.
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest -q` could not complete because local Postgres on `localhost:5434` was unavailable and Docker was not running.
+- `cd frontend && npm test` passed: 203 tests, with existing Node module-type warnings.
+- `cd frontend && npx tsc --noEmit` passed.
+- `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+- `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+- `git diff --check` passed.
+
+---
+
 # Active Plan: Content Factory Sprint 46 VK Publisher
 
 > **For agentic workers:** Execute from `docs/superpowers/plans/2026-05-16-content-factory-sprint-46-vk-publisher.md`. Keep `docs/STATUS.md` current after meaningful implementation or validation steps.

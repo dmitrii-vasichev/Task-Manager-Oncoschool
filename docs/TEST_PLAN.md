@@ -1,5 +1,31 @@
 # Test Plan
 
+## Content Factory Sprint 47 Metrics Integration Foundation
+
+### Automated
+
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_cf_metric_source_service.py tests/test_cf_segment_metric_retro_services.py tests/test_content_factory_metric_sources_api.py tests/test_content_factory_metrics_api.py tests/test_content_factory_guest_story_migration.py tests/test_supabase_rls_migration.py -q`
+- `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest -q`
+- `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts`
+- `cd frontend && npm test`
+- `cd frontend && npx tsc --noEmit`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `git diff --check`
+
+### Manual
+
+1. Create a metric source config through `/api/content-factory/metric-sources`.
+2. Confirm `config` accepts non-secret provider settings such as account/community ids and metric mappings.
+3. Confirm secret-looking keys such as `access_token`, `api_key`, `password`, and `secret` are rejected and `credentials_ref` is used instead.
+4. List metric sources globally and by `source`/`is_active`.
+5. Update a metric source name, freshness window, active flag, config, and `credentials_ref`.
+6. Create or simulate an import run in backend code and confirm global and per-source import run listing.
+7. Record an imported metric with `source_config_id`, `import_run_id`, `external_metric_id`, and `dedupe_key`.
+8. Record the same dedupe key again and confirm the duplicate does not create a second snapshot.
+9. Open the publication detail metric history and confirm integration provenance is visible for imported metrics.
+10. Confirm manual metric entry and paste import remain usable and do not require metric source provenance.
+
 ## Content Factory Sprint 46 VK Publisher
 
 ### Automated

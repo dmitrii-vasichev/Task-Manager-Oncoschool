@@ -1,5 +1,48 @@
 # Status
 
+## Content Factory Sprint 47 Metrics Integration Foundation
+
+- Current phase: implemented and locally verified on `codex/content-factory-sprint-47-metrics-foundation`; ready for merge/push after checkpoint
+- Source: Wave D foundation for automatic metric collection after the publishing automation in Sprints 44-46.
+- Design: `docs/superpowers/specs/2026-05-16-content-factory-sprint-47-metrics-foundation-design.md`
+- Plan: `docs/superpowers/plans/2026-05-16-content-factory-sprint-47-metrics-foundation.md`
+- Scope: metric source config table, metric import run table, metric snapshot provenance, dedupe support, source/import run services, REST API, frontend API/types, provenance display, tests, and durable docs
+- Latest progress:
+  - Created branch `codex/content-factory-sprint-47-metrics-foundation`.
+  - Wrote Sprint 47 design and implementation plan.
+  - Added failing model/schema tests and implemented `CFMetricSourceConfig`, `CFMetricImportRun`, snapshot provenance fields, indexes, and migration.
+  - Added failing service tests and implemented metric source config service, import run service, and deduped metric recording.
+  - Added failing API tests and wired metric source/import run routes under `/api/content-factory`.
+  - Added failing frontend source guard and added metric source/import run types, API methods, and provenance rendering in metric history.
+  - Added validation that rejects secret-looking keys in metric source `config`; credentials must use `credentials_ref`.
+  - Fixed Alembic revision id length and RLS table registry coverage for the new metric integration tables.
+  - Focused backend verification, frontend tests, typecheck, lint, build, and diff verification passed.
+- Key decisions:
+  - Sprint 47 is integration infrastructure only; real provider collectors start in Sprint 48.
+  - Keep metric source setup out of the main navigation for now; expose API and show provenance where imported metrics appear.
+  - Store non-secret provider settings in `config` and reference secrets externally through `credentials_ref`.
+  - Use `cf_metric_import_run` as the durable audit trail for future manual and scheduled metric collectors.
+  - Use optional `dedupe_key` to make imported metric snapshots idempotent while leaving manual metrics unchanged.
+  - Show integration provenance in the metric history only when it exists, so manual metric history stays simple.
+- Next actions:
+  - Merge and push Sprint 47.
+  - Run the full backend DB-dependent test suite after local Postgres/Docker is available.
+  - Start Sprint 48: first automated metric source integrations.
+  - Run authenticated manual QA for the Sprint 47 metrics foundation against manual metrics, paste import, metric source config API, import run listing, dedupe, and provenance display.
+- Latest verification:
+  - RED confirmed: model/schema tests failed before implementation because metric source/import models, schemas, and snapshot provenance fields did not exist.
+  - RED confirmed: service tests failed before implementation because metric source config service and deduped metric recording did not exist.
+  - RED confirmed: API tests failed before implementation because `metric_sources` API was not wired.
+  - RED confirmed: frontend source guard failed before implementation because metric integration contracts and provenance rendering did not exist.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_cf_metric_source_service.py tests/test_cf_segment_metric_retro_services.py tests/test_content_factory_metric_sources_api.py tests/test_content_factory_metrics_api.py tests/test_content_factory_guest_story_migration.py tests/test_supabase_rls_migration.py -q` passed: 80 tests, with existing pytest-asyncio warnings.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest -q --ignore=tests/test_content_factory_publication_service_extras.py --ignore=tests/test_content_factory_retro_update.py` passed: 692 tests, with existing warnings. The ignored files require a live Postgres instance.
+  - `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest -q` could not complete because local Postgres on `localhost:5434` was unavailable and Docker was not running.
+  - `cd frontend && npm test` passed: 203 tests, with existing Node module-type warnings.
+  - `cd frontend && npx tsc --noEmit` passed.
+  - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
+  - `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
+  - `git diff --check` passed.
+
 ## Content Factory Sprint 46 VK Publisher
 
 - Current phase: implemented, verified, merged to `main`, and pushed
