@@ -2,7 +2,7 @@
 
 ## Content Factory Sprint 47 Metrics Integration Foundation
 
-- Current phase: implemented and locally verified on `codex/content-factory-sprint-47-metrics-foundation`; ready for merge/push after checkpoint
+- Current phase: implemented, locally verified, merged to `main`, and pushed
 - Source: Wave D foundation for automatic metric collection after the publishing automation in Sprints 44-46.
 - Design: `docs/superpowers/specs/2026-05-16-content-factory-sprint-47-metrics-foundation-design.md`
 - Plan: `docs/superpowers/plans/2026-05-16-content-factory-sprint-47-metrics-foundation.md`
@@ -17,6 +17,9 @@
   - Added validation that rejects secret-looking keys in metric source `config`; credentials must use `credentials_ref`.
   - Fixed Alembic revision id length and RLS table registry coverage for the new metric integration tables.
   - Focused backend verification, frontend tests, typecheck, lint, build, and diff verification passed.
+  - Fast-forward merged Sprint 47 into local `main`.
+  - Post-merge smoke verification passed on `main`.
+  - Pushed Sprint 47 to `origin/main`.
 - Key decisions:
   - Sprint 47 is integration infrastructure only; real provider collectors start in Sprint 48.
   - Keep metric source setup out of the main navigation for now; expose API and show provenance where imported metrics appear.
@@ -25,7 +28,6 @@
   - Use optional `dedupe_key` to make imported metric snapshots idempotent while leaving manual metrics unchanged.
   - Show integration provenance in the metric history only when it exists, so manual metric history stays simple.
 - Next actions:
-  - Merge and push Sprint 47.
   - Run the full backend DB-dependent test suite after local Postgres/Docker is available.
   - Start Sprint 48: first automated metric source integrations.
   - Run authenticated manual QA for the Sprint 47 metrics foundation against manual metrics, paste import, metric source config API, import run listing, dedupe, and provenance display.
@@ -42,6 +44,8 @@
   - `cd frontend && npm run lint` passed with no ESLint warnings or errors.
   - `cd frontend && npm run build` passed, including `/content-factory/publications/[id]`.
   - `git diff --check` passed.
+  - Post-merge smoke on `main`: `cd backend && env PYTHONPATH=$PWD DEBUG=true BOT_TOKEN=123456:TEST DATABASE_URL=postgresql+asyncpg://cfuser:cfpass@localhost:5434/oncoschool_cf OPENAI_API_KEY=test pytest tests/test_content_factory_models.py tests/test_content_factory_schemas.py tests/test_cf_metric_source_service.py tests/test_cf_segment_metric_retro_services.py tests/test_content_factory_metric_sources_api.py tests/test_content_factory_metrics_api.py tests/test_content_factory_guest_story_migration.py tests/test_supabase_rls_migration.py -q` passed: 80 tests, with existing pytest-asyncio warnings.
+  - Post-merge smoke on `main`: `cd frontend && node --test --experimental-strip-types src/components/content-factory/contentFactorySourceGuards.test.ts` passed: 40 tests, with existing Node module-type warning.
 
 ## Content Factory Sprint 46 VK Publisher
 
