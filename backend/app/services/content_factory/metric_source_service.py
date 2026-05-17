@@ -12,10 +12,28 @@ from app.db.schemas import CFMetricSourceConfigCreate, CFMetricSourceConfigUpdat
 
 
 TERMINAL_RUN_STATUSES = {"succeeded", "failed", "partial"}
+SECRET_CONFIG_KEY_MARKERS = ("token", "secret", "password", "api_key", "apikey")
 
 
 class MetricSourceValidationError(ValueError):
     """Raised when a metric source or import run operation is not allowed."""
+
+
+def _assert_config_has_no_secrets(config: Any, path: str = "config") -> None:
+    if isinstance(config, dict):
+        for key, value in config.items():
+            key_path = f"{path}.{key}"
+            normalized_key = str(key).lower()
+            if any(marker in normalized_key for marker in SECRET_CONFIG_KEY_MARKERS):
+                raise MetricSourceValidationError(
+                    "Metric source config must not store secrets; use credentials_ref"
+                )
+            _assert_config_has_no_secrets(value, key_path)
+        return
+
+    if isinstance(config, list):
+        for index, value in enumerate(config):
+            _assert_config_has_no_secrets(value, f"{path}[{index}]")
 
 
 class MetricSourceConfigService:
@@ -24,6 +42,7 @@ class MetricSourceConfigService:
         session: AsyncSession,
         payload: CFMetricSourceConfigCreate,
     ) -> CFMetricSourceConfig:
+        _assert_config_has_no_secrets(payload.config)
         source = CFMetricSourceConfig(
             source=payload.source,
             name=payload.name,
@@ -79,11 +98,15 @@ class MetricSourceConfigService:
         source_config_id: uuid.UUID,
         payload: CFMetricSourceConfigUpdate,
     ) -> CFMetricSourceConfig | None:
+        updates = payload.model_dump(exclude_unset=True)
+        if "config" in updates:
+            _assert_config_has_no_secrets(updates["config"])
+
         source = await MetricSourceConfigService.get(session, source_config_id)
         if source is None:
             return None
 
-        for field, value in payload.model_dump(exclude_unset=True).items():
+        for field, value in updates.items():
             setattr(source, field, value)
         source.updated_at = datetime.now(timezone.utc)
         await session.flush()

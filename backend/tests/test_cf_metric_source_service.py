@@ -4,10 +4,11 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from app.db.schemas import CFMetricSourceConfigCreate
+from app.db.schemas import CFMetricSourceConfigCreate, CFMetricSourceConfigUpdate
 from app.services.content_factory.metric_source_service import (
     MetricImportRunService,
     MetricSourceConfigService,
+    MetricSourceValidationError,
 )
 
 
@@ -29,6 +30,31 @@ async def test_create_metric_source_config_adds_record():
     assert result.name == "VK wall metrics"
     assert result.source == "vk_api"
     session.add.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_create_metric_source_config_rejects_secrets_in_config():
+    session = AsyncMock()
+    payload = CFMetricSourceConfigCreate(
+        source="vk_api",
+        name="VK wall metrics",
+        config={"owner_id": "-123", "access_token": "secret"},
+        credentials_ref="vault://content-factory/vk",
+    )
+
+    with pytest.raises(MetricSourceValidationError):
+        await MetricSourceConfigService.create(session, payload)
+
+
+@pytest.mark.asyncio
+async def test_update_metric_source_config_rejects_nested_secrets_in_config():
+    session = AsyncMock()
+    payload = CFMetricSourceConfigUpdate(
+        config={"auth": {"api_key": "secret"}},
+    )
+
+    with pytest.raises(MetricSourceValidationError):
+        await MetricSourceConfigService.update(session, uuid.uuid4(), payload)
 
 
 @pytest.mark.asyncio
