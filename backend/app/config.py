@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     VK_API_VERSION: str = "5.199"
     VK_OWNER_ID: str = ""
     VK_FROM_GROUP: bool = True
+    CF_METRIC_IMPORT_ENABLED: bool = True
+    CF_METRIC_IMPORT_INTERVAL_MINUTES: int = 30
 
     # General
     DEBUG: bool = False

@@ -33,6 +33,9 @@ from app.services.content_cleanup_service import ContentCleanupService
 from app.services.content_factory.publisher_router_service import (
     ContentFactoryPublisherRouter,
 )
+from app.services.content_factory.metric_import_scheduler_service import (
+    ContentFactoryMetricImportSchedulerService,
+)
 from app.services.content_factory.publishing_scheduler_service import (
     ContentFactoryPublishingSchedulerService,
 )
@@ -190,6 +193,10 @@ content_factory_publishing_scheduler = ContentFactoryPublishingSchedulerService(
     ),
 )
 app.state.content_factory_publishing_scheduler = content_factory_publishing_scheduler
+content_factory_metric_import_scheduler = ContentFactoryMetricImportSchedulerService(
+    session_maker=async_session,
+)
+app.state.content_factory_metric_import_scheduler = content_factory_metric_import_scheduler
 
 report_scheduler = ReportSchedulerService(bot=bot, session_maker=async_session)
 app.state.report_scheduler = report_scheduler
@@ -214,6 +221,7 @@ async def _start_background_schedulers() -> None:
     report_scheduler.start()
     broadcast_scheduler.start()
     content_factory_publishing_scheduler.start()
+    content_factory_metric_import_scheduler.start()
     content_cleanup.start()
     try:
         async with async_session() as db_session:
@@ -239,6 +247,7 @@ async def _stop_background_schedulers() -> None:
     report_scheduler.stop()
     broadcast_scheduler.stop()
     content_factory_publishing_scheduler.stop()
+    content_factory_metric_import_scheduler.stop()
     content_cleanup.stop()
 
 
