@@ -29,6 +29,8 @@ PUBLIC_TABLES: tuple[str, ...] = (
     "cf_funnel_template",
     "cf_guest_story",
     "cf_guest_story_event",
+    "cf_metric_import_run",
+    "cf_metric_source_config",
     "cf_metric_snapshot",
     "cf_nosology",
     "cf_platform",

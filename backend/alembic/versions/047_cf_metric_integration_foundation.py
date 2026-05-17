@@ -1,6 +1,6 @@
 """Add Content Factory metric integration foundation.
 
-Revision ID: 047_cf_metric_integration_foundation
+Revision ID: 047_cf_metric_sources
 Revises: 046_cf_publishing_queue
 Create Date: 2026-05-16 10:00:00.000000
 """
@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 
-revision: str = "047_cf_metric_integration_foundation"
+revision: str = "047_cf_metric_sources"
 down_revision: Union[str, None] = "046_cf_publishing_queue"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
