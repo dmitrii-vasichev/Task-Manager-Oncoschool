@@ -12,6 +12,7 @@ from app.db.schemas import (
     CFMetricImportRunResponse,
     CFMetricSourceConfigCreate,
     CFMetricSourceConfigResponse,
+    CFMetricSourceRunRequest,
     CFMetricSourceConfigUpdate,
 )
 from app.services.content_factory.metric_source_service import (
@@ -19,10 +20,15 @@ from app.services.content_factory.metric_source_service import (
     MetricSourceConfigService,
     MetricSourceValidationError,
 )
+from app.services.content_factory.vk_metric_collector_service import (
+    VKMetricCollectorError,
+    VKMetricCollectorService,
+)
 
 router = APIRouter(tags=["content-factory"])
 source_config_service = MetricSourceConfigService
 import_run_service = MetricImportRunService
+vk_metric_collector = VKMetricCollectorService()
 
 
 def _validation_error(exc: MetricSourceValidationError) -> HTTPException:
@@ -127,6 +133,46 @@ async def list_metric_import_runs(
         limit=limit,
         offset=offset,
     )
+
+
+@router.post(
+    "/metric-sources/{source_config_id}/run",
+    response_model=CFMetricImportRunResponse,
+)
+async def run_metric_source(
+    source_config_id: uuid.UUID,
+    data: CFMetricSourceRunRequest,
+    member: TeamMember = Depends(require_cf_access),
+    session: AsyncSession = Depends(get_session),
+):
+    if data.force:
+        raise HTTPException(
+            status_code=400,
+            detail="force mode is not supported yet",
+        )
+
+    source = await source_config_service.get(session, source_config_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Источник метрик не найден")
+    if source.source != "vk_api":
+        raise HTTPException(
+            status_code=400,
+            detail="Автосбор метрик пока поддерживает только VK API",
+        )
+
+    try:
+        run = await vk_metric_collector.collect_for_source(
+            session,
+            source,
+            triggered_by="manual",
+            requested_by_id=member.id,
+            publication_id=data.publication_id,
+        )
+    except VKMetricCollectorError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    await session.commit()
+    return run
 
 
 @router.get(

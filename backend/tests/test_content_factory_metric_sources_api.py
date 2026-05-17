@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.api.content_factory import metric_sources as metric_sources_api
-from app.db.schemas import CFMetricSourceConfigCreate, CFMetricSourceConfigUpdate
+from app.db.schemas import (
+    CFMetricSourceConfigCreate,
+    CFMetricSourceConfigUpdate,
+    CFMetricSourceRunRequest,
+)
 
 
 def cf_member():
@@ -147,3 +151,59 @@ async def test_list_metric_import_runs(monkeypatch):
     )
 
     assert result == [run]
+
+
+@pytest.mark.asyncio
+async def test_run_metric_source_invokes_vk_collector(monkeypatch):
+    source_id = uuid.uuid4()
+    member = cf_member()
+    source = make_source_config(id=source_id, source="vk_api")
+    run = make_import_run(
+        source_config_id=source_id,
+        status="succeeded",
+        triggered_by="manual",
+        requested_by_id=member.id,
+        found_count=4,
+        created_count=4,
+        skipped_duplicate_count=0,
+        error_count=0,
+    )
+    session = AsyncMock()
+
+    monkeypatch.setattr(
+        metric_sources_api.source_config_service,
+        "get",
+        AsyncMock(return_value=source),
+    )
+    collector = SimpleNamespace(collect_for_source=AsyncMock(return_value=run))
+    monkeypatch.setattr(metric_sources_api, "vk_metric_collector", collector)
+
+    result = await metric_sources_api.run_metric_source(
+        source_id,
+        CFMetricSourceRunRequest(publication_id=None, force=False),
+        member=member,
+        session=session,
+    )
+
+    assert result is run
+    collector.collect_for_source.assert_awaited_once_with(
+        session,
+        source,
+        triggered_by="manual",
+        requested_by_id=member.id,
+        publication_id=None,
+    )
+    session.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_run_metric_source_rejects_force():
+    with pytest.raises(metric_sources_api.HTTPException) as exc_info:
+        await metric_sources_api.run_metric_source(
+            uuid.uuid4(),
+            CFMetricSourceRunRequest(force=True),
+            member=cf_member(),
+            session=AsyncMock(),
+        )
+
+    assert exc_info.value.status_code == 400

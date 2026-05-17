@@ -1732,6 +1732,11 @@ class CFMetricSourceConfigUpdate(BaseModel):
         return stripped
 
 
+class CFMetricSourceRunRequest(BaseModel):
+    publication_id: uuid.UUID | None = None
+    force: bool = False
+
+
 class CFMetricSourceConfigResponse(CFMetricSourceConfigBase):
     id: uuid.UUID
     created_by_id: uuid.UUID | None = None
