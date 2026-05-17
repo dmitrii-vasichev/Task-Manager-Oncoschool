@@ -633,10 +633,13 @@ test("metric integration foundation is visible in frontend contracts and history
 
   assert.match(typesSource, /CFMetricSourceConfig/);
   assert.match(typesSource, /CFMetricImportRun/);
+  assert.match(typesSource, /CFMetricSourceRunRequest/);
   assert.match(typesSource, /source_config_id/);
   assert.match(typesSource, /import_run_id/);
   assert.match(apiSource, /getCFMetricSources/);
   assert.match(apiSource, /getCFMetricImportRuns/);
+  assert.match(apiSource, /runCFMetricSource/);
+  assert.match(apiSource, /metric-sources\/\$\{sourceConfigId\}\/run/);
   assert.match(detailSource, /api\.getCFMetricSources/);
   assert.match(historySource, /metricSources/);
   assert.match(historySource, /Интеграция/);

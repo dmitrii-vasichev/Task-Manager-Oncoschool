@@ -126,6 +126,7 @@ import type {
   CFMetricSnapshotCreateRequest,
   CFMetricSourceConfig,
   CFMetricSourceConfigCreateRequest,
+  CFMetricSourceRunRequest,
   CFMetricSourceConfigUpdateRequest,
   CFMetricSourceListParams,
   CFMetricImportRun,
@@ -1065,6 +1066,19 @@ class ApiClient {
       `/api/content-factory/metric-sources/${sourceConfigId}`,
       {
         method: "PATCH",
+        body: JSON.stringify(data),
+      }
+    );
+  }
+
+  async runCFMetricSource(
+    sourceConfigId: string,
+    data: CFMetricSourceRunRequest = {}
+  ): Promise<CFMetricImportRun> {
+    return this.request<CFMetricImportRun>(
+      `/api/content-factory/metric-sources/${sourceConfigId}/run`,
+      {
+        method: "POST",
         body: JSON.stringify(data),
       }
     );

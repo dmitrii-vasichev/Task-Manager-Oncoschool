@@ -1569,6 +1569,11 @@ export interface CFMetricSourceListParams {
   offset?: number;
 }
 
+export interface CFMetricSourceRunRequest {
+  publication_id?: string | null;
+  force?: boolean;
+}
+
 export interface CFMetricImportRun {
   id: string;
   source_config_id: string;
